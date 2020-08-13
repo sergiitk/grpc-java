@@ -24,13 +24,14 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.grpc.ChannelLogger;
 import io.grpc.ExperimentalApi;
+import io.grpc.ForwardingChannelBuilder;
 import io.grpc.Internal;
-import io.grpc.internal.AbstractManagedChannelImplBuilder;
 import io.grpc.internal.AtomicBackoff;
 import io.grpc.internal.ClientTransportFactory;
 import io.grpc.internal.ConnectionClientTransport;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.KeepAliveManager;
+import io.grpc.internal.ManagedChannelImplBuilder;
 import io.grpc.internal.SharedResourceHolder;
 import io.grpc.internal.SharedResourceHolder.Resource;
 import io.grpc.internal.TransportTracer;
@@ -55,9 +56,11 @@ import javax.net.ssl.SSLSocketFactory;
 /** Convenience class for building channels with the OkHttp transport. */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1785")
 public class OkHttpChannelBuilder extends
-        AbstractManagedChannelImplBuilder<OkHttpChannelBuilder> {
+        ForwardingChannelBuilder<OkHttpChannelBuilder> {
 
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 65535;
+  private final ManagedChannelImplBuilder managedChannelImplBuilder;
+  private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
 
   /** Identifies the negotiation used for starting up HTTP/2. */
   private enum NegotiationType {
@@ -115,6 +118,11 @@ public class OkHttpChannelBuilder extends
     return new OkHttpChannelBuilder(target);
   }
 
+  @Override
+  protected ManagedChannelImplBuilder delegate() {
+    return managedChannelImplBuilder;
+  }
+
   private Executor transportExecutor;
   private ScheduledExecutorService scheduledExecutorService;
 
@@ -140,7 +148,9 @@ public class OkHttpChannelBuilder extends
   }
 
   private OkHttpChannelBuilder(String target) {
-    super(target);
+    super();
+    managedChannelImplBuilder = ManagedChannelImplBuilder.forTarget(target,
+            this::buildTransportFactory);
   }
 
   @VisibleForTesting
@@ -363,9 +373,7 @@ public class OkHttpChannelBuilder extends
     return this;
   }
 
-  @Override
-  @Internal
-  protected final ClientTransportFactory buildTransportFactory() {
+  private final ClientTransportFactory buildTransportFactory() {
     boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
     return new OkHttpTransportFactory(
         transportExecutor,
