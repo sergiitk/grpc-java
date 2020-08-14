@@ -1,32 +1,29 @@
 package io.grpc.internal;
 
-import java.util.concurrent.Callable;
 
 public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
-    private final Callable<ClientTransportFactory> transportFactoryBuilder;
+    public interface ClientTransportFactoryFactory {
+        ClientTransportFactory buildTransportFactory();
+    }
+
+    private final ClientTransportFactoryFactory clientTransportFactoryFactory;
     private int defaultPort;
 
     protected ManagedChannelImplBuilder(String target,
-                                        Callable<ClientTransportFactory> transportFactoryBuilder) {
+                                        ClientTransportFactoryFactory clientTransportFactoryFactory) {
         super(target);
-        this.transportFactoryBuilder = transportFactoryBuilder;
+        this.clientTransportFactoryFactory = clientTransportFactoryFactory;
         this.defaultPort = super.getDefaultPort();
     }
 
     public static ManagedChannelImplBuilder forTarget(String target,
-                                                      Callable<ClientTransportFactory> transportFactoryBuilder) {
+                                                      ClientTransportFactoryFactory transportFactoryBuilder) {
         return new ManagedChannelImplBuilder(target, transportFactoryBuilder);
     }
 
     @Override
     protected ClientTransportFactory buildTransportFactory() {
-        try {
-            return transportFactoryBuilder.call();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        // @todo: handle differently?
-        return null;
+        return clientTransportFactoryFactory.buildTransportFactory();
     }
 
     @Override
@@ -38,6 +35,7 @@ public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder
         this.defaultPort = defaultPort;
     }
 
+    @Override
     public int maxInboundMessageSize() {
         return super.maxInboundMessageSize();
     }

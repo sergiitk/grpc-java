@@ -43,7 +43,6 @@ import io.grpc.okhttp.internal.TlsVersion;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.security.GeneralSecurityException;
-import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -58,7 +57,8 @@ import javax.net.ssl.SSLSocketFactory;
 /** Convenience class for building channels with the OkHttp transport. */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1785")
 public class OkHttpChannelBuilder extends
-        SimpleForwardingChannelBuilder<OkHttpChannelBuilder> {
+        SimpleForwardingChannelBuilder<OkHttpChannelBuilder> implements
+        ManagedChannelImplBuilder.ClientTransportFactoryFactory {
 
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 65535;
   private final ManagedChannelImplBuilder managedChannelImplBuilder;
@@ -151,12 +151,7 @@ public class OkHttpChannelBuilder extends
 
   private OkHttpChannelBuilder(String target) {
     super();
-    managedChannelImplBuilder = ManagedChannelImplBuilder.forTarget(target, new Callable<ClientTransportFactory>() {
-      @Override
-      public ClientTransportFactory call() {
-        return buildTransportFactory();
-      }
-    });
+    managedChannelImplBuilder = ManagedChannelImplBuilder.forTarget(target, this);
   }
 
   @VisibleForTesting
@@ -379,7 +374,9 @@ public class OkHttpChannelBuilder extends
     return this;
   }
 
-  private final ClientTransportFactory buildTransportFactory() {
+  @Internal
+  @Override
+  public final ClientTransportFactory buildTransportFactory() {
     boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
     return new OkHttpTransportFactory(
         transportExecutor,
