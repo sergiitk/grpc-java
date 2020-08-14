@@ -33,4 +33,8 @@ public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder
     public void setDefaultPort(int defaultPort) {
         this.defaultPort = defaultPort;
     }
+
+    public int maxInboundMessageSize() {
+        return super.maxInboundMessageSize();
+    }
 }

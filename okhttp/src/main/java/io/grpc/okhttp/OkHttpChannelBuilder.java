@@ -383,7 +383,7 @@ public class OkHttpChannelBuilder extends
         createSslSocketFactory(),
         hostnameVerifier,
         connectionSpec,
-        maxInboundMessageSize(),
+        managedChannelImplBuilder.maxInboundMessageSize(),
         enableKeepAlive,
         keepAliveTimeNanos,
         keepAliveTimeoutNanos,
