@@ -2,6 +2,7 @@ package io.grpc.internal;
 
 public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
     private final TransportFactoryBuilder transportFactoryBuilder;
+    private int defaultPort;
 
     public interface TransportFactoryBuilder {
         ClientTransportFactory buildTransportFactory();
@@ -11,6 +12,7 @@ public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder
                                         TransportFactoryBuilder transportFactoryBuilder) {
         super(target);
         this.transportFactoryBuilder = transportFactoryBuilder;
+        this.defaultPort = super.getDefaultPort();
     }
 
     public static ManagedChannelImplBuilder forTarget(String target,
@@ -21,5 +23,14 @@ public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder
     @Override
     protected ClientTransportFactory buildTransportFactory() {
         return transportFactoryBuilder.buildTransportFactory();
+    }
+
+    @Override
+    public int getDefaultPort() {
+        return defaultPort;
+    }
+
+    public void setDefaultPort(int defaultPort) {
+        this.defaultPort = defaultPort;
     }
 }
