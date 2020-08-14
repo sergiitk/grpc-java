@@ -405,7 +405,7 @@ public class OkHttpChannelBuilder extends
     return super.build();
   }
 
-  int getDefaultPort() {
+  public int getDefaultPort() {
     switch (negotiationType) {
       case PLAINTEXT:
         return GrpcUtil.DEFAULT_PORT_PLAINTEXT;
