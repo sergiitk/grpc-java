@@ -1,28 +1,31 @@
 package io.grpc.internal;
 
+import java.util.concurrent.Callable;
+
 public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
-    private final TransportFactoryBuilder transportFactoryBuilder;
+    private final Callable<ClientTransportFactory> transportFactoryBuilder;
     private int defaultPort;
 
-    public interface TransportFactoryBuilder {
-        ClientTransportFactory buildTransportFactory();
-    }
-
     protected ManagedChannelImplBuilder(String target,
-                                        TransportFactoryBuilder transportFactoryBuilder) {
+                                        Callable<ClientTransportFactory> transportFactoryBuilder) {
         super(target);
         this.transportFactoryBuilder = transportFactoryBuilder;
         this.defaultPort = super.getDefaultPort();
     }
 
     public static ManagedChannelImplBuilder forTarget(String target,
-                                                      TransportFactoryBuilder transportFactoryBuilder) {
+                                                      Callable<ClientTransportFactory> transportFactoryBuilder) {
         return new ManagedChannelImplBuilder(target, transportFactoryBuilder);
     }
 
     @Override
     protected ClientTransportFactory buildTransportFactory() {
-        return transportFactoryBuilder.buildTransportFactory();
+        try {
+            return transportFactoryBuilder.call();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     @Override
