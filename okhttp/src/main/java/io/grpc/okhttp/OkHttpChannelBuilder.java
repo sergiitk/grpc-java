@@ -57,12 +57,11 @@ import javax.net.ssl.SSLSocketFactory;
 
 /** Convenience class for building channels with the OkHttp transport. */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1785")
-public class OkHttpChannelBuilder extends
-    SimpleForwardingChannelBuilder<OkHttpChannelBuilder> {
+public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpChannelBuilder> {
 
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 65535;
+  protected TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
   private final ManagedChannelImplBuilder managedChannelImplBuilder;
-  private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
 
   /** Identifies the negotiation used for starting up HTTP/2. */
   private enum NegotiationType {
@@ -120,11 +119,6 @@ public class OkHttpChannelBuilder extends
     return new OkHttpChannelBuilder(target);
   }
 
-  @Override
-  protected ManagedChannelImplBuilder delegate() {
-    return managedChannelImplBuilder;
-  }
-
   private Executor transportExecutor;
   private ScheduledExecutorService scheduledExecutorService;
 
@@ -179,6 +173,11 @@ public class OkHttpChannelBuilder extends
 
     managedChannelImplBuilder = new ManagedChannelImplBuilder(target,
         new OkHttpChannelTransportFactoryBuilder());
+  }
+
+  @Override
+  protected ManagedChannelImplBuilder delegate() {
+    return managedChannelImplBuilder;
   }
 
   @VisibleForTesting
