@@ -19,11 +19,11 @@ package io.grpc.internal;
 // we won't be able to override checkAuthority anymore - bury it here
 public class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
-  public interface ClientTransportFactoryFactory {
+  public interface ClientTransportFactoryBuilder {
     ClientTransportFactory buildTransportFactory();
   }
 
-  private final ClientTransportFactoryFactory clientTransportFactoryFactory;
+  private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
   private int defaultPort;
 
   /**
@@ -31,18 +31,18 @@ public class ManagedChannelImplBuilder
    * {@link io.grpc.NameResolver}.
    */
   public ManagedChannelImplBuilder(String target,
-      ClientTransportFactoryFactory clientTransportFactoryFactory) {
+      ClientTransportFactoryBuilder clientTransportFactoryBuilder) {
     // TODO(sergiitk): finish docblock
     // TODO(sergiitk): one more for SocketAddress
     super(target);
-    this.clientTransportFactoryFactory = clientTransportFactoryFactory;
+    this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
     this.defaultPort = super.getDefaultPort();
   }
 
   @Override
   protected ClientTransportFactory buildTransportFactory() {
     // set the port
-    return clientTransportFactoryFactory.buildTransportFactory();
+    return clientTransportFactoryBuilder.buildTransportFactory();
   }
 
   @Override

@@ -33,6 +33,7 @@ import io.grpc.internal.ConnectionClientTransport;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.KeepAliveManager;
 import io.grpc.internal.ManagedChannelImplBuilder;
+import io.grpc.internal.ManagedChannelImplBuilder.ClientTransportFactoryBuilder;
 import io.grpc.internal.SharedResourceHolder;
 import io.grpc.internal.SharedResourceHolder.Resource;
 import io.grpc.internal.TransportTracer;
@@ -151,9 +152,8 @@ public class OkHttpChannelBuilder extends
   private OkHttpChannelBuilder(String target) {
     super();
 
-    final class OkHttpChannelTransportFactoryBuilder implements
-        ManagedChannelImplBuilder.ClientTransportFactoryFactory {
-
+    // An anonymous class to inject buildTransportFactory().
+    final class OkHttpChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
       @Override
       @Internal
       public ClientTransportFactory buildTransportFactory() {
