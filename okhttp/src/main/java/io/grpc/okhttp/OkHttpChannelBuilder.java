@@ -151,7 +151,7 @@ public class OkHttpChannelBuilder extends
 
   private OkHttpChannelBuilder(String target) {
     super();
-    managedChannelImplBuilder = ManagedChannelImplBuilder.forTarget(target, this);
+    managedChannelImplBuilder = new ManagedChannelImplBuilder(target, this);
   }
 
   @VisibleForTesting
@@ -377,7 +377,7 @@ public class OkHttpChannelBuilder extends
   @Internal
   @Override
   public final ClientTransportFactory buildTransportFactory() {
-    // @todo: internal class, anonymous class (worse for debugging)
+    // TODO(sergiitk): internal class, anonymous class (worse for debugging)
     boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
     return new OkHttpTransportFactory(
         transportExecutor,
