@@ -1,6 +1,6 @@
 package io.grpc.internal;
 
-
+// we won't be able to override checkAuthority anymore - bury it here
 public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
     public interface ClientTransportFactoryFactory {
         ClientTransportFactory buildTransportFactory();
@@ -9,6 +9,7 @@ public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder
     private final ClientTransportFactoryFactory clientTransportFactoryFactory;
     private int defaultPort;
 
+    // one more for SocketAddress
     protected ManagedChannelImplBuilder(String target,
                                         ClientTransportFactoryFactory clientTransportFactoryFactory) {
         super(target);
@@ -16,13 +17,9 @@ public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder
         this.defaultPort = super.getDefaultPort();
     }
 
-    public static ManagedChannelImplBuilder forTarget(String target,
-                                                      ClientTransportFactoryFactory transportFactoryBuilder) {
-        return new ManagedChannelImplBuilder(target, transportFactoryBuilder);
-    }
-
     @Override
     protected ClientTransportFactory buildTransportFactory() {
+        // set the port
         return clientTransportFactoryFactory.buildTransportFactory();
     }
 
@@ -38,5 +35,4 @@ public class ManagedChannelImplBuilder extends AbstractManagedChannelImplBuilder
     @Override
     public int maxInboundMessageSize() {
         return super.maxInboundMessageSize();
-    }
 }
