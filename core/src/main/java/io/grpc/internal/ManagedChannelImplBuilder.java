@@ -21,7 +21,7 @@ public class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
   public interface ClientTransportFactoryBuilder {
-    ClientTransportFactory buildTransportFactory();
+    ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize);
   }
 
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
@@ -43,7 +43,7 @@ public class ManagedChannelImplBuilder
   @Override
   protected ClientTransportFactory buildTransportFactory() {
     // set the port
-    return clientTransportFactoryBuilder.buildTransportFactory();
+    return clientTransportFactoryBuilder.buildClientTransportFactory(maxInboundMessageSize());
   }
 
   @Override
@@ -53,10 +53,5 @@ public class ManagedChannelImplBuilder
 
   public void setDefaultPort(int defaultPort) {
     this.defaultPort = defaultPort;
-  }
-
-  @Override
-  public int maxInboundMessageSize() {
-    return super.maxInboundMessageSize();
   }
 }

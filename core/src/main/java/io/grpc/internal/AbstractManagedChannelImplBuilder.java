@@ -171,7 +171,7 @@ public abstract class AbstractManagedChannelImplBuilder
     return thisT();
   }
 
-  protected int maxInboundMessageSize() {
+  protected final int maxInboundMessageSize() {
     return maxInboundMessageSize;
   }
 

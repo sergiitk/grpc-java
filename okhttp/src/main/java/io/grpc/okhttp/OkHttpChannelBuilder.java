@@ -152,11 +152,11 @@ public class OkHttpChannelBuilder extends
   private OkHttpChannelBuilder(String target) {
     super();
 
-    // An anonymous class to inject buildTransportFactory().
+    // An anonymous class to inject client transport factory builder.
     final class OkHttpChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
       @Override
       @Internal
-      public ClientTransportFactory buildTransportFactory() {
+      public ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize) {
         boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
         return new OkHttpTransportFactory(
             transportExecutor,
@@ -165,7 +165,7 @@ public class OkHttpChannelBuilder extends
             createSslSocketFactory(),
             hostnameVerifier,
             connectionSpec,
-            managedChannelImplBuilder.maxInboundMessageSize(),
+            maxInboundMessageSize,
             enableKeepAlive,
             keepAliveTimeNanos,
             keepAliveTimeoutNanos,
