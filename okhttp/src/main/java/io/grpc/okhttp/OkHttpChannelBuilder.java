@@ -57,8 +57,7 @@ import javax.net.ssl.SSLSocketFactory;
 /** Convenience class for building channels with the OkHttp transport. */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1785")
 public class OkHttpChannelBuilder extends
-        SimpleForwardingChannelBuilder<OkHttpChannelBuilder> implements
-        ManagedChannelImplBuilder.ClientTransportFactoryFactory {
+        SimpleForwardingChannelBuilder<OkHttpChannelBuilder> {
 
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 65535;
   private final ManagedChannelImplBuilder managedChannelImplBuilder;
@@ -151,7 +150,35 @@ public class OkHttpChannelBuilder extends
 
   private OkHttpChannelBuilder(String target) {
     super();
-    managedChannelImplBuilder = new ManagedChannelImplBuilder(target, this);
+
+    final class OkHttpChannelTransportFactoryBuilder implements
+        ManagedChannelImplBuilder.ClientTransportFactoryFactory {
+
+      @Override
+      @Internal
+      public ClientTransportFactory buildTransportFactory() {
+        boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
+        return new OkHttpTransportFactory(
+            transportExecutor,
+            scheduledExecutorService,
+            socketFactory,
+            createSslSocketFactory(),
+            hostnameVerifier,
+            connectionSpec,
+            managedChannelImplBuilder.maxInboundMessageSize(),
+            enableKeepAlive,
+            keepAliveTimeNanos,
+            keepAliveTimeoutNanos,
+            flowControlWindow,
+            keepAliveWithoutCalls,
+            maxInboundMetadataSize,
+            transportTracerFactory,
+            useGetForSafeMethods);
+      }
+    }
+
+    managedChannelImplBuilder = new ManagedChannelImplBuilder(target,
+        new OkHttpChannelTransportFactoryBuilder());
   }
 
   @VisibleForTesting
@@ -372,29 +399,6 @@ public class OkHttpChannelBuilder extends
     Preconditions.checkArgument(bytes > 0, "maxInboundMetadataSize must be > 0");
     this.maxInboundMetadataSize = bytes;
     return this;
-  }
-
-  @Internal
-  @Override
-  public final ClientTransportFactory buildTransportFactory() {
-    // TODO(sergiitk): internal class, anonymous class (worse for debugging)
-    boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
-    return new OkHttpTransportFactory(
-        transportExecutor,
-        scheduledExecutorService,
-        socketFactory,
-        createSslSocketFactory(),
-        hostnameVerifier,
-        connectionSpec,
-        managedChannelImplBuilder.maxInboundMessageSize(),
-        enableKeepAlive,
-        keepAliveTimeNanos,
-        keepAliveTimeoutNanos,
-        flowControlWindow,
-        keepAliveWithoutCalls,
-        maxInboundMetadataSize,
-        transportTracerFactory,
-        useGetForSafeMethods);
   }
 
   @Override
