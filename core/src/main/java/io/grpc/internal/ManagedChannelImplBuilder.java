@@ -16,6 +16,9 @@
 
 package io.grpc.internal;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import com.google.common.base.Preconditions;
 import java.net.SocketAddress;
 
 // TODO(sergiitk): We won't be able to override checkAuthority anymore - bury it here
@@ -43,19 +46,21 @@ public final class ManagedChannelImplBuilder
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     super(target);
-    this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
-    this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
-//    this.defaultPort = GrpcUtil.DEFAULT_PORT_SSL;
+    this.clientTransportFactoryBuilder = checkNotNull(clientTransportFactoryBuilder,
+        "clientTransportFactoryBuilder cannot be null");
+    this.channelBuilderDefaultPortProvider = checkNotNull(channelBuilderDefaultPortProvider,
+        "channelBuilderDefaultPortProvider cannot be null");
   }
 
   //* TODO(sergiitk): finish javadoc */
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
-    // TODO(sergiitk): setup checknotnull. see okhttp:391 Preconditions.checkArgument Preconditions.checknotnull
     super(directServerAddress, authority);
-    this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
-    this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
+    this.clientTransportFactoryBuilder = checkNotNull(clientTransportFactoryBuilder,
+        "clientTransportFactoryBuilder cannot be null");
+    this.channelBuilderDefaultPortProvider = checkNotNull(channelBuilderDefaultPortProvider,
+        "channelBuilderDefaultPortProvider cannot be null");
   }
 
   @Override
