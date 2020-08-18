@@ -147,49 +147,48 @@ public final class NettyChannelBuilder
     this(GrpcUtil.authorityFromHostAndPort(host, port));
   }
 
+  /** An anonymous class to inject client transport factory builder. */
+  final private class NettyChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
+    @CheckReturnValue
+    @Override
+    public ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize) {
+      assertEventLoopAndChannelType();
+
+      ProtocolNegotiator negotiator;
+      if (protocolNegotiatorFactory != null) {
+        negotiator = protocolNegotiatorFactory.buildProtocolNegotiator();
+      } else {
+        SslContext localSslContext = sslContext;
+        if (negotiationType == NegotiationType.TLS && localSslContext == null) {
+          try {
+            localSslContext = GrpcSslContexts.forClient().build();
+          } catch (SSLException ex) {
+            throw new RuntimeException(ex);
+          }
+        }
+        negotiator = createProtocolNegotiatorByType(negotiationType, localSslContext,
+            this.getOffloadExecutorPool());
+      }
+
+      return new NettyTransportFactory(
+          negotiator, channelFactory, channelOptions,
+          eventLoopGroupPool, autoFlowControl, flowControlWindow, maxInboundMessageSize,
+          maxHeaderListSize, keepAliveTimeNanos, keepAliveTimeoutNanos, keepAliveWithoutCalls,
+          transportTracerFactory, localSocketPicker, useGetForSafeMethods);
+    }
+  }
+
+  /** An anonymous class to provide ManagedChannelImplBuilder with the port getter. */
+  final class NettyChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
+    @Override
+    public int getDefaultPort() {
+      return NettyChannelBuilder.this.getDefaultPort();
+    }
+  }
+
   @CheckReturnValue
   NettyChannelBuilder(String target) {
-    super(target);
-
-    // An anonymous class to inject client transport factory builder.
-    final class NettyChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
-      @CheckReturnValue
-      @Override
-      public ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize) {
-        assertEventLoopAndChannelType();
-
-        ProtocolNegotiator negotiator;
-        if (protocolNegotiatorFactory != null) {
-          negotiator = protocolNegotiatorFactory.buildProtocolNegotiator();
-        } else {
-          SslContext localSslContext = sslContext;
-          if (negotiationType == NegotiationType.TLS && localSslContext == null) {
-            try {
-              localSslContext = GrpcSslContexts.forClient().build();
-            } catch (SSLException ex) {
-              throw new RuntimeException(ex);
-            }
-          }
-          negotiator = createProtocolNegotiatorByType(negotiationType, localSslContext,
-              this.getOffloadExecutorPool());
-        }
-
-        return new NettyTransportFactory(
-            negotiator, channelFactory, channelOptions,
-            eventLoopGroupPool, autoFlowControl, flowControlWindow, maxInboundMessageSize,
-            maxHeaderListSize, keepAliveTimeNanos, keepAliveTimeoutNanos, keepAliveWithoutCalls,
-            transportTracerFactory, localSocketPicker, useGetForSafeMethods);
-      }
-    }
-
-    // An anonymous class to provide ManagedChannelImplBuilder with the port getter.
-    final class NettyChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
-      @Override
-      public int getDefaultPort() {
-        return NettyChannelBuilder.this.getDefaultPort();
-      }
-    }
-
+    super();
     managedChannelImplBuilder = new ManagedChannelImplBuilder(target,
         new NettyChannelTransportFactoryBuilder(),
         new NettyChannelDefaultPortProvider());
@@ -197,7 +196,11 @@ public final class NettyChannelBuilder
 
   @CheckReturnValue
   NettyChannelBuilder(SocketAddress address) {
-    super(address, getAuthorityFromAddress(address));
+    super();
+    managedChannelImplBuilder = new ManagedChannelImplBuilder(address,
+        getAuthorityFromAddress(address),
+        new NettyChannelTransportFactoryBuilder(),
+        new NettyChannelDefaultPortProvider());
   }
 
   @Override
