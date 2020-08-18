@@ -160,7 +160,14 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     final class OkHttpChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
       @Override
       public int getDefaultPort() {
-        return OkHttpChannelBuilder.this.getDefaultPort();
+        switch (negotiationType) {
+          case PLAINTEXT:
+            return GrpcUtil.DEFAULT_PORT_PLAINTEXT;
+          case TLS:
+            return GrpcUtil.DEFAULT_PORT_SSL;
+          default:
+            throw new AssertionError(negotiationType + " not handled");
+        }
       }
     }
 
@@ -427,18 +434,6 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
         maxInboundMetadataSize,
         transportTracerFactory,
         useGetForSafeMethods);
-  }
-
-  protected int getDefaultPort() {
-    // move into the inject thing
-    switch (negotiationType) {
-      case PLAINTEXT:
-        return GrpcUtil.DEFAULT_PORT_PLAINTEXT;
-      case TLS:
-        return GrpcUtil.DEFAULT_PORT_SSL;
-      default:
-        throw new AssertionError(negotiationType + " not handled");
-    }
   }
 
   @VisibleForTesting
