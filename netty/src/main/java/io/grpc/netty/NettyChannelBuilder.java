@@ -28,15 +28,18 @@ import io.grpc.Attributes;
 import io.grpc.ChannelLogger;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.ExperimentalApi;
+import io.grpc.ForwardingChannelBuilder.SimpleForwardingChannelBuilder;
 import io.grpc.HttpConnectProxiedSocketAddress;
 import io.grpc.Internal;
-import io.grpc.internal.AbstractManagedChannelImplBuilder;
 import io.grpc.internal.AtomicBackoff;
 import io.grpc.internal.ClientTransportFactory;
 import io.grpc.internal.ConnectionClientTransport;
 import io.grpc.internal.FixedObjectPool;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.KeepAliveManager;
+import io.grpc.internal.ManagedChannelImplBuilder;
+import io.grpc.internal.ManagedChannelImplBuilder.ChannelBuilderDefaultPortProvider;
+import io.grpc.internal.ManagedChannelImplBuilder.ClientTransportFactoryBuilder;
 import io.grpc.internal.ObjectPool;
 import io.grpc.internal.SharedResourcePool;
 import io.grpc.internal.TransportTracer;
@@ -64,7 +67,7 @@ import javax.net.ssl.SSLException;
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1784")
 @CanIgnoreReturnValue
 public final class NettyChannelBuilder
-    extends AbstractManagedChannelImplBuilder<NettyChannelBuilder> {
+    extends SimpleForwardingChannelBuilder<NettyChannelBuilder> {
 
   // 1MiB.
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 1024 * 1024;
@@ -76,6 +79,7 @@ public final class NettyChannelBuilder
       new ReflectiveChannelFactory<>(Utils.DEFAULT_CLIENT_CHANNEL_TYPE);
   private static final ObjectPool<? extends EventLoopGroup> DEFAULT_EVENT_LOOP_GROUP_POOL =
       SharedResourcePool.forResource(Utils.DEFAULT_WORKER_EVENT_LOOP_GROUP);
+  protected TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
 
   static {
     String autoFlowControl = System.getenv("GRPC_EXPERIMENTAL_AUTOFLOWCONTROL");
@@ -85,6 +89,7 @@ public final class NettyChannelBuilder
     DEFAULT_AUTO_FLOW_CONTROL = Boolean.parseBoolean(autoFlowControl);
   }
 
+  private final ManagedChannelImplBuilder managedChannelImplBuilder;
   private final Map<ChannelOption<?>, Object> channelOptions =
       new HashMap<>();
 
@@ -145,11 +150,59 @@ public final class NettyChannelBuilder
   @CheckReturnValue
   NettyChannelBuilder(String target) {
     super(target);
+
+    // An anonymous class to inject client transport factory builder.
+    final class NettyChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
+      @CheckReturnValue
+      @Override
+      public ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize) {
+        assertEventLoopAndChannelType();
+
+        ProtocolNegotiator negotiator;
+        if (protocolNegotiatorFactory != null) {
+          negotiator = protocolNegotiatorFactory.buildProtocolNegotiator();
+        } else {
+          SslContext localSslContext = sslContext;
+          if (negotiationType == NegotiationType.TLS && localSslContext == null) {
+            try {
+              localSslContext = GrpcSslContexts.forClient().build();
+            } catch (SSLException ex) {
+              throw new RuntimeException(ex);
+            }
+          }
+          negotiator = createProtocolNegotiatorByType(negotiationType, localSslContext,
+              this.getOffloadExecutorPool());
+        }
+
+        return new NettyTransportFactory(
+            negotiator, channelFactory, channelOptions,
+            eventLoopGroupPool, autoFlowControl, flowControlWindow, maxInboundMessageSize,
+            maxHeaderListSize, keepAliveTimeNanos, keepAliveTimeoutNanos, keepAliveWithoutCalls,
+            transportTracerFactory, localSocketPicker, useGetForSafeMethods);
+      }
+    }
+
+    // An anonymous class to provide ManagedChannelImplBuilder with the port getter.
+    final class NettyChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
+      @Override
+      public int getDefaultPort() {
+        return NettyChannelBuilder.this.getDefaultPort();
+      }
+    }
+
+    managedChannelImplBuilder = new ManagedChannelImplBuilder(target,
+        new NettyChannelTransportFactoryBuilder(),
+        new NettyChannelDefaultPortProvider());
   }
 
   @CheckReturnValue
   NettyChannelBuilder(SocketAddress address) {
     super(address, getAuthorityFromAddress(address));
+  }
+
+  @Override
+  protected ManagedChannelImplBuilder delegate() {
+    return managedChannelImplBuilder;
   }
 
   @CheckReturnValue
@@ -408,35 +461,6 @@ public final class NettyChannelBuilder
     }
   }
 
-  @Override
-  @CheckReturnValue
-  @Internal
-  protected ClientTransportFactory buildTransportFactory() {
-    assertEventLoopAndChannelType();
-
-    ProtocolNegotiator negotiator;
-    if (protocolNegotiatorFactory != null) {
-      negotiator = protocolNegotiatorFactory.buildProtocolNegotiator();
-    } else {
-      SslContext localSslContext = sslContext;
-      if (negotiationType == NegotiationType.TLS && localSslContext == null) {
-        try {
-          localSslContext = GrpcSslContexts.forClient().build();
-        } catch (SSLException ex) {
-          throw new RuntimeException(ex);
-        }
-      }
-      negotiator = createProtocolNegotiatorByType(negotiationType, localSslContext,
-          this.getOffloadExecutorPool());
-    }
-
-    return new NettyTransportFactory(
-        negotiator, channelFactory, channelOptions,
-        eventLoopGroupPool, autoFlowControl, flowControlWindow, maxInboundMessageSize(),
-        maxHeaderListSize, keepAliveTimeNanos, keepAliveTimeoutNanos, keepAliveWithoutCalls,
-        transportTracerFactory, localSocketPicker, useGetForSafeMethods);
-  }
-
   @VisibleForTesting
   void assertEventLoopAndChannelType() {
     boolean bothProvided = channelFactory != DEFAULT_CHANNEL_FACTORY
@@ -448,7 +472,6 @@ public final class NettyChannelBuilder
         "Both EventLoopGroup and ChannelType should be provided or neither should be");
   }
 
-  @Override
   @CheckReturnValue
   protected int getDefaultPort() {
     switch (negotiationType) {

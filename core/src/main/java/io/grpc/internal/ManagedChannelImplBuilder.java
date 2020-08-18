@@ -16,6 +16,7 @@
 
 package io.grpc.internal;
 
+import java.net.SocketAddress;
 import javax.annotation.Nullable;
 
 // TODO(sergiitk): We won't be able to override checkAuthority anymore - bury it here
@@ -52,8 +53,23 @@ public class ManagedChannelImplBuilder
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     // TODO(sergiitk): finish javadoc
-    // TODO(sergiitk): one more for SocketAddress
     super(target);
+    this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
+    this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
+    this.defaultPort = super.getDefaultPort();
+  }
+
+  public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
+      ClientTransportFactoryBuilder clientTransportFactoryBuilder) {
+    // TODO(sergiitk): finish javadoc
+    this(directServerAddress, authority, clientTransportFactoryBuilder, null);
+  }
+
+  public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
+      ClientTransportFactoryBuilder clientTransportFactoryBuilder,
+       @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
+    // TODO(sergiitk): finish javadoc
+    super(directServerAddress, authority);
     this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
     this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
     this.defaultPort = super.getDefaultPort();

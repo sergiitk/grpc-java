@@ -171,7 +171,7 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
       }
     }
 
-    // An anonymous class to inject client transport factory builder.
+    // An anonymous class to provide ManagedChannelImplBuilder with the port getter.
     final class OkHttpChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
       @Override
       public int getDefaultPort() {
