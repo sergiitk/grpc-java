@@ -149,7 +149,6 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     // An anonymous class to inject client transport factory builder.
     final class OkHttpChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
       @Override
-      @Internal
       public ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize) {
         boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
         return new OkHttpTransportFactory(
@@ -400,13 +399,7 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     return this;
   }
 
-  @Override
-  public ManagedChannel build() {
-    managedChannelImplBuilder.setDefaultPort(getDefaultPort());
-    return super.build();
-  }
-
-  public int getDefaultPort() {
+  protected int getDefaultPort() {
     switch (negotiationType) {
       case PLAINTEXT:
         return GrpcUtil.DEFAULT_PORT_PLAINTEXT;

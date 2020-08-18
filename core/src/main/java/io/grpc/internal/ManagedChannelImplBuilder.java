@@ -16,6 +16,8 @@
 
 package io.grpc.internal;
 
+import javax.annotation.Nullable;
+
 // we won't be able to override checkAuthority anymore - bury it here
 public class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
@@ -24,34 +26,49 @@ public class ManagedChannelImplBuilder
     ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize);
   }
 
+  public interface ChannelBuilderDefaultPortProvider {
+    int getDefaultPort();
+  }
+
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
+  @Nullable private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
   private int defaultPort;
 
   /**
-   * Creates a new builder for the given target that will be resolved by {@link
-   * io.grpc.NameResolver}.
+   * Creates a new builder for the given target that will be resolved by
+   * {@link io.grpc.NameResolver}.
    */
   public ManagedChannelImplBuilder(String target,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder) {
-    // TODO(sergiitk): finish docblock
+    // TODO(sergiitk): finish javadoc
+    this(target, clientTransportFactoryBuilder, null);
+  }
+
+  /**
+   * Creates a new builder for the given target that will be resolved by
+   * {@link io.grpc.NameResolver}.
+   */
+  public ManagedChannelImplBuilder(String target,
+      ClientTransportFactoryBuilder clientTransportFactoryBuilder,
+      @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
+    // TODO(sergiitk): finish javadoc
     // TODO(sergiitk): one more for SocketAddress
     super(target);
     this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
+    this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
     this.defaultPort = super.getDefaultPort();
   }
 
   @Override
   protected ClientTransportFactory buildTransportFactory() {
-    // set the port
+    if (channelBuilderDefaultPortProvider != null) {
+      defaultPort = channelBuilderDefaultPortProvider.getDefaultPort();
+    }
     return clientTransportFactoryBuilder.buildClientTransportFactory(maxInboundMessageSize());
   }
 
   @Override
-  public int getDefaultPort() {
+  protected int getDefaultPort() {
     return defaultPort;
-  }
-
-  public void setDefaultPort(int defaultPort) {
-    this.defaultPort = defaultPort;
   }
 }
