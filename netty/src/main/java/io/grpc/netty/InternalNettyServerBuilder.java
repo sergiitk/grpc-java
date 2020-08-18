@@ -47,7 +47,7 @@ public final class InternalNettyServerBuilder {
     builder.setForceHeapBuffer(value);
   }
 
-  // set tracer here
+  // TODO(sergiitk): set tracer here
 
   /**
    * Sets {@link io.grpc.Channel} and {@link io.netty.channel.EventLoopGroup}s to Nio. A major

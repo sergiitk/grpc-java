@@ -32,31 +32,29 @@ public final class ManagedChannelImplBuilder
   }
 
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
-  // see if this is used, otherwise just put
+  // TODO(sergiitk): see where getDefaultPort() not overridden, Might be in InProcess
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
   private int defaultPort;
 
   /**
    * Creates a new builder for the given target that will be resolved by
    * {@link io.grpc.NameResolver}.
+   * TODO(sergiitk): finish javadoc
    */
   public ManagedChannelImplBuilder(String target,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
-    // TODO(sergiitk): finish javadoc
     super(target);
     this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
     this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
 //    this.defaultPort = GrpcUtil.DEFAULT_PORT_SSL;
   }
 
+  //* TODO(sergiitk): finish javadoc */
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
-    // TODO(sergiitk): finish javadoc
-    // checknotnull. see okhttp:391
-    // also Preconditions.checkArgument
-    // Preconditions.checknotnull
+    // TODO(sergiitk): setup checknotnull. see okhttp:391 Preconditions.checkArgument Preconditions.checknotnull
     super(directServerAddress, authority);
     this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
     this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;

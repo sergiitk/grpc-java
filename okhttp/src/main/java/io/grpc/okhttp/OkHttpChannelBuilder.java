@@ -151,8 +151,8 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     final class OkHttpChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
       @Override
       public ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize) {
-        // move back to the method, make it package-private
-        // reimplement maxInboundMessageSize in each builder
+        // TODO(sergiitk): move back to the method, make it package-private
+        // TODO(sergiitk): reimplement maxInboundMessageSize in each builder
         boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
         return new OkHttpTransportFactory(
             transportExecutor,
