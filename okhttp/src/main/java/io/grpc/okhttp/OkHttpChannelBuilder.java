@@ -26,7 +26,6 @@ import io.grpc.ChannelLogger;
 import io.grpc.ExperimentalApi;
 import io.grpc.ForwardingChannelBuilder.SimpleForwardingChannelBuilder;
 import io.grpc.Internal;
-import io.grpc.ManagedChannel;
 import io.grpc.internal.AtomicBackoff;
 import io.grpc.internal.ClientTransportFactory;
 import io.grpc.internal.ConnectionClientTransport;
