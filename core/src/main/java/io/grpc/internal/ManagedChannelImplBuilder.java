@@ -17,7 +17,6 @@
 package io.grpc.internal;
 
 import java.net.SocketAddress;
-import javax.annotation.Nullable;
 
 // TODO(sergiitk): We won't be able to override checkAuthority anymore - bury it here
 public final class ManagedChannelImplBuilder
@@ -34,7 +33,6 @@ public final class ManagedChannelImplBuilder
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
   // TODO(sergiitk): see where getDefaultPort() not overridden, Might be in InProcess
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
-  private int defaultPort;
 
   /**
    * Creates a new builder for the given target that will be resolved by
@@ -53,19 +51,15 @@ public final class ManagedChannelImplBuilder
   //* TODO(sergiitk): finish javadoc */
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
-      @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
+      ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     // TODO(sergiitk): setup checknotnull. see okhttp:391 Preconditions.checkArgument Preconditions.checknotnull
     super(directServerAddress, authority);
     this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
     this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
-//    this.defaultPort = super.getDefaultPort();
   }
 
   @Override
   protected ClientTransportFactory buildTransportFactory() {
-    if (channelBuilderDefaultPortProvider != null) {
-      defaultPort = channelBuilderDefaultPortProvider.getDefaultPort();
-    }
     return clientTransportFactoryBuilder.buildClientTransportFactory(maxInboundMessageSize());
   }
 
