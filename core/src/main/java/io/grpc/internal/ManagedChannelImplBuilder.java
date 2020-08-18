@@ -18,7 +18,7 @@ package io.grpc.internal;
 
 import javax.annotation.Nullable;
 
-// we won't be able to override checkAuthority anymore - bury it here
+// TODO(sergiitk): We won't be able to override checkAuthority anymore - bury it here
 public class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
