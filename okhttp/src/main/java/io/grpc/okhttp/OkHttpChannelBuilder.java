@@ -61,8 +61,9 @@ import javax.net.ssl.SSLSocketFactory;
 public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpChannelBuilder> {
 
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 65535;
-  private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
   private final ManagedChannelImplBuilder managedChannelImplBuilder;
+  private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
+  private int maxInboundMessageSize = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE;
 
   /** Identifies the negotiation used for starting up HTTP/2. */
   private enum NegotiationType {
@@ -150,26 +151,8 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     // An anonymous class to inject client transport factory builder.
     final class OkHttpChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
       @Override
-      public ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize) {
-        // TODO(sergiitk): move back to the method, make it package-private
-        // TODO(sergiitk): reimplement maxInboundMessageSize in each builder
-        boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
-        return new OkHttpTransportFactory(
-            transportExecutor,
-            scheduledExecutorService,
-            socketFactory,
-            createSslSocketFactory(),
-            hostnameVerifier,
-            connectionSpec,
-            maxInboundMessageSize,
-            enableKeepAlive,
-            keepAliveTimeNanos,
-            keepAliveTimeoutNanos,
-            flowControlWindow,
-            keepAliveWithoutCalls,
-            maxInboundMetadataSize,
-            transportTracerFactory,
-            useGetForSafeMethods);
+      public ClientTransportFactory buildClientTransportFactory() {
+        return buildTransportFactory();
       }
     }
 
@@ -410,6 +393,40 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     Preconditions.checkArgument(bytes > 0, "maxInboundMetadataSize must be > 0");
     this.maxInboundMetadataSize = bytes;
     return this;
+  }
+
+  /**
+   * Sets the maximum message size allowed for a single gRPC frame. If an inbound messages
+   * larger than this limit is received it will not be processed and the RPC will fail with
+   * RESOURCE_EXHAUSTED.
+   */
+  // Can be overridden by subclasses.
+  @Override
+  public OkHttpChannelBuilder maxInboundMessageSize(int max) {
+    Preconditions.checkArgument(max >= 0, "negative max");
+    maxInboundMessageSize = max;
+    return this;
+  }
+
+  @Internal
+  final ClientTransportFactory buildTransportFactory() {
+    boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
+    return new OkHttpTransportFactory(
+        transportExecutor,
+        scheduledExecutorService,
+        socketFactory,
+        createSslSocketFactory(),
+        hostnameVerifier,
+        connectionSpec,
+        maxInboundMessageSize,
+        enableKeepAlive,
+        keepAliveTimeNanos,
+        keepAliveTimeoutNanos,
+        flowControlWindow,
+        keepAliveWithoutCalls,
+        maxInboundMetadataSize,
+        transportTracerFactory,
+        useGetForSafeMethods);
   }
 
   protected int getDefaultPort() {

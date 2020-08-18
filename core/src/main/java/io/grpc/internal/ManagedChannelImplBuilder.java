@@ -26,7 +26,7 @@ public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
   public interface ClientTransportFactoryBuilder {
-    ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize);
+    ClientTransportFactory buildClientTransportFactory();
   }
 
   public interface ChannelBuilderDefaultPortProvider {
@@ -52,7 +52,7 @@ public final class ManagedChannelImplBuilder
         "channelBuilderDefaultPortProvider cannot be null");
   }
 
-  //* TODO(sergiitk): finish javadoc */
+  /** TODO(sergiitk): finish javadoc */
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
@@ -65,7 +65,7 @@ public final class ManagedChannelImplBuilder
 
   @Override
   protected ClientTransportFactory buildTransportFactory() {
-    return clientTransportFactoryBuilder.buildClientTransportFactory(maxInboundMessageSize());
+    return clientTransportFactoryBuilder.buildClientTransportFactory();
   }
 
   @Override
