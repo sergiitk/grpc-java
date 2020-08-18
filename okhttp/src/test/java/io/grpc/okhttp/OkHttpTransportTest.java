@@ -53,6 +53,7 @@ public class OkHttpTransportTest extends AbstractTransportTest {
   @Override
   protected List<? extends InternalServer> newServer(
       List<ServerStreamTracer.Factory> streamTracerFactories) {
+    // replace with internal netty server builder
     return AccessProtectedHack.serverBuilderBuildTransportServer(
         NettyServerBuilder
             .forPort(0)

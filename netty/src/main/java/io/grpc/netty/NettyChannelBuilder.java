@@ -147,7 +147,6 @@ public final class NettyChannelBuilder
     this(GrpcUtil.authorityFromHostAndPort(host, port));
   }
 
-  /** An anonymous class to inject client transport factory builder. */
   final private class NettyChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
     @CheckReturnValue
     @Override
@@ -178,8 +177,7 @@ public final class NettyChannelBuilder
     }
   }
 
-  /** An anonymous class to provide ManagedChannelImplBuilder with the port getter. */
-  final class NettyChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
+  final private class NettyChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
     @Override
     public int getDefaultPort() {
       return NettyChannelBuilder.this.getDefaultPort();

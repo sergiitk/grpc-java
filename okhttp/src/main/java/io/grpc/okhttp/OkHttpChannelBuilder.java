@@ -26,6 +26,7 @@ import io.grpc.ChannelLogger;
 import io.grpc.ExperimentalApi;
 import io.grpc.ForwardingChannelBuilder.SimpleForwardingChannelBuilder;
 import io.grpc.Internal;
+import io.grpc.ManagedChannelBuilder;
 import io.grpc.internal.AtomicBackoff;
 import io.grpc.internal.ClientTransportFactory;
 import io.grpc.internal.ConnectionClientTransport;
@@ -60,7 +61,7 @@ import javax.net.ssl.SSLSocketFactory;
 public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpChannelBuilder> {
 
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 65535;
-  protected TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
+  private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
   private final ManagedChannelImplBuilder managedChannelImplBuilder;
 
   /** Identifies the negotiation used for starting up HTTP/2. */
@@ -150,6 +151,8 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     final class OkHttpChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
       @Override
       public ClientTransportFactory buildClientTransportFactory(int maxInboundMessageSize) {
+        // move back to the method, make it package-private
+        // reimplement maxInboundMessageSize in each builder
         boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
         return new OkHttpTransportFactory(
             transportExecutor,
@@ -183,8 +186,9 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
         new OkHttpChannelDefaultPortProvider());
   }
 
+  @Internal
   @Override
-  protected ManagedChannelImplBuilder delegate() {
+  protected final ManagedChannelBuilder<?> delegate() {
     return managedChannelImplBuilder;
   }
 
@@ -409,6 +413,7 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
   }
 
   protected int getDefaultPort() {
+    // move into the inject thing
     switch (negotiationType) {
       case PLAINTEXT:
         return GrpcUtil.DEFAULT_PORT_PLAINTEXT;

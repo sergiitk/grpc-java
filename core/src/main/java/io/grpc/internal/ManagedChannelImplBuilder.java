@@ -20,7 +20,7 @@ import java.net.SocketAddress;
 import javax.annotation.Nullable;
 
 // TODO(sergiitk): We won't be able to override checkAuthority anymore - bury it here
-public class ManagedChannelImplBuilder
+public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
   public interface ClientTransportFactoryBuilder {
@@ -32,7 +32,8 @@ public class ManagedChannelImplBuilder
   }
 
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
-  @Nullable private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
+  // see if this is used, otherwise just put
+  private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
   private int defaultPort;
 
   /**
@@ -40,39 +41,26 @@ public class ManagedChannelImplBuilder
    * {@link io.grpc.NameResolver}.
    */
   public ManagedChannelImplBuilder(String target,
-      ClientTransportFactoryBuilder clientTransportFactoryBuilder) {
-    // TODO(sergiitk): finish javadoc
-    this(target, clientTransportFactoryBuilder, null);
-  }
-
-  /**
-   * Creates a new builder for the given target that will be resolved by
-   * {@link io.grpc.NameResolver}.
-   */
-  public ManagedChannelImplBuilder(String target,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
-      @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
+      ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     // TODO(sergiitk): finish javadoc
     super(target);
     this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
     this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
-    this.defaultPort = super.getDefaultPort();
-  }
-
-  public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
-      ClientTransportFactoryBuilder clientTransportFactoryBuilder) {
-    // TODO(sergiitk): finish javadoc
-    this(directServerAddress, authority, clientTransportFactoryBuilder, null);
+//    this.defaultPort = GrpcUtil.DEFAULT_PORT_SSL;
   }
 
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
-       @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
+      @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     // TODO(sergiitk): finish javadoc
+    // checknotnull. see okhttp:391
+    // also Preconditions.checkArgument
+    // Preconditions.checknotnull
     super(directServerAddress, authority);
     this.clientTransportFactoryBuilder = clientTransportFactoryBuilder;
     this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
-    this.defaultPort = super.getDefaultPort();
+//    this.defaultPort = super.getDefaultPort();
   }
 
   @Override
@@ -85,6 +73,6 @@ public class ManagedChannelImplBuilder
 
   @Override
   protected int getDefaultPort() {
-    return defaultPort;
+    return channelBuilderDefaultPortProvider.getDefaultPort();
   }
 }
