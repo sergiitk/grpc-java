@@ -33,6 +33,7 @@ import io.grpc.internal.ConnectionClientTransport;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.KeepAliveManager;
 import io.grpc.internal.ManagedChannelImplBuilder;
+import io.grpc.internal.ManagedChannelImplBuilder.ChannelBuilderDefaultPortProvider;
 import io.grpc.internal.ManagedChannelImplBuilder.ClientTransportFactoryBuilder;
 import io.grpc.internal.SharedResourceHolder;
 import io.grpc.internal.SharedResourceHolder.Resource;
@@ -170,8 +171,17 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
       }
     }
 
+    // An anonymous class to inject client transport factory builder.
+    final class OkHttpChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
+      @Override
+      public int getDefaultPort() {
+        return OkHttpChannelBuilder.this.getDefaultPort();
+      }
+    }
+
     managedChannelImplBuilder = new ManagedChannelImplBuilder(target,
-        new OkHttpChannelTransportFactoryBuilder());
+        new OkHttpChannelTransportFactoryBuilder(),
+        new OkHttpChannelDefaultPortProvider());
   }
 
   @Override
