@@ -401,7 +401,6 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
    * larger than this limit is received it will not be processed and the RPC will fail with
    * RESOURCE_EXHAUSTED.
    */
-  // Can be overridden by subclasses.
   @Override
   public OkHttpChannelBuilder maxInboundMessageSize(int max) {
     Preconditions.checkArgument(max >= 0, "negative max");
