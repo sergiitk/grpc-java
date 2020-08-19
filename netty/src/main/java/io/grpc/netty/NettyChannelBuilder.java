@@ -147,16 +147,13 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
   }
 
   private final class NettyChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
-
-    @CheckReturnValue
     @Override
     public ClientTransportFactory buildClientTransportFactory() {
-      return NettyChannelBuilder.this.buildTransportFactory();
+      return buildTransportFactory();
     }
   }
 
   private final class NettyChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
-
     @Override
     public int getDefaultPort() {
       return NettyChannelBuilder.this.getDefaultPort();

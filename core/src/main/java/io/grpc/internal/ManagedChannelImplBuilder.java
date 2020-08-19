@@ -30,7 +30,6 @@ public final class ManagedChannelImplBuilder
    * TODO(sergiitk): finish javadoc.
    */
   public interface ClientTransportFactoryBuilder {
-
     ClientTransportFactory buildClientTransportFactory();
   }
 
@@ -38,7 +37,6 @@ public final class ManagedChannelImplBuilder
    * TODO(sergiitk): finish javadoc.
    */
   public interface ChannelBuilderDefaultPortProvider {
-
     int getDefaultPort();
   }
 
@@ -71,6 +69,11 @@ public final class ManagedChannelImplBuilder
         "clientTransportFactoryBuilder cannot be null");
     this.channelBuilderDefaultPortProvider = checkNotNull(channelBuilderDefaultPortProvider,
         "channelBuilderDefaultPortProvider cannot be null");
+  }
+
+  @Override
+  protected ClientTransportFactory buildTransportFactory() {
+    return clientTransportFactoryBuilder.buildClientTransportFactory();
   }
 
   /**
@@ -122,11 +125,6 @@ public final class ManagedChannelImplBuilder
   @Override
   protected String checkAuthority(String authority) {
     return authorityCheckerDisabled ? authority : super.checkAuthority(authority);
-  }
-
-  @Override
-  protected ClientTransportFactory buildTransportFactory() {
-    return clientTransportFactoryBuilder.buildClientTransportFactory();
   }
 
   @Override
