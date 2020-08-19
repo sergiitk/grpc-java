@@ -408,7 +408,6 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     return this;
   }
 
-  @Internal
   final ClientTransportFactory buildTransportFactory() {
     boolean enableKeepAlive = keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED;
     return new OkHttpTransportFactory(

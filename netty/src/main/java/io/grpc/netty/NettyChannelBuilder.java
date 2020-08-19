@@ -93,7 +93,6 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
   private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
   private final Map<ChannelOption<?>, Object> channelOptions = new HashMap<>();
   private NegotiationType negotiationType = NegotiationType.TLS;
-  private OverrideAuthorityChecker authorityChecker;
   private ChannelFactory<? extends Channel> channelFactory = DEFAULT_CHANNEL_FACTORY;
   private ObjectPool<? extends EventLoopGroup> eventLoopGroupPool = DEFAULT_EVENT_LOOP_GROUP_POOL;
   private SslContext sslContext;
@@ -454,7 +453,7 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
   }
 
   @CheckReturnValue
-  ClientTransportFactory buildTransportFactory() {
+  final ClientTransportFactory buildTransportFactory() {
     assertEventLoopAndChannelType();
 
     ProtocolNegotiator negotiator;
@@ -504,10 +503,6 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
     }
   }
 
-  void overrideAuthorityChecker(@Nullable OverrideAuthorityChecker authorityChecker) {
-    this.authorityChecker = authorityChecker;
-  }
-
   @VisibleForTesting
   @CheckReturnValue
   static ProtocolNegotiator createProtocolNegotiatorByType(
@@ -526,19 +521,14 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
     }
   }
 
-  @CheckReturnValue
-  interface OverrideAuthorityChecker {
-    String checkAuthority(String authority);
+   NettyChannelBuilder disableCheckAuthority() {
+    this.managedChannelImplBuilder.disableCheckAuthority();
+    return this;
   }
 
-  @Override
-  @CheckReturnValue
-  @Internal
-  protected String checkAuthority(String authority) {
-    if (authorityChecker != null) {
-      return authorityChecker.checkAuthority(authority);
-    }
-    return super.checkAuthority(authority);
+   NettyChannelBuilder enableCheckAuthority() {
+    this.managedChannelImplBuilder.enableCheckAuthority();
+    return this;
   }
 
   void protocolNegotiatorFactory(ProtocolNegotiatorFactory protocolNegotiatorFactory) {

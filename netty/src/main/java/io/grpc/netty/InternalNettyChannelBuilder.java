@@ -28,15 +28,12 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 @Internal
 public final class InternalNettyChannelBuilder {
 
-  /**
-   * Checks authority upon channel construction.  The purpose of this interface is to raise the
-   * visibility of {@link NettyChannelBuilder.OverrideAuthorityChecker}.
-   */
-  public interface OverrideAuthorityChecker extends NettyChannelBuilder.OverrideAuthorityChecker {}
+  public static void disableCheckAuthority(NettyChannelBuilder builder) {
+    builder.disableCheckAuthority();
+  }
 
-  public static void overrideAuthorityChecker(
-      NettyChannelBuilder channelBuilder, OverrideAuthorityChecker authorityChecker) {
-    channelBuilder.overrideAuthorityChecker(authorityChecker);
+  public static void enableCheckAuthority(NettyChannelBuilder builder) {
+    builder.enableCheckAuthority();
   }
 
   /** A class that provides a Netty handler to control protocol negotiation. */
