@@ -146,7 +146,8 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
     this(GrpcUtil.authorityFromHostAndPort(host, port));
   }
 
-  final private class NettyChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
+  private final class NettyChannelTransportFactoryBuilder implements ClientTransportFactoryBuilder {
+
     @CheckReturnValue
     @Override
     public ClientTransportFactory buildClientTransportFactory() {
@@ -154,7 +155,8 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
     }
   }
 
-  final private class NettyChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
+  private final class NettyChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
+
     @Override
     public int getDefaultPort() {
       return NettyChannelBuilder.this.getDefaultPort();
@@ -521,12 +523,12 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
     }
   }
 
-   NettyChannelBuilder disableCheckAuthority() {
+  NettyChannelBuilder disableCheckAuthority() {
     this.managedChannelImplBuilder.disableCheckAuthority();
     return this;
   }
 
-   NettyChannelBuilder enableCheckAuthority() {
+  NettyChannelBuilder enableCheckAuthority() {
     this.managedChannelImplBuilder.enableCheckAuthority();
     return this;
   }
@@ -536,24 +538,24 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
         = checkNotNull(protocolNegotiatorFactory, "protocolNegotiatorFactory");
   }
 
-  @Override
-  protected void setTracingEnabled(boolean value) {
-    super.setTracingEnabled(value);
+  void setTracingEnabled(boolean value) {
+    this.managedChannelImplBuilder.setTracingEnabled(value);
   }
 
-  @Override
-  protected void setStatsEnabled(boolean value) {
-    super.setStatsEnabled(value);
+  void setStatsEnabled(boolean value) {
+    this.managedChannelImplBuilder.setStatsEnabled(value);
   }
 
-  @Override
-  protected void setStatsRecordStartedRpcs(boolean value) {
-    super.setStatsRecordStartedRpcs(value);
+  void setStatsRecordStartedRpcs(boolean value) {
+    this.managedChannelImplBuilder.setStatsRecordStartedRpcs(value);
   }
 
-  @Override
-  protected void setStatsRecordRealTimeMetrics(boolean value) {
-    super.setStatsRecordRealTimeMetrics(value);
+  void setStatsRecordFinishedRpcs(boolean value) {
+    this.managedChannelImplBuilder.setStatsRecordFinishedRpcs(value);
+  }
+
+  void setStatsRecordRealTimeMetrics(boolean value) {
+    this.managedChannelImplBuilder.setStatsRecordRealTimeMetrics(value);
   }
 
   @VisibleForTesting

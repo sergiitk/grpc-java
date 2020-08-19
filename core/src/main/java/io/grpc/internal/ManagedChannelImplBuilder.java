@@ -67,16 +67,45 @@ public final class ManagedChannelImplBuilder
         "channelBuilderDefaultPortProvider cannot be null");
   }
 
-  /** TODO(sergiitk): finish javadoc */
+  /**
+   * TODO(sergiitk): finish javadoc
+   */
   public ManagedChannelImplBuilder disableCheckAuthority() {
     authorityCheckerDisabled = true;
     return this;
   }
 
-  /** TODO(sergiitk): finish javadoc */
+  /**
+   * TODO(sergiitk): finish javadoc
+   */
   public ManagedChannelImplBuilder enableCheckAuthority() {
     authorityCheckerDisabled = false;
     return this;
+  }
+
+  @Override
+  public void setStatsEnabled(boolean value) {
+    super.setStatsEnabled(value);
+  }
+
+  @Override
+  public void setStatsRecordStartedRpcs(boolean value) {
+    super.setStatsRecordStartedRpcs(value);
+  }
+
+  @Override
+  public void setStatsRecordFinishedRpcs(boolean value) {
+    super.setStatsRecordFinishedRpcs(value);
+  }
+
+  @Override
+  public void setStatsRecordRealTimeMetrics(boolean value) {
+    super.setStatsRecordRealTimeMetrics(value);
+  }
+
+  @Override
+  public void setTracingEnabled(boolean value) {
+    super.setTracingEnabled(value);
   }
 
   @Override
