@@ -18,17 +18,20 @@ package io.grpc.internal;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import com.google.common.base.Preconditions;
 import java.net.SocketAddress;
 
 // TODO(sergiitk): We won't be able to override checkAuthority anymore - bury it here
 public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
+  private boolean authorityCheckerDisabled;
+
+  /** TODO(sergiitk): finish javadoc */
   public interface ClientTransportFactoryBuilder {
     ClientTransportFactory buildClientTransportFactory();
   }
 
+  /** TODO(sergiitk): finish javadoc */
   public interface ChannelBuilderDefaultPortProvider {
     int getDefaultPort();
   }
@@ -61,6 +64,23 @@ public final class ManagedChannelImplBuilder
         "clientTransportFactoryBuilder cannot be null");
     this.channelBuilderDefaultPortProvider = checkNotNull(channelBuilderDefaultPortProvider,
         "channelBuilderDefaultPortProvider cannot be null");
+  }
+
+  /** TODO(sergiitk): finish javadoc */
+  public ManagedChannelImplBuilder disableCheckAuthority() {
+    authorityCheckerDisabled = true;
+    return this;
+  }
+
+  /** TODO(sergiitk): finish javadoc */
+  public ManagedChannelImplBuilder enableCheckAuthority() {
+    authorityCheckerDisabled = false;
+    return this;
+  }
+
+  @Override
+  protected String checkAuthority(String authority) {
+    return authorityCheckerDisabled ? authority : super.checkAuthority(authority);
   }
 
   @Override

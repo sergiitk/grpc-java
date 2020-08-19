@@ -63,7 +63,7 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 65535;
   private final ManagedChannelImplBuilder managedChannelImplBuilder;
   private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
-  private int maxInboundMessageSize = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE;
+
 
   /** Identifies the negotiation used for starting up HTTP/2. */
   private enum NegotiationType {
@@ -133,6 +133,7 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
   private long keepAliveTimeoutNanos = DEFAULT_KEEPALIVE_TIMEOUT_NANOS;
   private int flowControlWindow = DEFAULT_FLOW_CONTROL_WINDOW;
   private boolean keepAliveWithoutCalls;
+  private int maxInboundMessageSize = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE;
   private int maxInboundMetadataSize = Integer.MAX_VALUE;
 
   /**
@@ -429,9 +430,17 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
         useGetForSafeMethods);
   }
 
-  @VisibleForTesting
+  OkHttpChannelBuilder disableCheckAuthority() {
+    this.managedChannelImplBuilder.disableCheckAuthority();
+    return this;
+  }
+
+  OkHttpChannelBuilder enableCheckAuthority() {
+    this.managedChannelImplBuilder.enableCheckAuthority();
+    return this;
+  }
+
   int getDefaultPort() {
-    // move into the inject thing
     switch (negotiationType) {
       case PLAINTEXT:
         return GrpcUtil.DEFAULT_PORT_PLAINTEXT;
