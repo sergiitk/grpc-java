@@ -19,6 +19,7 @@ package io.grpc.internal;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.net.SocketAddress;
+import java.util.concurrent.Executor;
 
 // TODO(sergiitk): We won't be able to override checkAuthority anymore - bury it here
 public final class ManagedChannelImplBuilder
@@ -76,6 +77,11 @@ public final class ManagedChannelImplBuilder
   public ManagedChannelImplBuilder enableCheckAuthority() {
     authorityCheckerDisabled = false;
     return this;
+  }
+
+  @Override
+  public ObjectPool<? extends Executor> getOffloadExecutorPool() {
+    return super.getOffloadExecutorPool();
   }
 
   @Override

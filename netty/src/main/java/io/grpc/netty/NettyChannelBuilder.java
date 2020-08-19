@@ -470,7 +470,7 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
         }
       }
       negotiator = createProtocolNegotiatorByType(negotiationType, localSslContext,
-          this.getOffloadExecutorPool());
+          this.managedChannelImplBuilder.getOffloadExecutorPool());
     }
 
     return new NettyTransportFactory(
