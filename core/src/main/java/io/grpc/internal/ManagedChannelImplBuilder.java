@@ -21,19 +21,24 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import java.net.SocketAddress;
 import java.util.concurrent.Executor;
 
-// TODO(sergiitk): We won't be able to override checkAuthority anymore - bury it here
 public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
   private boolean authorityCheckerDisabled;
 
-  /** TODO(sergiitk): finish javadoc */
+  /**
+   * TODO(sergiitk): finish javadoc.
+   */
   public interface ClientTransportFactoryBuilder {
+
     ClientTransportFactory buildClientTransportFactory();
   }
 
-  /** TODO(sergiitk): finish javadoc */
+  /**
+   * TODO(sergiitk): finish javadoc.
+   */
   public interface ChannelBuilderDefaultPortProvider {
+
     int getDefaultPort();
   }
 
@@ -42,9 +47,8 @@ public final class ManagedChannelImplBuilder
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
 
   /**
-   * Creates a new builder for the given target that will be resolved by
-   * {@link io.grpc.NameResolver}.
-   * TODO(sergiitk): finish javadoc
+   * Creates a new builder for the given target that will be resolved by {@link
+   * io.grpc.NameResolver}. TODO(sergiitk): finish javadoc
    */
   public ManagedChannelImplBuilder(String target,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
@@ -56,7 +60,9 @@ public final class ManagedChannelImplBuilder
         "channelBuilderDefaultPortProvider cannot be null");
   }
 
-  /** TODO(sergiitk): finish javadoc */
+  /**
+   * TODO(sergiitk): finish javadoc.
+   */
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
@@ -68,7 +74,7 @@ public final class ManagedChannelImplBuilder
   }
 
   /**
-   * TODO(sergiitk): finish javadoc
+   * TODO(sergiitk): finish javadoc.
    */
   public ManagedChannelImplBuilder disableCheckAuthority() {
     authorityCheckerDisabled = true;
@@ -76,7 +82,7 @@ public final class ManagedChannelImplBuilder
   }
 
   /**
-   * TODO(sergiitk): finish javadoc
+   * TODO(sergiitk): finish javadoc.
    */
   public ManagedChannelImplBuilder enableCheckAuthority() {
     authorityCheckerDisabled = false;
