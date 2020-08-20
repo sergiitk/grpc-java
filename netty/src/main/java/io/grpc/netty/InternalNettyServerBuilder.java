@@ -47,8 +47,6 @@ public final class InternalNettyServerBuilder {
     builder.setForceHeapBuffer(value);
   }
 
-  // TODO(sergiitk): set tracer here
-
   /**
    * Sets {@link io.grpc.Channel} and {@link io.netty.channel.EventLoopGroup}s to Nio. A major
    * benefit over using existing setters is gRPC will manage the life cycle of {@link

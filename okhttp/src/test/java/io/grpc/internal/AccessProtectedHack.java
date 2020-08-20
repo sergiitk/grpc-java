@@ -19,7 +19,6 @@ package io.grpc.internal;
 import io.grpc.ServerStreamTracer;
 import java.util.List;
 
-// TODO(sergiitk): remove
 /** A hack to access protected methods from io.grpc.internal. */
 public final class AccessProtectedHack {
   public static List<? extends InternalServer> serverBuilderBuildTransportServer(
