@@ -16,8 +16,7 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
+import com.google.common.base.Preconditions;
 import java.net.SocketAddress;
 import java.util.concurrent.Executor;
 import javax.annotation.Nullable;
@@ -26,7 +25,9 @@ public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
   private boolean authorityCheckerDisabled;
-  @Deprecated @Nullable private OverrideAuthorityChecker authorityChecker;
+  @Deprecated
+  @Nullable
+  private OverrideAuthorityChecker authorityChecker;
 
   /**
    * TODO(sergiitk): finish javadoc.
@@ -60,7 +61,7 @@ public final class ManagedChannelImplBuilder
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     super(target);
-    this.clientTransportFactoryBuilder = checkNotNull(clientTransportFactoryBuilder,
+    this.clientTransportFactoryBuilder = Preconditions.checkNotNull(clientTransportFactoryBuilder,
         "clientTransportFactoryBuilder cannot be null");
 
     if (channelBuilderDefaultPortProvider != null) {
@@ -77,7 +78,7 @@ public final class ManagedChannelImplBuilder
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     super(directServerAddress, authority);
-    this.clientTransportFactoryBuilder = checkNotNull(clientTransportFactoryBuilder,
+    this.clientTransportFactoryBuilder = Preconditions.checkNotNull(clientTransportFactoryBuilder,
         "clientTransportFactoryBuilder cannot be null");
 
     if (channelBuilderDefaultPortProvider != null) {
