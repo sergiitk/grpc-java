@@ -91,23 +91,33 @@ public class NettyChannelBuilderTest {
   }
 
   @Test
-  public void overrideAllowsInvalidAuthority() {
-    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){});
-    InternalNettyChannelBuilder.disableCheckAuthority(builder);
-    Object unused = builder.overrideAuthority("[invalidauthority")
-        .negotiationType(NegotiationType.PLAINTEXT)
-        .buildTransportFactory();
-  }
-
-  // TODO(sergiitk): Add test for enableCheckAuthority()
-
-  @Test
   public void failOverrideInvalidAuthority() {
     NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){});
 
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid authority:");
 
+    builder.overrideAuthority("[invalidauthority");
+  }
+
+  @Test
+  public void disableCheckAuthorityAllowsInvalidAuthority() {
+    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress() {})
+        .disableCheckAuthority();
+
+    Object unused = builder.overrideAuthority("[invalidauthority")
+        .negotiationType(NegotiationType.PLAINTEXT)
+        .buildTransportFactory();
+  }
+
+  @Test
+  public void enableCheckAuthorityFailOverrideInvalidAuthority() {
+    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress() {})
+        .disableCheckAuthority()
+        .enableCheckAuthority();
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("Invalid authority:");
     builder.overrideAuthority("[invalidauthority");
   }
 
