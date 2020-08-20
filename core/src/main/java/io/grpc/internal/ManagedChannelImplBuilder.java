@@ -42,8 +42,14 @@ public final class ManagedChannelImplBuilder
     int getDefaultPort();
   }
 
+  private class ManagedChannelDefaultPortProvider implements ChannelBuilderDefaultPortProvider {
+    @Override
+    public int getDefaultPort() {
+      return ManagedChannelImplBuilder.super.getDefaultPort();
+    }
+  }
+
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
-  // TODO(sergiitk): see where getDefaultPort() not overridden, Might be in InProcess
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
 
   /**
@@ -52,12 +58,16 @@ public final class ManagedChannelImplBuilder
    */
   public ManagedChannelImplBuilder(String target,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
-      ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
+      @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     super(target);
     this.clientTransportFactoryBuilder = checkNotNull(clientTransportFactoryBuilder,
         "clientTransportFactoryBuilder cannot be null");
-    this.channelBuilderDefaultPortProvider = checkNotNull(channelBuilderDefaultPortProvider,
-        "channelBuilderDefaultPortProvider cannot be null");
+
+    if (channelBuilderDefaultPortProvider != null) {
+      this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
+    } else {
+      this.channelBuilderDefaultPortProvider = new ManagedChannelDefaultPortProvider();
+    }
   }
 
   /**
@@ -65,17 +75,26 @@ public final class ManagedChannelImplBuilder
    */
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
-      ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
+      @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
     super(directServerAddress, authority);
     this.clientTransportFactoryBuilder = checkNotNull(clientTransportFactoryBuilder,
         "clientTransportFactoryBuilder cannot be null");
-    this.channelBuilderDefaultPortProvider = checkNotNull(channelBuilderDefaultPortProvider,
-        "channelBuilderDefaultPortProvider cannot be null");
+
+    if (channelBuilderDefaultPortProvider != null) {
+      this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
+    } else {
+      this.channelBuilderDefaultPortProvider = new ManagedChannelDefaultPortProvider();
+    }
   }
 
   @Override
   protected ClientTransportFactory buildTransportFactory() {
     return clientTransportFactoryBuilder.buildClientTransportFactory();
+  }
+
+  @Override
+  protected int getDefaultPort() {
+    return channelBuilderDefaultPortProvider.getDefaultPort();
   }
 
   /**
@@ -143,10 +162,5 @@ public final class ManagedChannelImplBuilder
   @Override
   public ObjectPool<? extends Executor> getOffloadExecutorPool() {
     return super.getOffloadExecutorPool();
-  }
-
-  @Override
-  protected int getDefaultPort() {
-    return channelBuilderDefaultPortProvider.getDefaultPort();
   }
 }
