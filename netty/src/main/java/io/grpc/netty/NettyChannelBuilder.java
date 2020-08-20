@@ -23,7 +23,6 @@ import static io.grpc.internal.GrpcUtil.DEFAULT_KEEPALIVE_TIMEOUT_NANOS;
 import static io.grpc.internal.GrpcUtil.KEEPALIVE_TIME_NANOS_DISABLED;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.grpc.Attributes;
 import io.grpc.ChannelLogger;
@@ -446,7 +445,7 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
    */
   @Override
   public NettyChannelBuilder maxInboundMessageSize(int max) {
-    Preconditions.checkArgument(max >= 0, "negative max");
+    checkArgument(max >= 0, "negative max");
     maxInboundMessageSize = max;
     return this;
   }
@@ -518,6 +517,14 @@ public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<Ne
       default:
         throw new IllegalArgumentException("Unsupported negotiationType: " + negotiationType);
     }
+  }
+
+  @Deprecated
+  interface OverrideAuthorityChecker extends ManagedChannelImplBuilder.OverrideAuthorityChecker {}
+
+  @Deprecated
+  void overrideAuthorityChecker(@Nullable OverrideAuthorityChecker authorityChecker) {
+    this.managedChannelImplBuilder.overrideAuthorityChecker(authorityChecker);
   }
 
   NettyChannelBuilder disableCheckAuthority() {

@@ -22,6 +22,8 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 
 import io.grpc.ManagedChannel;
+import io.grpc.internal.GrpcUtil;
+import io.grpc.netty.InternalNettyChannelBuilder.OverrideAuthorityChecker;
 import io.grpc.netty.NettyTestUtil.TrackingObjectPoolForTest;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFactory;
@@ -91,6 +93,37 @@ public class NettyChannelBuilderTest {
   }
 
   @Test
+  public void overrideAllowsInvalidAuthority() {
+    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){});
+    InternalNettyChannelBuilder.overrideAuthorityChecker(builder, new OverrideAuthorityChecker() {
+      @Override
+      public String checkAuthority(String authority) {
+        return authority;
+      }
+    });
+    Object unused = builder.overrideAuthority("[invalidauthority")
+        .negotiationType(NegotiationType.PLAINTEXT)
+        .buildTransportFactory();
+  }
+
+  @Test
+  public void overrideFailsInvalidAuthority() {
+    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){});
+    InternalNettyChannelBuilder.overrideAuthorityChecker(builder, new OverrideAuthorityChecker() {
+      @Override
+      public String checkAuthority(String authority) {
+        return GrpcUtil.checkAuthority(authority);
+      }
+    });
+
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("Invalid authority:");
+    Object unused = builder.overrideAuthority("[invalidauthority")
+        .negotiationType(NegotiationType.PLAINTEXT)
+        .buildTransportFactory();
+  }
+
+  @Test
   public void failOverrideInvalidAuthority() {
     NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){});
 
@@ -102,7 +135,7 @@ public class NettyChannelBuilderTest {
 
   @Test
   public void disableCheckAuthorityAllowsInvalidAuthority() {
-    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress() {})
+    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){})
         .disableCheckAuthority();
 
     Object unused = builder.overrideAuthority("[invalidauthority")
@@ -112,7 +145,7 @@ public class NettyChannelBuilderTest {
 
   @Test
   public void enableCheckAuthorityFailOverrideInvalidAuthority() {
-    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress() {})
+    NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){})
         .disableCheckAuthority()
         .enableCheckAuthority();
 

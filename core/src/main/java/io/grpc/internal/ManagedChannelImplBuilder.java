@@ -20,11 +20,13 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.net.SocketAddress;
 import java.util.concurrent.Executor;
+import javax.annotation.Nullable;
 
 public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
   private boolean authorityCheckerDisabled;
+  @Deprecated @Nullable private OverrideAuthorityChecker authorityChecker;
 
   /**
    * TODO(sergiitk): finish javadoc.
@@ -92,6 +94,27 @@ public final class ManagedChannelImplBuilder
     return this;
   }
 
+  @Deprecated
+  public interface OverrideAuthorityChecker {
+    String checkAuthority(String authority);
+  }
+
+  @Deprecated
+  public void overrideAuthorityChecker(@Nullable OverrideAuthorityChecker authorityChecker) {
+    this.authorityChecker = authorityChecker;
+  }
+
+  @Override
+  protected String checkAuthority(String authority) {
+    if (authorityCheckerDisabled) {
+      return authority;
+    }
+    if (authorityChecker != null) {
+      return authorityChecker.checkAuthority(authority);
+    }
+    return super.checkAuthority(authority);
+  }
+
   @Override
   public void setStatsEnabled(boolean value) {
     super.setStatsEnabled(value);
@@ -120,11 +143,6 @@ public final class ManagedChannelImplBuilder
   @Override
   public ObjectPool<? extends Executor> getOffloadExecutorPool() {
     return super.getOffloadExecutorPool();
-  }
-
-  @Override
-  protected String checkAuthority(String authority) {
-    return authorityCheckerDisabled ? authority : super.checkAuthority(authority);
   }
 
   @Override
