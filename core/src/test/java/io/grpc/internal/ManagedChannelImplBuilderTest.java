@@ -37,9 +37,10 @@ import org.mockito.junit.MockitoRule;
 /** Unit tests for {@link ManagedChannelImplBuilder}. */
 @RunWith(JUnit4.class)
 public class ManagedChannelImplBuilderTest {
-  private final static String DUMMY_TARGET = "fake-target";
-  private final static String DUMMY_AUTHORITY_VALID = "valid:1234";
-  private final static String DUMMY_AUTHORITY_INVALID = "[ : : 1]";
+  private static final int DUMMY_PORT = 42;
+  private static final String DUMMY_TARGET = "fake-target";
+  private static final String DUMMY_AUTHORITY_VALID = "valid:1234";
+  private static final String DUMMY_AUTHORITY_INVALID = "[ : : 1]";
 
   @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   @Rule public final ExpectedException thrown = ExpectedException.none();
@@ -62,7 +63,6 @@ public class ManagedChannelImplBuilderTest {
     final ClientTransportFactory clientTransportFactory = mock(ClientTransportFactory.class);
     when(mockClientTransportFactoryBuilder.buildClientTransportFactory())
         .thenReturn(clientTransportFactory);
-
     assertEquals(clientTransportFactory, builder.buildTransportFactory());
     verify(mockClientTransportFactoryBuilder).buildClientTransportFactory();
   }
@@ -72,16 +72,13 @@ public class ManagedChannelImplBuilderTest {
   public void getDefaultPort_default() {
     final ManagedChannelImplBuilder builderNoPortProvider = new ManagedChannelImplBuilder(
         DUMMY_TARGET, mockClientTransportFactoryBuilder, null);
-
     assertEquals(GrpcUtil.DEFAULT_PORT_SSL, builderNoPortProvider.getDefaultPort());
   }
 
   /** Ensure getDefaultPort() delegates to the custom implementation. */
   @Test
   public void getDefaultPort_custom() {
-    final int DUMMY_PORT = 42;
     when(mockChannelBuilderDefaultPortProvider.getDefaultPort()).thenReturn(DUMMY_PORT);
-
     assertEquals(DUMMY_PORT, builder.getDefaultPort());
     verify(mockChannelBuilderDefaultPortProvider).getDefaultPort();
   }
