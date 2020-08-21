@@ -17,6 +17,7 @@
 package io.grpc.internal;
 
 import com.google.common.base.Preconditions;
+import io.grpc.ManagedChannelBuilder;
 import java.net.SocketAddress;
 import java.util.concurrent.Executor;
 import javax.annotation.Nullable;
@@ -163,5 +164,13 @@ public final class ManagedChannelImplBuilder
   @Override
   public ObjectPool<? extends Executor> getOffloadExecutorPool() {
     return super.getOffloadExecutorPool();
+  }
+
+  public static ManagedChannelBuilder<?> forAddress(String name, int port) {
+    throw new UnsupportedOperationException("ClientTransportFactoryBuilder is required");
+  }
+
+  public static ManagedChannelBuilder<?> forTarget(String target) {
+    throw new UnsupportedOperationException("ClientTransportFactoryBuilder is required");
   }
 }
