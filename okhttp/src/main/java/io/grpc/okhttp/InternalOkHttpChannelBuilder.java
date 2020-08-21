@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The gRPC Authors
+ * Copyright 2016 The gRPC Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,22 +14,20 @@
  * limitations under the License.
  */
 
-package io.grpc.internal;
+package io.grpc.okhttp;
+
+import io.grpc.Internal;
 
 /**
- * Test helper that allows accessing package-private stuff.
+ * Internal {@link OkHttpChannelBuilder} accessor.  This is intended for usage internal to the gRPC
+ * team.  If you *really* think you need to use this, contact the gRPC team first.
  */
-public final class TestingAccessor {
+@Internal
+public final class InternalOkHttpChannelBuilder {
 
-  /**
-   * Disable or enable server side census stats features.
-   */
-  public static void setStatsEnabled(
-      AbstractServerImplBuilder<?> builder,
-      boolean statsEnabled) {
-    builder.setStatsEnabled(statsEnabled);
+  public static void setStatsEnabled(OkHttpChannelBuilder builder, boolean value) {
+    builder.setStatsEnabled(value);
   }
 
-  private TestingAccessor() {
-  }
+  private InternalOkHttpChannelBuilder() {}
 }

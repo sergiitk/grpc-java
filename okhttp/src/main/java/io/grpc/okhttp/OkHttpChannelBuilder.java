@@ -449,6 +449,10 @@ public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpC
     }
   }
 
+  void setStatsEnabled(boolean value) {
+    this.managedChannelImplBuilder.setStatsEnabled(value);
+  }
+
   @VisibleForTesting
   @Nullable
   SSLSocketFactory createSslSocketFactory() {

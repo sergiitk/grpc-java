@@ -203,6 +203,10 @@ public final class InProcessChannelBuilder extends
         name, scheduledExecutorService, maxInboundMetadataSize, transportIncludeStatusCause);
   }
 
+  void setStatsEnabled(boolean value) {
+    this.managedChannelImplBuilder.setStatsEnabled(value);
+  }
+
   /**
    * Creates InProcess transports. Exposed for internal use, as it should be private.
    */

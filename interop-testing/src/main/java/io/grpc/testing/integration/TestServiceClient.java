@@ -23,12 +23,13 @@ import io.grpc.ManagedChannelBuilder;
 import io.grpc.alts.AltsChannelBuilder;
 import io.grpc.alts.ComputeEngineChannelBuilder;
 import io.grpc.alts.GoogleDefaultChannelBuilder;
-import io.grpc.internal.AbstractManagedChannelImplBuilder;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.testing.TestUtils;
 import io.grpc.netty.GrpcSslContexts;
+import io.grpc.netty.InternalNettyChannelBuilder;
 import io.grpc.netty.NegotiationType;
 import io.grpc.netty.NettyChannelBuilder;
+import io.grpc.okhttp.InternalOkHttpChannelBuilder;
 import io.grpc.okhttp.OkHttpChannelBuilder;
 import io.grpc.okhttp.internal.Platform;
 import io.netty.handler.ssl.SslContext;
@@ -402,7 +403,7 @@ public class TestServiceClient {
       if (useAlts) {
         return AltsChannelBuilder.forAddress(serverHost, serverPort);
       }
-      AbstractManagedChannelImplBuilder<?> builder;
+      ManagedChannelBuilder<?> builder;
       if (!useOkHttp) {
         SslContext sslContext = null;
         if (useTestCa) {
@@ -425,6 +426,7 @@ public class TestServiceClient {
         if (fullStreamDecompression) {
           nettyBuilder.enableFullStreamDecompression();
         }
+        InternalNettyChannelBuilder.setStatsEnabled(nettyBuilder, false);
         builder = nettyBuilder;
       } else {
         OkHttpChannelBuilder okBuilder = OkHttpChannelBuilder.forAddress(serverHost, serverPort);
@@ -449,10 +451,10 @@ public class TestServiceClient {
         if (fullStreamDecompression) {
           okBuilder.enableFullStreamDecompression();
         }
+        InternalOkHttpChannelBuilder.setStatsEnabled(okBuilder, false);
         builder = okBuilder;
       }
-      // Disable the default census stats interceptor, use testing interceptor instead.
-      io.grpc.internal.TestingAccessor.setStatsEnabled(builder, false);
+      // Use testing interceptor instead.
       return builder.intercept(createCensusStatsClientInterceptor());
     }
 
