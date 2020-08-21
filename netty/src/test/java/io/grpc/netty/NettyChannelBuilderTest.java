@@ -23,7 +23,6 @@ import static org.mockito.Mockito.mock;
 
 import io.grpc.ManagedChannel;
 import io.grpc.internal.GrpcUtil;
-import io.grpc.netty.InternalNettyChannelBuilder.OverrideAuthorityChecker;
 import io.grpc.netty.NettyTestUtil.TrackingObjectPoolForTest;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFactory;
@@ -45,7 +44,7 @@ public class NettyChannelBuilderTest {
 
   @Rule public final ExpectedException thrown = ExpectedException.none();
   private final SslContext noSslContext = null;
-  
+
   private void shutdown(ManagedChannel mc) throws Exception {
     mc.shutdownNow();
     assertTrue(mc.awaitTermination(1, TimeUnit.SECONDS));
@@ -93,28 +92,32 @@ public class NettyChannelBuilderTest {
   }
 
   @Test
+  @SuppressWarnings("deprecation")
   public void overrideAllowsInvalidAuthority() {
     NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){});
-    InternalNettyChannelBuilder.overrideAuthorityChecker(builder, new OverrideAuthorityChecker() {
-      @Override
-      public String checkAuthority(String authority) {
-        return authority;
-      }
-    });
+    InternalNettyChannelBuilder.overrideAuthorityChecker(builder,
+        new io.grpc.netty.InternalNettyChannelBuilder.OverrideAuthorityChecker() {
+          @Override
+          public String checkAuthority(String authority) {
+            return authority;
+          }
+        });
     Object unused = builder.overrideAuthority("[invalidauthority")
         .negotiationType(NegotiationType.PLAINTEXT)
         .buildTransportFactory();
   }
 
   @Test
+  @SuppressWarnings("deprecation")
   public void overrideFailsInvalidAuthority() {
     NettyChannelBuilder builder = new NettyChannelBuilder(new SocketAddress(){});
-    InternalNettyChannelBuilder.overrideAuthorityChecker(builder, new OverrideAuthorityChecker() {
-      @Override
-      public String checkAuthority(String authority) {
-        return GrpcUtil.checkAuthority(authority);
-      }
-    });
+    InternalNettyChannelBuilder.overrideAuthorityChecker(builder,
+        new io.grpc.netty.InternalNettyChannelBuilder.OverrideAuthorityChecker() {
+          @Override
+          public String checkAuthority(String authority) {
+            return GrpcUtil.checkAuthority(authority);
+          }
+        });
 
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage("Invalid authority:");

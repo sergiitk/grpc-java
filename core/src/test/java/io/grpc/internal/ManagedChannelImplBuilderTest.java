@@ -23,7 +23,6 @@ import static org.mockito.Mockito.when;
 
 import io.grpc.internal.ManagedChannelImplBuilder.ChannelBuilderDefaultPortProvider;
 import io.grpc.internal.ManagedChannelImplBuilder.ClientTransportFactoryBuilder;
-import io.grpc.internal.ManagedChannelImplBuilder.OverrideAuthorityChecker;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -125,23 +124,27 @@ public class ManagedChannelImplBuilderTest {
 
   /** Ensure authority check can disabled with custom authority check implementation. */
   @Test
+  @SuppressWarnings("deprecation")
   public void overrideAuthorityChecker_default() {
-    builder.overrideAuthorityChecker(new OverrideAuthorityChecker() {
-      @Override public String checkAuthority(String authority) {
-        return authority;
-      }
-    });
+    builder.overrideAuthorityChecker(
+        new io.grpc.internal.ManagedChannelImplBuilder.OverrideAuthorityChecker() {
+          @Override public String checkAuthority(String authority) {
+            return authority;
+          }
+        });
     assertEquals(DUMMY_AUTHORITY_INVALID, builder.checkAuthority(DUMMY_AUTHORITY_INVALID));
   }
 
   /** Ensure custom authority is ignored after disableCheckAuthority(). */
   @Test
+  @SuppressWarnings("deprecation")
   public void overrideAuthorityChecker_ignored() {
-    builder.overrideAuthorityChecker(new OverrideAuthorityChecker() {
-      @Override public String checkAuthority(String authority) {
-        throw new IllegalArgumentException();
-      }
-    });
+    builder.overrideAuthorityChecker(
+        new io.grpc.internal.ManagedChannelImplBuilder.OverrideAuthorityChecker() {
+          @Override public String checkAuthority(String authority) {
+            throw new IllegalArgumentException();
+          }
+        });
     builder.disableCheckAuthority();
     assertEquals(DUMMY_AUTHORITY_INVALID, builder.checkAuthority(DUMMY_AUTHORITY_INVALID));
   }
