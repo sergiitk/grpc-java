@@ -16,49 +16,36 @@
 
 package io.grpc.internal;
 
-import static com.google.common.truth.Truth.assertThat;
-import static junit.framework.TestCase.assertFalse;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.grpc.internal.ManagedChannelImplBuilder.ChannelBuilderDefaultPortProvider;
 import io.grpc.internal.ManagedChannelImplBuilder.ClientTransportFactoryBuilder;
+import io.grpc.internal.ManagedChannelImplBuilder.OverrideAuthorityChecker;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
-/**
- * Unit tests for {@link ManagedChannelImplBuilder}.
- */
+/** Unit tests for {@link ManagedChannelImplBuilder}. */
 @RunWith(JUnit4.class)
 public class ManagedChannelImplBuilderTest {
+  private final static String DUMMY_TARGET = "fake-target";
+  private final static String DUMMY_AUTHORITY_VALID = "valid:1234";
+  private final static String DUMMY_AUTHORITY_INVALID = "[ : : 1]";
 
-  @Rule
-  public final MockitoRule mocks = MockitoJUnit.rule();
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
+  @Rule public final ExpectedException thrown = ExpectedException.none();
 
-  private final static String DUMMY_TARGET = "fake";
-  private final static ClientTransportFactory DUMMY_CLIENT_TRANSPORT_FACTORY = mock(
-      ClientTransportFactory.class);
-
-//  @Rule
-//  public final ExpectedException thrown = ExpectedException.none();
-
-  @Mock
-  private ClientTransportFactoryBuilder mockClientTransportFactoryBuilder;
-  @Mock
-  private ChannelBuilderDefaultPortProvider mockChannelBuilderDefaultPortProvider;
+  @Mock private ClientTransportFactoryBuilder mockClientTransportFactoryBuilder;
+  @Mock private ChannelBuilderDefaultPortProvider mockChannelBuilderDefaultPortProvider;
   private ManagedChannelImplBuilder builder;
 
   @Before
@@ -72,14 +59,15 @@ public class ManagedChannelImplBuilderTest {
   /** Ensure buildTransportFactory() delegates to the custom implementation. */
   @Test
   public void buildTransportFactory() {
+    final ClientTransportFactory clientTransportFactory = mock(ClientTransportFactory.class);
     when(mockClientTransportFactoryBuilder.buildClientTransportFactory())
-        .thenReturn(DUMMY_CLIENT_TRANSPORT_FACTORY);
+        .thenReturn(clientTransportFactory);
 
-    assertEquals(DUMMY_CLIENT_TRANSPORT_FACTORY, builder.buildTransportFactory());
+    assertEquals(clientTransportFactory, builder.buildTransportFactory());
     verify(mockClientTransportFactoryBuilder).buildClientTransportFactory();
   }
 
-  /** Ensure getDefaultPort() returns default port when no custom implementation provided */
+  /** Ensure getDefaultPort() returns default port when no custom implementation provided. */
   @Test
   public void getDefaultPort_default() {
     final ManagedChannelImplBuilder builderNoPortProvider = new ManagedChannelImplBuilder(
@@ -98,43 +86,66 @@ public class ManagedChannelImplBuilderTest {
     verify(mockChannelBuilderDefaultPortProvider).getDefaultPort();
   }
 
-//  @Test
-//  public void disableCheckAuthority() {
-//  }
-//
-//  @Test
-//  public void enableCheckAuthority() {
-//  }
-//
-//  @Test
-//  public void overrideAuthorityChecker() {
-//  }
-//
-//  @Test
-//  public void checkAuthority() {
-//  }
-//
-//  @Test
-//  public void setStatsEnabled() {
-//  }
-//
-//  @Test
-//  public void setStatsRecordStartedRpcs() {
-//  }
-//
-//  @Test
-//  public void setStatsRecordFinishedRpcs() {
-//  }
-//
-//  @Test
-//  public void setStatsRecordRealTimeMetrics() {
-//  }
-//
-//  @Test
-//  public void setTracingEnabled() {
-//  }
-//
-//  @Test
-//  public void getOffloadExecutorPool() {
-//  }
+  @Test
+  public void checkAuthority_validAuthorityAllowed() {
+    assertEquals(DUMMY_AUTHORITY_VALID, builder.checkAuthority(DUMMY_AUTHORITY_VALID));
+  }
+
+  @Test
+  public void checkAuthority_invalidAuthorityFailed() {
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("Invalid authority");
+
+    builder.checkAuthority(DUMMY_AUTHORITY_INVALID);
+  }
+
+  @Test
+  public void disableCheckAuthority_validAuthorityAllowed() {
+    builder.disableCheckAuthority();
+    assertEquals(DUMMY_AUTHORITY_VALID, builder.checkAuthority(DUMMY_AUTHORITY_VALID));
+  }
+
+  @Test
+  public void disableCheckAuthority_invalidAuthorityAllowed() {
+    builder.disableCheckAuthority();
+    assertEquals(DUMMY_AUTHORITY_INVALID, builder.checkAuthority(DUMMY_AUTHORITY_INVALID));
+  }
+
+  @Test
+  public void enableCheckAuthority_validAuthorityAllowed() {
+    builder.disableCheckAuthority().enableCheckAuthority();
+    assertEquals(DUMMY_AUTHORITY_VALID, builder.checkAuthority(DUMMY_AUTHORITY_VALID));
+  }
+
+  @Test
+  public void disableCheckAuthority_invalidAuthorityFailed() {
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage("Invalid authority");
+
+    builder.disableCheckAuthority().enableCheckAuthority();
+    builder.checkAuthority(DUMMY_AUTHORITY_INVALID);
+  }
+
+  /** Ensure authority check can disabled with custom authority check implementation. */
+  @Test
+  public void overrideAuthorityChecker_default() {
+    builder.overrideAuthorityChecker(new OverrideAuthorityChecker() {
+      @Override public String checkAuthority(String authority) {
+        return authority;
+      }
+    });
+    assertEquals(DUMMY_AUTHORITY_INVALID, builder.checkAuthority(DUMMY_AUTHORITY_INVALID));
+  }
+
+  /** Ensure custom authority is ignored after disableCheckAuthority(). */
+  @Test
+  public void overrideAuthorityChecker_ignored() {
+    builder.overrideAuthorityChecker(new OverrideAuthorityChecker() {
+      @Override public String checkAuthority(String authority) {
+        throw new IllegalArgumentException();
+      }
+    });
+    builder.disableCheckAuthority();
+    assertEquals(DUMMY_AUTHORITY_INVALID, builder.checkAuthority(DUMMY_AUTHORITY_INVALID));
+  }
 }
