@@ -30,6 +30,7 @@ import static org.mockito.Mockito.when;
 
 import io.grpc.internal.ManagedChannelImplBuilder.ChannelBuilderDefaultPortProvider;
 import io.grpc.internal.ManagedChannelImplBuilder.ClientTransportFactoryBuilder;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -48,42 +49,37 @@ public class ManagedChannelImplBuilderTest {
   public final MockitoRule mocks = MockitoJUnit.rule();
 
   private final static String DUMMY_TARGET = "fake";
+  private final static ClientTransportFactory DUMMY_CLIENT_TRANSPORT_FACTORY = mock(
+      ClientTransportFactory.class);
 
 //  @Rule
 //  public final ExpectedException thrown = ExpectedException.none();
 
-//  private final ManagedChannelImplBuilder builder = new ManagedChannelImplBuilder("fake",
-//      new ClientTransportFactoryBuilder() {
-//        @Override
-//        public ClientTransportFactory buildClientTransportFactory() {
-//          return null;
-//        }
-//      },
-//      new ChannelBuilderDefaultPortProvider() {
-//        @Override
-//        public int getDefaultPort() {
-//          return 42;
-//        }
-//      }
-//  );
+  @Mock
+  private ClientTransportFactoryBuilder mockClientTransportFactoryBuilder;
+  @Mock
+  private ChannelBuilderDefaultPortProvider mockChannelBuilderDefaultPortProvider;
+  private ManagedChannelImplBuilder builder;
 
-  @Mock private ClientTransportFactoryBuilder mockClientTransportFactoryBuilder;
-  @Mock private ChannelBuilderDefaultPortProvider mockChannelBuilderDefaultPortProvider;
-//  private final ManagedChannelImplBuilder builder = new ManagedChannelImplBuilder("fake",
-//      clientTransportFactoryBuilderMock,
-//      channelBuilderDefaultPortProviderMock);
+  @Before
+  public void setUp() throws Exception {
+    builder = new ManagedChannelImplBuilder(
+        DUMMY_TARGET,
+        mockClientTransportFactoryBuilder,
+        mockChannelBuilderDefaultPortProvider);
+  }
 
-//  public void setUp() throws Exception {
-//  }
-//
-//  @After
-//  public void tearDown() throws Exception {
-//  }
-//
-//  @Test
-//  public void buildTransportFactory() {
-//  }
+  /** Ensure buildTransportFactory() delegates to the custom implementation. */
+  @Test
+  public void buildTransportFactory() {
+    when(mockClientTransportFactoryBuilder.buildClientTransportFactory())
+        .thenReturn(DUMMY_CLIENT_TRANSPORT_FACTORY);
 
+    assertEquals(DUMMY_CLIENT_TRANSPORT_FACTORY, builder.buildTransportFactory());
+    verify(mockClientTransportFactoryBuilder).buildClientTransportFactory();
+  }
+
+  /** Ensure getDefaultPort() returns default port when no custom implementation provided */
   @Test
   public void getDefaultPort_default() {
     final ManagedChannelImplBuilder builderNoPortProvider = new ManagedChannelImplBuilder(
@@ -92,13 +88,11 @@ public class ManagedChannelImplBuilderTest {
     assertEquals(GrpcUtil.DEFAULT_PORT_SSL, builderNoPortProvider.getDefaultPort());
   }
 
+  /** Ensure getDefaultPort() delegates to the custom implementation. */
   @Test
   public void getDefaultPort_custom() {
     final int DUMMY_PORT = 42;
     when(mockChannelBuilderDefaultPortProvider.getDefaultPort()).thenReturn(DUMMY_PORT);
-
-    final ManagedChannelImplBuilder builder = new ManagedChannelImplBuilder(
-        DUMMY_TARGET, mockClientTransportFactoryBuilder, mockChannelBuilderDefaultPortProvider);
 
     assertEquals(DUMMY_PORT, builder.getDefaultPort());
     verify(mockChannelBuilderDefaultPortProvider).getDefaultPort();
