@@ -268,5 +268,4 @@ public abstract class ForwardingChannelBuilder<T extends ForwardingChannelBuilde
     T thisT = (T) this;
     return thisT;
   }
-
 }
