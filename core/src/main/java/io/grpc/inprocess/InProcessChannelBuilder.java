@@ -21,7 +21,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import io.grpc.ChannelLogger;
 import io.grpc.ExperimentalApi;
-import io.grpc.ForwardingChannelBuilder.SimpleForwardingChannelBuilder;
+import io.grpc.ForwardingChannelBuilder;
 import io.grpc.Internal;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.internal.ClientTransportFactory;
@@ -45,7 +45,7 @@ import javax.annotation.Nullable;
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1783")
 public final class InProcessChannelBuilder extends
-    SimpleForwardingChannelBuilder<InProcessChannelBuilder> {
+    ForwardingChannelBuilder<InProcessChannelBuilder> {
   /**
    * Create a channel builder that will connect to the server with the given name.
    *

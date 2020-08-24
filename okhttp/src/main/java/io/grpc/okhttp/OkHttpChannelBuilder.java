@@ -24,7 +24,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.grpc.ChannelLogger;
 import io.grpc.ExperimentalApi;
-import io.grpc.ForwardingChannelBuilder.SimpleForwardingChannelBuilder;
+import io.grpc.ForwardingChannelBuilder;
 import io.grpc.Internal;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.internal.AtomicBackoff;
@@ -58,7 +58,7 @@ import javax.net.ssl.SSLSocketFactory;
 
 /** Convenience class for building channels with the OkHttp transport. */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1785")
-public class OkHttpChannelBuilder extends SimpleForwardingChannelBuilder<OkHttpChannelBuilder> {
+public class OkHttpChannelBuilder extends ForwardingChannelBuilder<OkHttpChannelBuilder> {
 
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 65535;
   private final ManagedChannelImplBuilder managedChannelImplBuilder;

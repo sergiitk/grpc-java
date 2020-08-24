@@ -28,7 +28,7 @@ import io.grpc.Attributes;
 import io.grpc.ChannelLogger;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.ExperimentalApi;
-import io.grpc.ForwardingChannelBuilder.SimpleForwardingChannelBuilder;
+import io.grpc.ForwardingChannelBuilder;
 import io.grpc.HttpConnectProxiedSocketAddress;
 import io.grpc.Internal;
 import io.grpc.ManagedChannelBuilder;
@@ -67,7 +67,7 @@ import javax.net.ssl.SSLException;
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1784")
 @CanIgnoreReturnValue
-public final class NettyChannelBuilder extends SimpleForwardingChannelBuilder<NettyChannelBuilder> {
+public final class NettyChannelBuilder extends ForwardingChannelBuilder<NettyChannelBuilder> {
 
   // 1MiB.
   public static final int DEFAULT_FLOW_CONTROL_WINDOW = 1024 * 1024;

@@ -269,11 +269,4 @@ public abstract class ForwardingChannelBuilder<T extends ForwardingChannelBuilde
     return thisT;
   }
 
-  /**
-   * A simplified version of {@link ForwardingChannelBuilder}.
-   */
-  public abstract static class SimpleForwardingChannelBuilder<T extends ForwardingChannelBuilder<T>>
-      extends ForwardingChannelBuilder<T> {
-    // TODO(sergiitk): implement
-  }
 }
