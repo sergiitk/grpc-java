@@ -22,6 +22,9 @@ import java.net.SocketAddress;
 import java.util.concurrent.Executor;
 import javax.annotation.Nullable;
 
+/**
+ * The base class for channel builders.
+ */
 public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
 
@@ -31,14 +34,17 @@ public final class ManagedChannelImplBuilder
   private OverrideAuthorityChecker authorityChecker;
 
   /**
-   * TODO(sergiitk): finish javadoc.
+   * An interface for Transport implementors to provide the {@link ClientTransportFactory}
+   * appropriate for the channel.
    */
   public interface ClientTransportFactoryBuilder {
     ClientTransportFactory buildClientTransportFactory();
   }
 
   /**
-   * TODO(sergiitk): finish javadoc.
+   * An interface for Transport implementors to provide a default port to {@link
+   * io.grpc.NameResolver} for use in cases where the target string doesn't include a port. The
+   * default implementation returns {@link GrpcUtil#DEFAULT_PORT_SSL}.
    */
   public interface ChannelBuilderDefaultPortProvider {
     int getDefaultPort();
@@ -55,8 +61,9 @@ public final class ManagedChannelImplBuilder
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
 
   /**
-   * Creates a new builder for the given target that will be resolved by {@link
-   * io.grpc.NameResolver}. TODO(sergiitk): finish javadoc
+   * Creates a new managed channel builder with a target string, which can be either a valid {@link
+   * io.grpc.NameResolver}-compliant URI, or an authority string. Transport implementors must
+   * provide client transport factory builder, and may set custom channel default port provider.
    */
   public ManagedChannelImplBuilder(String target,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
@@ -73,7 +80,9 @@ public final class ManagedChannelImplBuilder
   }
 
   /**
-   * TODO(sergiitk): finish javadoc.
+   * Creates a new managed channel builder with the given server address, authority string of the
+   * channel. Transport implementors must provide client transport factory builder, and may set
+   * custom channel default port provider.
    */
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
@@ -99,17 +108,13 @@ public final class ManagedChannelImplBuilder
     return channelBuilderDefaultPortProvider.getDefaultPort();
   }
 
-  /**
-   * TODO(sergiitk): finish javadoc.
-   */
+  /** Disable the check whether the authority is valid. */
   public ManagedChannelImplBuilder disableCheckAuthority() {
     authorityCheckerDisabled = true;
     return this;
   }
 
-  /**
-   * TODO(sergiitk): finish javadoc.
-   */
+  /** Enable previously disabled authority check. */
   public ManagedChannelImplBuilder enableCheckAuthority() {
     authorityCheckerDisabled = false;
     return this;
