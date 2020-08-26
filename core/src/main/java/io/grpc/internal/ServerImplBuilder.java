@@ -19,26 +19,61 @@ package io.grpc.internal;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
 import java.io.File;
-import java.net.SocketAddress;
 import java.util.List;
+import java.util.concurrent.Executor;
 
-public class ServerImplBuilder extends AbstractServerImplBuilder<ServerImplBuilder> {
+public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImplBuilder> {
+  private final ClientTransportServersBuilder clientTransportServersBuilder;
 
-  public ServerImplBuilder() {
+  /**
+   * TODO(sergiitk): javadoc.
+   */
+  public interface ClientTransportServersBuilder {
+    List<? extends InternalServer> buildClientTransportServers();
+  }
 
+  /**
+   * TODO(sergiitk): javadoc.
+   */
+  public ServerImplBuilder(ClientTransportServersBuilder clientTransportServersBuilder) {
+    this.clientTransportServersBuilder = clientTransportServersBuilder;
   }
 
   @Override
   protected List<? extends InternalServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
-    // TODO(sergiitk): Implement
-    return null;
+    return clientTransportServersBuilder.buildClientTransportServers();
   }
 
   @Override
   public ServerImplBuilder useTransportSecurity(File certChain, File privateKey) {
     // TODO(sergiitk): Implement
     return null;
+  }
+
+  @Override
+  public void setTracingEnabled(boolean value) {
+    super.setTracingEnabled(value);
+  }
+
+  @Override
+  public void setStatsEnabled(boolean value) {
+    super.setStatsEnabled(value);
+  }
+
+  @Override
+  public void setStatsRecordStartedRpcs(boolean value) {
+    super.setStatsRecordStartedRpcs(value);
+  }
+
+  @Override
+  public void setStatsRecordRealTimeMetrics(boolean value) {
+    super.setStatsRecordRealTimeMetrics(value);
+  }
+
+  @Override
+  public ObjectPool<? extends Executor> getExecutorPool() {
+    return super.getExecutorPool();
   }
 
   public static ServerBuilder<?> forPort(int port) {

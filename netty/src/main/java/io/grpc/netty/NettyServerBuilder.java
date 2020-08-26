@@ -29,6 +29,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.grpc.ExperimentalApi;
 import io.grpc.ForwardingServerBuilder;
 import io.grpc.Internal;
+import io.grpc.InternalChannelz;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
@@ -39,6 +40,7 @@ import io.grpc.internal.KeepAliveManager;
 import io.grpc.internal.ObjectPool;
 import io.grpc.internal.ServerImplBuilder;
 import io.grpc.internal.SharedResourcePool;
+import io.grpc.internal.TransportTracer;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFactory;
 import io.netty.channel.ChannelOption;
@@ -88,6 +90,9 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
 
   private final ServerImplBuilder serverImplBuilder;
   private final List<SocketAddress> listenAddresses = new ArrayList<>();
+
+  private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
+  private InternalChannelz channelz = InternalChannelz.instance();
 
   private ChannelFactory<? extends ServerChannel> channelFactory =
       Utils.DEFAULT_SERVER_CHANNEL_FACTORY;
@@ -331,24 +336,20 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
     return this;
   }
 
-  @Override
-  protected void setTracingEnabled(boolean value) {
-    super.setTracingEnabled(value);
+  void setTracingEnabled(boolean value) {
+    this.serverImplBuilder.setTracingEnabled(value);
   }
 
-  @Override
-  protected void setStatsEnabled(boolean value) {
-    super.setStatsEnabled(value);
+  void setStatsEnabled(boolean value) {
+    this.serverImplBuilder.setStatsEnabled(value);
   }
 
-  @Override
-  protected void setStatsRecordStartedRpcs(boolean value) {
-    super.setStatsRecordStartedRpcs(value);
+  void setStatsRecordStartedRpcs(boolean value) {
+    this.serverImplBuilder.setStatsRecordStartedRpcs(value);
   }
 
-  @Override
-  protected void setStatsRecordRealTimeMetrics(boolean value) {
-    super.setStatsRecordRealTimeMetrics(value);
+  void setStatsRecordRealTimeMetrics(boolean value) {
+    this.serverImplBuilder.setStatsRecordRealTimeMetrics(value);
   }
 
   /**
@@ -577,7 +578,6 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
     return this;
   }
 
-  @Override
   @CheckReturnValue
   protected List<NettyServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
@@ -586,7 +586,7 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
     ProtocolNegotiator negotiator = protocolNegotiator;
     if (negotiator == null) {
       negotiator = sslContext != null
-          ? ProtocolNegotiators.serverTls(sslContext, this.getExecutorPool())
+          ? ProtocolNegotiators.serverTls(sslContext, this.serverImplBuilder.getExecutorPool())
           : ProtocolNegotiators.serverPlaintext();
     }
 
@@ -595,12 +595,12 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
       NettyServer transportServer = new NettyServer(
           listenAddress, channelFactory, channelOptions, childChannelOptions,
           bossEventLoopGroupPool, workerEventLoopGroupPool, forceHeapBuffer, negotiator,
-          streamTracerFactories, getTransportTracerFactory(), maxConcurrentCallsPerConnection,
+          streamTracerFactories, transportTracerFactory, maxConcurrentCallsPerConnection,
           autoFlowControl, flowControlWindow, maxMessageSize, maxHeaderListSize,
           keepAliveTimeInNanos, keepAliveTimeoutInNanos,
           maxConnectionIdleInNanos, maxConnectionAgeInNanos,
           maxConnectionAgeGraceInNanos, permitKeepAliveWithoutCalls, permitKeepAliveTimeInNanos,
-          getChannelz());
+          channelz);
       transportServers.add(transportServer);
     }
     return Collections.unmodifiableList(transportServers);
