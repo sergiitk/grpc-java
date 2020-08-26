@@ -27,18 +27,16 @@ import javax.annotation.Nullable;
  * A {@link ServerBuilder} that delegates all its builder method to another builder by default.
  *
  * @param <T> The type of the subclass extending this abstract class.
- * @since TODO
- *
- * TODO(sergiitk): update github ExperimentalApi.
- * TODO(sergiitk): update since.
+ * @since 0.0.0
  */
+// TODO(sergiitk): update github ExperimentalApi.
+// TODO(sergiitk): update since.
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/TODO")
 public abstract class ForwardingServerBuilder<T extends ForwardingServerBuilder<T>>
     extends ServerBuilder<T> {
 
   /** The default constructor. */
-  protected ForwardingServerBuilder() {
-  }
+  protected ForwardingServerBuilder() {}
 
   /**
    * This method serves to force sub classes to "hide" this static factory.
@@ -79,19 +77,19 @@ public abstract class ForwardingServerBuilder<T extends ForwardingServerBuilder<
   @Override
   public T intercept(ServerInterceptor interceptor) {
     delegate().intercept(interceptor);
-    return super.intercept(interceptor);
+    return thisT();
   }
 
   @Override
   public T addTransportFilter(ServerTransportFilter filter) {
     delegate().addTransportFilter(filter);
-    return super.addTransportFilter(filter);
+    return thisT();
   }
 
   @Override
   public T addStreamTracerFactory(ServerStreamTracer.Factory factory) {
     delegate().addStreamTracerFactory(factory);
-    return super.addStreamTracerFactory(factory);
+    return thisT();
   }
 
   @Override
