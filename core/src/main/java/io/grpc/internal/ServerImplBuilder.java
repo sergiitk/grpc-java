@@ -70,6 +70,11 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   }
 
   @Override
+  public void setStatsRecordFinishedRpcs(boolean value) {
+    super.setStatsRecordFinishedRpcs(value);
+  }
+
+  @Override
   public void setStatsRecordRealTimeMetrics(boolean value) {
     super.setStatsRecordRealTimeMetrics(value);
   }

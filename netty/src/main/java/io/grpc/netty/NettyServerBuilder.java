@@ -138,7 +138,7 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
     return new NettyServerBuilder(address);
   }
 
-  private class NettyClientTransportServersBuilder implements ClientTransportServersBuilder {
+  private final class NettyClientTransportServersBuilder implements ClientTransportServersBuilder {
     @Override
     public List<? extends InternalServer> buildClientTransportServers(
         List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
@@ -585,7 +585,7 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
   }
 
   @CheckReturnValue
-  List<NettyServer> buildTransportServers(
+  final List<NettyServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
     assertEventLoopsAndChannelType();
 
