@@ -49,10 +49,11 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
     return clientTransportServersBuilder.buildClientTransportServers(streamTracerFactories);
   }
 
-  @Override
-  public ServerImplBuilder useTransportSecurity(File certChain, File privateKey) {
-    // TODO(sergiitk): Implement
-    return null;
+  /**
+   * Sets a custom deadline ticker. This should only be called from InProcessServerBuilder.
+   */
+  public void setDeadlineTicker(Deadline.Ticker ticker) {
+    this.ticker = Preconditions.checkNotNull(ticker, "ticker");
   }
 
   @Override
@@ -85,16 +86,12 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
     return super.getExecutorPool();
   }
 
-  /**
-   * Sets a custom deadline ticker. This should only be called from InProcessServerBuilder.
-   */
-  public void setDeadlineTicker(Deadline.Ticker ticker) {
-    this.ticker = Preconditions.checkNotNull(ticker, "ticker");
+  @Override
+  public ServerImplBuilder useTransportSecurity(File certChain, File privateKey) {
+    throw new UnsupportedOperationException("TLS not supported in ServerImplBuilder");
   }
 
   public static ServerBuilder<?> forPort(int port) {
-    // TODO(sergiitk): Update message based on constructor
-    throw new UnsupportedOperationException("Subclass failed to hide static factory");
+    throw new UnsupportedOperationException("ClientTransportServersBuilder is requires");
   }
-
 }
