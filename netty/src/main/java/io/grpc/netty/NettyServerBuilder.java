@@ -30,24 +30,22 @@ import io.grpc.ExperimentalApi;
 import io.grpc.ForwardingServerBuilder;
 import io.grpc.Internal;
 import io.grpc.InternalChannelz;
-import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
-import io.grpc.internal.AbstractServerImplBuilder;
 import io.grpc.internal.FixedObjectPool;
 import io.grpc.internal.GrpcUtil;
+import io.grpc.internal.InternalServer;
 import io.grpc.internal.KeepAliveManager;
 import io.grpc.internal.ObjectPool;
 import io.grpc.internal.ServerImplBuilder;
+import io.grpc.internal.ServerImplBuilder.ClientTransportServersBuilder;
 import io.grpc.internal.SharedResourcePool;
 import io.grpc.internal.TransportTracer;
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelFactory;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ReflectiveChannelFactory;
 import io.netty.channel.ServerChannel;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.ssl.SslContext;
 import java.io.File;
@@ -140,15 +138,23 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
     return new NettyServerBuilder(address);
   }
 
+  private class NettyClientTransportServersBuilder implements ClientTransportServersBuilder {
+    @Override
+    public List<? extends InternalServer> buildClientTransportServers(
+        List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
+      return buildTransportServers(streamTracerFactories);
+    }
+  }
+
   @CheckReturnValue
   private NettyServerBuilder(int port) {
-    serverImplBuilder = new ServerImplBuilder();
+    serverImplBuilder = new ServerImplBuilder(new NettyClientTransportServersBuilder());
     this.listenAddresses.add(new InetSocketAddress(port));
   }
 
   @CheckReturnValue
   private NettyServerBuilder(SocketAddress address) {
-    serverImplBuilder = new ServerImplBuilder();
+    serverImplBuilder = new ServerImplBuilder(new NettyClientTransportServersBuilder());
     this.listenAddresses.add(address);
   }
 
@@ -579,7 +585,7 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
   }
 
   @CheckReturnValue
-  protected List<NettyServer> buildTransportServers(
+  List<NettyServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
     assertEventLoopsAndChannelType();
 

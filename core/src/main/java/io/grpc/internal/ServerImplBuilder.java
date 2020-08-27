@@ -16,6 +16,7 @@
 
 package io.grpc.internal;
 
+import com.google.common.base.Preconditions;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
 import java.io.File;
@@ -29,20 +30,22 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
    * TODO(sergiitk): javadoc.
    */
   public interface ClientTransportServersBuilder {
-    List<? extends InternalServer> buildClientTransportServers();
+    List<? extends InternalServer> buildClientTransportServers(
+        List<? extends ServerStreamTracer.Factory> streamTracerFactories);
   }
 
   /**
    * TODO(sergiitk): javadoc.
    */
   public ServerImplBuilder(ClientTransportServersBuilder clientTransportServersBuilder) {
-    this.clientTransportServersBuilder = clientTransportServersBuilder;
+    this.clientTransportServersBuilder = Preconditions.checkNotNull(clientTransportServersBuilder,
+        "clientTransportServersBuilder cannot be null");
   }
 
   @Override
   protected List<? extends InternalServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
-    return clientTransportServersBuilder.buildClientTransportServers();
+    return clientTransportServersBuilder.buildClientTransportServers(streamTracerFactories);
   }
 
   @Override
