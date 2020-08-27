@@ -17,6 +17,7 @@
 package io.grpc.internal;
 
 import com.google.common.base.Preconditions;
+import io.grpc.Deadline;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
 import java.io.File;
@@ -82,6 +83,13 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   @Override
   public ObjectPool<? extends Executor> getExecutorPool() {
     return super.getExecutorPool();
+  }
+
+  /**
+   * Sets a custom deadline ticker. This should only be called from InProcessServerBuilder.
+   */
+  public void setDeadlineTicker(Deadline.Ticker ticker) {
+    this.ticker = Preconditions.checkNotNull(ticker, "ticker");
   }
 
   public static ServerBuilder<?> forPort(int port) {

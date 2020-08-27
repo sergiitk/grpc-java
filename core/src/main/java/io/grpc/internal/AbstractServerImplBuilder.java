@@ -208,13 +208,6 @@ public abstract class AbstractServerImplBuilder<T extends AbstractServerImplBuil
     tracingEnabled = value;
   }
 
-  /**
-   * Sets a custom deadline ticker.  This should only be called from InProcessServerBuilder.
-   */
-  protected void setDeadlineTicker(Deadline.Ticker ticker) {
-    this.ticker = checkNotNull(ticker, "ticker");
-  }
-
   @Override
   public final Server build() {
     return new ServerImpl(this, buildTransportServers(getTracerFactories()), Context.ROOT);

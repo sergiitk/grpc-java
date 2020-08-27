@@ -25,7 +25,6 @@ import io.grpc.ForwardingServerBuilder;
 import io.grpc.Internal;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
-import io.grpc.internal.AbstractServerImplBuilder;
 import io.grpc.internal.FixedObjectPool;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.InternalServer;
@@ -163,7 +162,7 @@ public final class InProcessServerBuilder extends ForwardingServerBuilder<InProc
    * @since 1.24.0
    */
   public InProcessServerBuilder deadlineTicker(Deadline.Ticker ticker) {
-    setDeadlineTicker(ticker);
+    serverImplBuilder.setDeadlineTicker(ticker);
     return this;
   }
 
