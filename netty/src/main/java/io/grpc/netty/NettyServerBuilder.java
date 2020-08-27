@@ -626,6 +626,12 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
             + "neither should be");
   }
 
+  final NettyServerBuilder setTransportTracerFactory(
+      TransportTracer.Factory transportTracerFactory) {
+    this.transportTracerFactory = transportTracerFactory;
+    return this;
+  }
+
   @Override
   public NettyServerBuilder useTransportSecurity(File certChain, File privateKey) {
     try {
