@@ -24,11 +24,15 @@ import java.io.File;
 import java.util.List;
 import java.util.concurrent.Executor;
 
+/**
+ * Default builder for {@link io.grpc.Server} instances, for usage in Transport implementations.
+ */
 public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImplBuilder> {
   private final ClientTransportServersBuilder clientTransportServersBuilder;
 
   /**
-   * TODO(sergiitk): javadoc.
+   * An interface to provide to provide transport specific information for the server. This method
+   * is mean for Transport implementors and should not be used by normal users.
    */
   public interface ClientTransportServersBuilder {
     List<? extends InternalServer> buildClientTransportServers(
@@ -36,7 +40,7 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   }
 
   /**
-   * TODO(sergiitk): javadoc.
+   * Creates a new server builder with given transport provider.
    */
   public ServerImplBuilder(ClientTransportServersBuilder clientTransportServersBuilder) {
     this.clientTransportServersBuilder = Preconditions.checkNotNull(clientTransportServersBuilder,
