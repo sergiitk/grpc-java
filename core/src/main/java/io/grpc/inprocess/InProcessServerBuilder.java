@@ -195,4 +195,8 @@ public final class InProcessServerBuilder extends ForwardingServerBuilder<InProc
   public InProcessServerBuilder useTransportSecurity(File certChain, File privateKey) {
     throw new UnsupportedOperationException("TLS not supported in InProcessServer");
   }
+
+  void setStatsEnabled(boolean value) {
+    this.serverImplBuilder.setStatsEnabled(value);
+  }
 }

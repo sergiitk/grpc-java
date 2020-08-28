@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The gRPC Authors
+ * Copyright 2020 The gRPC Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,19 @@
  * limitations under the License.
  */
 
-package io.grpc.internal;
+package io.grpc.inprocess;
+
+import io.grpc.Internal;
 
 /**
- * Test helper that allows accessing package-private stuff.
+ * Internal {@link InProcessServerBuilder} accessor.  This is intended for usage internal to
+ * the gRPC team.  If you *really* think you need to use this, contact the gRPC team first.
  */
-public final class TestingAccessor {
-  /**
-   * Disable or enable client side census stats features.
-   */
-  public static void setStatsEnabled(
-      AbstractManagedChannelImplBuilder<?> builder, boolean statsEnabled) {
-    builder.setStatsEnabled(statsEnabled);
+@Internal
+public class InternalInProcessServerBuilder {
+  public static void setStatsEnabled(InProcessServerBuilder builder, boolean value) {
+    builder.setStatsEnabled(value);
   }
 
-  private TestingAccessor() {
-  }
+  private InternalInProcessServerBuilder() {}
 }

@@ -51,7 +51,7 @@ import org.junit.runners.JUnit4;
  * Integration tests for GRPC over Http2 using the OkHttp framework.
  */
 @RunWith(JUnit4.class)
-public class Http2OkHttpTest extends AbstractInteropTest {
+public class Http2OkHttpTest extends AbstractNettyInteropTest {
 
   private static final String BAD_HOSTNAME = "I.am.a.bad.hostname";
 
@@ -76,10 +76,11 @@ public class Http2OkHttpTest extends AbstractInteropTest {
           .forServer(TestUtils.loadCert("server1.pem"), TestUtils.loadCert("server1.key"));
       GrpcSslContexts.configure(contextBuilder, sslProvider);
       contextBuilder.ciphers(TestUtils.preferredTestCiphers(), SupportedCipherSuiteFilter.INSTANCE);
-      return NettyServerBuilder.forPort(0)
-          .flowControlWindow(65 * 1024)
-          .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
-          .sslContext(contextBuilder.build());
+      return withCustomCensusModule(
+          NettyServerBuilder.forPort(0)
+              .flowControlWindow(65 * 1024)
+              .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
+              .sslContext(contextBuilder.build()));
     } catch (IOException ex) {
       throw new RuntimeException(ex);
     }

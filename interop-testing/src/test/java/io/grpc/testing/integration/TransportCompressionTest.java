@@ -58,7 +58,7 @@ import org.junit.runners.JUnit4;
  * Tests that compression is turned on.
  */
 @RunWith(JUnit4.class)
-public class TransportCompressionTest extends AbstractInteropTest {
+public class TransportCompressionTest extends AbstractNettyInteropTest {
 
   // Masquerade as identity.
   private static final Fzip FZIPPER = new Fzip("gzip", new Codec.Gzip());
@@ -83,20 +83,21 @@ public class TransportCompressionTest extends AbstractInteropTest {
 
   @Override
   protected ServerBuilder<?> getServerBuilder() {
-    return NettyServerBuilder.forPort(0)
-        .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
-        .compressorRegistry(compressors)
-        .decompressorRegistry(decompressors)
-        .intercept(new ServerInterceptor() {
-            @Override
-            public <ReqT, RespT> Listener<ReqT> interceptCall(ServerCall<ReqT, RespT> call,
-                Metadata headers, ServerCallHandler<ReqT, RespT> next) {
-              Listener<ReqT> listener = next.startCall(call, headers);
-              // TODO(carl-mastrangelo): check that encoding was set.
-              call.setMessageCompression(true);
-              return listener;
-            }
-          });
+    return withCustomCensusModule(
+        NettyServerBuilder.forPort(0)
+            .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
+            .compressorRegistry(compressors)
+            .decompressorRegistry(decompressors)
+            .intercept(new ServerInterceptor() {
+              @Override
+              public <ReqT, RespT> Listener<ReqT> interceptCall(ServerCall<ReqT, RespT> call,
+                  Metadata headers, ServerCallHandler<ReqT, RespT> next) {
+                Listener<ReqT> listener = next.startCall(call, headers);
+                // TODO(carl-mastrangelo): check that encoding was set.
+                call.setMessageCompression(true);
+                return listener;
+              }
+            }));
   }
 
   @Test

@@ -24,12 +24,12 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 @RunWith(JUnit4.class)
-public class AutoWindowSizingOnTest extends AbstractInteropTest {
+public class AutoWindowSizingOnTest extends AbstractNettyInteropTest {
 
   @Override
   protected ServerBuilder<?> getServerBuilder() {
-    return NettyServerBuilder.forPort(0)
-        .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE);
+    return withCustomCensusModule(
+        NettyServerBuilder.forPort(0).maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE));
   }
 
   @Override

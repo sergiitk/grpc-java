@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The gRPC Authors
+ * Copyright 2020 The gRPC Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,20 @@
  * limitations under the License.
  */
 
-package io.grpc.internal;
+package io.grpc.testing.integration;
 
-/**
- * Test helper that allows accessing package-private stuff.
- */
-public final class TestingAccessor {
-  /**
-   * Disable or enable client side census stats features.
-   */
-  public static void setStatsEnabled(
-      AbstractManagedChannelImplBuilder<?> builder, boolean statsEnabled) {
-    builder.setStatsEnabled(statsEnabled);
+import io.grpc.netty.InternalNettyServerBuilder;
+import io.grpc.netty.NettyServerBuilder;
+
+public abstract class AbstractNettyInteropTest extends AbstractInteropTest {
+  protected NettyServerBuilder withCustomCensusModule(NettyServerBuilder builder) {
+    InternalNettyServerBuilder.setStatsEnabled(builder, false);
+    builder.addStreamTracerFactory(createCustomCensusTracerFactory());
+    return builder;
   }
 
-  private TestingAccessor() {
+  @Override
+  protected boolean customCensusModulePresent() {
+    return true;
   }
 }

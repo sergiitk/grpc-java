@@ -37,21 +37,22 @@ import org.junit.runners.JUnit4;
  * Integration tests for GRPC over HTTP2 using the Netty framework.
  */
 @RunWith(JUnit4.class)
-public class Http2NettyTest extends AbstractInteropTest {
+public class Http2NettyTest extends AbstractNettyInteropTest {
 
   @Override
   protected ServerBuilder<?> getServerBuilder() {
     // Starts the server with HTTPS.
     try {
-      return NettyServerBuilder.forPort(0)
-          .flowControlWindow(65 * 1024)
-          .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
-          .sslContext(GrpcSslContexts
-              .forServer(TestUtils.loadCert("server1.pem"), TestUtils.loadCert("server1.key"))
-              .clientAuth(ClientAuth.REQUIRE)
-              .trustManager(TestUtils.loadCert("ca.pem"))
-              .ciphers(TestUtils.preferredTestCiphers(), SupportedCipherSuiteFilter.INSTANCE)
-              .build());
+      return withCustomCensusModule(
+          NettyServerBuilder.forPort(0)
+              .flowControlWindow(65 * 1024)
+              .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
+              .sslContext(GrpcSslContexts
+                  .forServer(TestUtils.loadCert("server1.pem"), TestUtils.loadCert("server1.key"))
+                  .clientAuth(ClientAuth.REQUIRE)
+                  .trustManager(TestUtils.loadCert("ca.pem"))
+                  .ciphers(TestUtils.preferredTestCiphers(), SupportedCipherSuiteFilter.INSTANCE)
+                  .build()));
     } catch (IOException ex) {
       throw new RuntimeException(ex);
     }

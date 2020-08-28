@@ -32,19 +32,20 @@ import org.junit.runners.JUnit4;
  * Run transport tests over the Netty in-process channel.
  */
 @RunWith(JUnit4.class)
-public class Http2NettyLocalChannelTest extends AbstractInteropTest {
+public class Http2NettyLocalChannelTest extends AbstractNettyInteropTest {
 
   private DefaultEventLoopGroup eventLoopGroup = new DefaultEventLoopGroup();
 
   @Override
   protected ServerBuilder<?> getServerBuilder() {
-    return NettyServerBuilder
-        .forAddress(new LocalAddress("in-process-1"))
-        .flowControlWindow(65 * 1024)
-        .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
-        .channelType(LocalServerChannel.class)
-        .workerEventLoopGroup(eventLoopGroup)
-        .bossEventLoopGroup(eventLoopGroup);
+    return withCustomCensusModule(
+        NettyServerBuilder
+            .forAddress(new LocalAddress("in-process-1"))
+            .flowControlWindow(65 * 1024)
+            .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
+            .channelType(LocalServerChannel.class)
+            .workerEventLoopGroup(eventLoopGroup)
+            .bossEventLoopGroup(eventLoopGroup));
   }
 
   @Override

@@ -19,6 +19,7 @@ package io.grpc.testing.integration;
 import io.grpc.ServerBuilder;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.inprocess.InternalInProcessServerBuilder;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
@@ -31,7 +32,18 @@ public class InProcessTest extends AbstractInteropTest {
   @Override
   protected ServerBuilder<?> getServerBuilder() {
     // Starts the in-process server.
-    return InProcessServerBuilder.forName(SERVER_NAME);
+    return withCustomCensusModule(InProcessServerBuilder.forName(SERVER_NAME));
+  }
+
+  protected InProcessServerBuilder withCustomCensusModule(InProcessServerBuilder builder) {
+    InternalInProcessServerBuilder.setStatsEnabled(builder, false);
+    builder.addStreamTracerFactory(createCustomCensusTracerFactory());
+    return builder;
+  }
+
+  @Override
+  protected boolean customCensusModulePresent() {
+    return true;
   }
 
   @Override
