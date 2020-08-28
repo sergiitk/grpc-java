@@ -23,7 +23,7 @@ import static org.junit.Assert.assertTrue;
 import com.google.common.base.Throwables;
 import com.squareup.okhttp.ConnectionSpec;
 import io.grpc.ManagedChannel;
-import io.grpc.internal.AbstractServerImplBuilder;
+import io.grpc.ServerBuilder;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.testing.StreamRecorder;
 import io.grpc.internal.testing.TestUtils;
@@ -63,7 +63,7 @@ public class Http2OkHttpTest extends AbstractInteropTest {
   }
 
   @Override
-  protected AbstractServerImplBuilder<?> getServerBuilder() {
+  protected ServerBuilder<?> getServerBuilder() {
     // Starts the server with HTTPS.
     try {
       SslProvider sslProvider = SslContext.defaultServerProvider();

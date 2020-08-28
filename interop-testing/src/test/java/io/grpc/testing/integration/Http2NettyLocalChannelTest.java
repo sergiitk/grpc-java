@@ -16,7 +16,7 @@
 
 package io.grpc.testing.integration;
 
-import io.grpc.internal.AbstractServerImplBuilder;
+import io.grpc.ServerBuilder;
 import io.grpc.netty.NegotiationType;
 import io.grpc.netty.NettyChannelBuilder;
 import io.grpc.netty.NettyServerBuilder;
@@ -37,7 +37,7 @@ public class Http2NettyLocalChannelTest extends AbstractInteropTest {
   private DefaultEventLoopGroup eventLoopGroup = new DefaultEventLoopGroup();
 
   @Override
-  protected AbstractServerImplBuilder<?> getServerBuilder() {
+  protected ServerBuilder<?> getServerBuilder() {
     return NettyServerBuilder
         .forAddress(new LocalAddress("in-process-1"))
         .flowControlWindow(65 * 1024)

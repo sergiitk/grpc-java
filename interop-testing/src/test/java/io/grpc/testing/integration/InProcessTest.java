@@ -16,9 +16,9 @@
 
 package io.grpc.testing.integration;
 
+import io.grpc.ServerBuilder;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
-import io.grpc.internal.AbstractServerImplBuilder;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
@@ -29,7 +29,7 @@ public class InProcessTest extends AbstractInteropTest {
   private static final String SERVER_NAME = "test";
 
   @Override
-  protected AbstractServerImplBuilder<?> getServerBuilder() {
+  protected ServerBuilder<?> getServerBuilder() {
     // Starts the in-process server.
     return InProcessServerBuilder.forName(SERVER_NAME);
   }
