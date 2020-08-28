@@ -18,12 +18,12 @@ package io.grpc.okhttp;
 
 import io.grpc.ServerStreamTracer;
 import io.grpc.internal.AbstractTransportTest;
-import io.grpc.internal.AccessProtectedHack;
 import io.grpc.internal.ClientTransportFactory;
 import io.grpc.internal.FakeClock;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.InternalServer;
 import io.grpc.internal.ManagedClientTransport;
+import io.grpc.netty.InternalNettyServerBuilder;
 import io.grpc.netty.NettyServerBuilder;
 import java.net.InetSocketAddress;
 import java.util.List;
@@ -35,6 +35,8 @@ import org.junit.runners.JUnit4;
 /** Unit tests for OkHttp transport. */
 @RunWith(JUnit4.class)
 public class OkHttpTransportTest extends AbstractTransportTest {
+  // 65 KiB: non-standard value close to HTTP/2 "default" 64 KiB, to test for flow control bugs.
+  private static final int TEST_FLOW_CONTROL_WINDOW = 65 * 1024;
   private final FakeClock fakeClock = new FakeClock();
   private ClientTransportFactory clientFactory =
       OkHttpChannelBuilder
@@ -53,23 +55,21 @@ public class OkHttpTransportTest extends AbstractTransportTest {
   @Override
   protected List<? extends InternalServer> newServer(
       List<ServerStreamTracer.Factory> streamTracerFactories) {
-    return AccessProtectedHack.serverBuilderBuildTransportServer(
-        NettyServerBuilder
-            .forPort(0)
-            .flowControlWindow(65 * 1024),
-        streamTracerFactories,
-        fakeClockTransportTracer);
+    NettyServerBuilder builder = NettyServerBuilder
+        .forPort(0)
+        .flowControlWindow(TEST_FLOW_CONTROL_WINDOW);
+    InternalNettyServerBuilder.setTransportTracerFactory(builder, fakeClockTransportTracer);
+    return InternalNettyServerBuilder.buildTransportServers(builder, streamTracerFactories);
   }
 
   @Override
-  protected List<? extends InternalServer> newServer(
-      int port, List<ServerStreamTracer.Factory> streamTracerFactories) {
-    return AccessProtectedHack.serverBuilderBuildTransportServer(
-        NettyServerBuilder
-            .forAddress(new InetSocketAddress(port))
-            .flowControlWindow(65 * 1024),
-        streamTracerFactories,
-        fakeClockTransportTracer);
+  protected List<? extends InternalServer> newServer(int port,
+      List<ServerStreamTracer.Factory> streamTracerFactories) {
+    NettyServerBuilder builder = NettyServerBuilder
+        .forAddress(new InetSocketAddress(port))
+        .flowControlWindow(TEST_FLOW_CONTROL_WINDOW);
+    InternalNettyServerBuilder.setTransportTracerFactory(builder, fakeClockTransportTracer);
+    return InternalNettyServerBuilder.buildTransportServers(builder, streamTracerFactories);
   }
 
   @Override
