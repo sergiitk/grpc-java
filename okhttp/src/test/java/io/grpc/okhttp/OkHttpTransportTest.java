@@ -35,7 +35,7 @@ import org.junit.runners.JUnit4;
 /** Unit tests for OkHttp transport. */
 @RunWith(JUnit4.class)
 public class OkHttpTransportTest extends AbstractTransportTest {
-  // 65 KiB: non-standard value close to HTTP/2 "default" 64 KiB, to test for flow control bugs.
+  /** 65 KiB: non-standard value close to HTTP/2 "default" 64 KiB, to test for flow control bugs. */
   private static final int TEST_FLOW_CONTROL_WINDOW = 65 * 1024;
   private final FakeClock fakeClock = new FakeClock();
   private ClientTransportFactory clientFactory =

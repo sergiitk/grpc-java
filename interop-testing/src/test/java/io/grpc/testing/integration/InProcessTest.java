@@ -35,7 +35,7 @@ public class InProcessTest extends AbstractInteropTest {
     return withCustomCensusModule(InProcessServerBuilder.forName(SERVER_NAME));
   }
 
-  protected InProcessServerBuilder withCustomCensusModule(InProcessServerBuilder builder) {
+  private final InProcessServerBuilder withCustomCensusModule(InProcessServerBuilder builder) {
     InternalInProcessServerBuilder.setStatsEnabled(builder, false);
     builder.addStreamTracerFactory(createCustomCensusTracerFactory());
     return builder;
@@ -47,7 +47,7 @@ public class InProcessTest extends AbstractInteropTest {
   }
 
   @Override
-  protected InProcessChannelBuilder createChannelBuilder() {
+  protected final InProcessChannelBuilder createChannelBuilder() {
     InProcessChannelBuilder builder = InProcessChannelBuilder.forName(SERVER_NAME);
     // Disable the default census stats interceptor, use testing interceptor instead.
     io.grpc.internal.TestingAccessor.setStatsEnabled(builder, false);

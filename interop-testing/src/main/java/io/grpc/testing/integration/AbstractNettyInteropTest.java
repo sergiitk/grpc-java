@@ -20,7 +20,7 @@ import io.grpc.netty.InternalNettyServerBuilder;
 import io.grpc.netty.NettyServerBuilder;
 
 public abstract class AbstractNettyInteropTest extends AbstractInteropTest {
-  protected NettyServerBuilder withCustomCensusModule(NettyServerBuilder builder) {
+  protected final NettyServerBuilder withCustomCensusModule(NettyServerBuilder builder) {
     InternalNettyServerBuilder.setStatsEnabled(builder, false);
     builder.addStreamTracerFactory(createCustomCensusTracerFactory());
     return builder;

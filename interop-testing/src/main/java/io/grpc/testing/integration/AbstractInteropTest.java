@@ -351,7 +351,7 @@ public abstract class AbstractInteropTest {
                 true, true, true, false /* real-time metrics */);
   }
 
-  protected ServerStreamTracer.Factory createCustomCensusTracerFactory() {
+  protected final ServerStreamTracer.Factory createCustomCensusTracerFactory() {
     return InternalCensusStatsAccessor
         .getServerStreamTracerFactory(
             tagger, tagContextBinarySerializer, serverStatsRecorder,
@@ -359,9 +359,8 @@ public abstract class AbstractInteropTest {
             true, true, true, false /* real-time metrics */);
   }
 
-
   /**
-   * Return true if custom census module used.
+   * Return {@code true} when custom census module used.
    */
   protected boolean customCensusModulePresent() {
     return false;

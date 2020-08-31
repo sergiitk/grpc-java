@@ -32,7 +32,7 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
 
   /**
    * An interface to provide to provide transport specific information for the server. This method
-   * is mean for Transport implementors and should not be used by normal users.
+   * is meant for Transport implementors and should not be used by normal users.
    */
   public interface ClientTransportServersBuilder {
     List<? extends InternalServer> buildClientTransportServers(
@@ -40,7 +40,7 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   }
 
   /**
-   * Creates a new server builder with given transport provider.
+   * Creates a new server builder with given transport servers provider.
    */
   public ServerImplBuilder(ClientTransportServersBuilder clientTransportServersBuilder) {
     this.clientTransportServersBuilder = Preconditions.checkNotNull(clientTransportServersBuilder,
@@ -96,6 +96,6 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   }
 
   public static ServerBuilder<?> forPort(int port) {
-    throw new UnsupportedOperationException("ClientTransportServersBuilder is requires");
+    throw new UnsupportedOperationException("ClientTransportServersBuilder is required");
   }
 }
