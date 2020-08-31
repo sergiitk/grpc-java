@@ -276,7 +276,7 @@ public abstract class AbstractServerImplBuilder<T extends AbstractServerImplBuil
     return Collections.unmodifiableList(tracerFactories);
   }
 
-  protected final InternalChannelz getChannelz() {
+  protected InternalChannelz getChannelz() {
     return channelz;
   }
 

@@ -29,7 +29,6 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.grpc.ExperimentalApi;
 import io.grpc.ForwardingServerBuilder;
 import io.grpc.Internal;
-import io.grpc.InternalChannelz;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
 import io.grpc.internal.FixedObjectPool;
@@ -90,8 +89,6 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
   private final List<SocketAddress> listenAddresses = new ArrayList<>();
 
   private TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
-  private InternalChannelz channelz = InternalChannelz.instance();
-
   private ChannelFactory<? extends ServerChannel> channelFactory =
       Utils.DEFAULT_SERVER_CHANNEL_FACTORY;
   private final Map<ChannelOption<?>, Object> channelOptions = new HashMap<>();
@@ -606,7 +603,7 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
           keepAliveTimeInNanos, keepAliveTimeoutInNanos,
           maxConnectionIdleInNanos, maxConnectionAgeInNanos,
           maxConnectionAgeGraceInNanos, permitKeepAliveWithoutCalls, permitKeepAliveTimeInNanos,
-          channelz);
+          this.serverImplBuilder.getChannelz());
       transportServers.add(transportServer);
     }
     return Collections.unmodifiableList(transportServers);

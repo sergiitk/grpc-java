@@ -18,6 +18,7 @@ package io.grpc.internal;
 
 import com.google.common.base.Preconditions;
 import io.grpc.Deadline;
+import io.grpc.InternalChannelz;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
 import java.io.File;
@@ -83,6 +84,11 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   @Override
   public void setStatsRecordRealTimeMetrics(boolean value) {
     super.setStatsRecordRealTimeMetrics(value);
+  }
+
+  @Override
+  public InternalChannelz getChannelz() {
+    return super.getChannelz();
   }
 
   @Override
