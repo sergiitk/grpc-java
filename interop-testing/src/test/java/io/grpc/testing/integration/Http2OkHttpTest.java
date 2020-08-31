@@ -78,7 +78,7 @@ public class Http2OkHttpTest extends AbstractNettyInteropTest {
       contextBuilder.ciphers(TestUtils.preferredTestCiphers(), SupportedCipherSuiteFilter.INSTANCE);
       return withCustomCensusModule(
           NettyServerBuilder.forPort(0)
-              .flowControlWindow(65 * 1024)
+              .flowControlWindow(AbstractInteropTest.TEST_FLOW_CONTROL_WINDOW)
               .maxInboundMessageSize(AbstractInteropTest.MAX_MESSAGE_SIZE)
               .sslContext(contextBuilder.build()));
     } catch (IOException ex) {

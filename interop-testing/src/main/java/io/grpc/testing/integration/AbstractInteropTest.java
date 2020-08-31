@@ -147,6 +147,9 @@ public abstract class AbstractInteropTest {
   /** Must be at least {@link #unaryPayloadLength()}, plus some to account for encoding overhead. */
   public static final int MAX_MESSAGE_SIZE = 16 * 1024 * 1024;
 
+  /** 65 KiB: non-standard value close to HTTP/2 "default" 64 KiB, to test for flow control bugs. */
+  public static final int TEST_FLOW_CONTROL_WINDOW = 65 * 1024;
+
   private static final FakeTagger tagger = new FakeTagger();
   private static final FakeTagContextBinarySerializer tagContextBinarySerializer =
       new FakeTagContextBinarySerializer();
