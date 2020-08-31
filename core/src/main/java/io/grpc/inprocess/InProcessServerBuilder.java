@@ -186,7 +186,7 @@ public final class InProcessServerBuilder extends ForwardingServerBuilder<InProc
     return this;
   }
 
-  final List<InProcessServer> buildTransportServers(
+  List<InProcessServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
     return Collections.singletonList(new InProcessServer(this, streamTracerFactories));
   }

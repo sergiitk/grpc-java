@@ -585,7 +585,7 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
   }
 
   @CheckReturnValue
-  final List<NettyServer> buildTransportServers(
+  List<NettyServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
     assertEventLoopsAndChannelType();
 
@@ -626,7 +626,7 @@ public final class NettyServerBuilder extends ForwardingServerBuilder<NettyServe
             + "neither should be");
   }
 
-  final NettyServerBuilder setTransportTracerFactory(
+  NettyServerBuilder setTransportTracerFactory(
       TransportTracer.Factory transportTracerFactory) {
     this.transportTracerFactory = transportTracerFactory;
     return this;
