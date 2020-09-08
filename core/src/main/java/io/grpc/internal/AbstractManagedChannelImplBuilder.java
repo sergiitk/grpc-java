@@ -28,7 +28,6 @@ import io.grpc.CompressorRegistry;
 import io.grpc.DecompressorRegistry;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.InternalChannelz;
-import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.NameResolver;
 import io.grpc.NameResolverRegistry;
@@ -505,18 +504,6 @@ public abstract class AbstractManagedChannelImplBuilder
    */
   protected String checkAuthority(String authority) {
     return GrpcUtil.checkAuthority(authority);
-  }
-
-  @Override
-  public ManagedChannel build() {
-    return new ManagedChannelOrphanWrapper(new ManagedChannelImpl(
-        this,
-        buildTransportFactory(),
-        new ExponentialBackoffPolicy.Provider(),
-        SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR),
-        GrpcUtil.STOPWATCH_SUPPLIER,
-        getEffectiveInterceptors(),
-        TimeProvider.SYSTEM_TIME_PROVIDER));
   }
 
   // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know

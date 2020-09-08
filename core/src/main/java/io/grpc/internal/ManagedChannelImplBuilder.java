@@ -17,6 +17,7 @@
 package io.grpc.internal;
 
 import com.google.common.base.Preconditions;
+import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import java.net.SocketAddress;
 import java.util.concurrent.Executor;
@@ -36,6 +37,16 @@ public final class ManagedChannelImplBuilder
    */
   public interface ClientTransportFactoryBuilder {
     ClientTransportFactory buildClientTransportFactory();
+  }
+
+  /**
+   * TODO(sergiitk): javadoc.
+   */
+  public static class ClientTransportFactoryBuilderImpl implements ClientTransportFactoryBuilder {
+    @Override
+    public ClientTransportFactory buildClientTransportFactory() {
+      throw new UnsupportedOperationException();
+    }
   }
 
   /**
@@ -120,6 +131,18 @@ public final class ManagedChannelImplBuilder
   @Override
   protected int getDefaultPort() {
     return channelBuilderDefaultPortProvider.getDefaultPort();
+  }
+
+  @Override
+  public ManagedChannel build() {
+    return new ManagedChannelOrphanWrapper(new ManagedChannelImpl(
+        this,
+        buildTransportFactory(),
+        new ExponentialBackoffPolicy.Provider(),
+        SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR),
+        GrpcUtil.STOPWATCH_SUPPLIER,
+        getEffectiveInterceptors(),
+        TimeProvider.SYSTEM_TIME_PROVIDER));
   }
 
   /** Disable the check whether the authority is valid. */

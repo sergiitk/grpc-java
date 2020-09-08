@@ -35,6 +35,7 @@ import io.grpc.CompressorRegistry;
 import io.grpc.DecompressorRegistry;
 import io.grpc.MethodDescriptor;
 import io.grpc.NameResolver;
+import io.grpc.internal.ManagedChannelImplBuilder.ClientTransportFactoryBuilderImpl;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.URI;
@@ -51,9 +52,9 @@ import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Unit tests for {@link AbstractManagedChannelImplBuilder}. */
+/** Unit tests for {@link ManagedChannelImplBuilder}. */
 @RunWith(JUnit4.class)
-public class AbstractManagedChannelImplBuilderTest {
+public class ManagedChannelImplBuilderTest2 {
 
   @Rule
   public final ExpectedException thrown = ExpectedException.none();
@@ -67,8 +68,10 @@ public class AbstractManagedChannelImplBuilderTest {
         }
       };
 
-  private final Builder builder = new Builder("fake");
-  private final Builder directAddressBuilder = new Builder(new SocketAddress(){}, "fake");
+  private final ManagedChannelImplBuilder builder = new ManagedChannelImplBuilder("fake",
+      new ClientTransportFactoryBuilderImpl(), null);
+  private final ManagedChannelImplBuilder directAddressBuilder = new ManagedChannelImplBuilder(
+      new SocketAddress() {}, "fake", new ClientTransportFactoryBuilderImpl(), null);
 
   @Test
   public void executor_default() {
@@ -271,7 +274,7 @@ public class AbstractManagedChannelImplBuilderTest {
   public void makeTargetStringForDirectAddress_scopedIpv6() throws Exception {
     InetSocketAddress address = new InetSocketAddress("0:0:0:0:0:0:0:0%0", 10005);
     assertEquals("/0:0:0:0:0:0:0:0%0:10005", address.toString());
-    String target = AbstractManagedChannelImplBuilder.makeTargetStringForDirectAddress(address);
+    String target = ManagedChannelImplBuilder.makeTargetStringForDirectAddress(address);
     URI uri = new URI(target);
     assertEquals("directaddress:////0:0:0:0:0:0:0:0%250:10005", target);
     assertEquals(target, uri.toString());
@@ -322,13 +325,13 @@ public class AbstractManagedChannelImplBuilderTest {
 
   @Test
   public void idleTimeout() {
-    assertEquals(AbstractManagedChannelImplBuilder.IDLE_MODE_DEFAULT_TIMEOUT_MILLIS,
+    assertEquals(ManagedChannelImplBuilder.IDLE_MODE_DEFAULT_TIMEOUT_MILLIS,
         builder.getIdleTimeoutMillis());
 
     builder.idleTimeout(Long.MAX_VALUE, TimeUnit.DAYS);
     assertEquals(ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE, builder.getIdleTimeoutMillis());
 
-    builder.idleTimeout(AbstractManagedChannelImplBuilder.IDLE_MODE_MAX_TIMEOUT_DAYS,
+    builder.idleTimeout(ManagedChannelImplBuilder.IDLE_MODE_MAX_TIMEOUT_DAYS,
         TimeUnit.DAYS);
     assertEquals(ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE, builder.getIdleTimeoutMillis());
 
@@ -340,7 +343,7 @@ public class AbstractManagedChannelImplBuilderTest {
     }
 
     builder.idleTimeout(1, TimeUnit.NANOSECONDS);
-    assertEquals(AbstractManagedChannelImplBuilder.IDLE_MODE_MIN_TIMEOUT_MILLIS,
+    assertEquals(ManagedChannelImplBuilder.IDLE_MODE_MIN_TIMEOUT_MILLIS,
         builder.getIdleTimeoutMillis());
 
     builder.idleTimeout(30, TimeUnit.SECONDS);
@@ -463,20 +466,5 @@ public class AbstractManagedChannelImplBuilderTest {
 
     builder.disableServiceConfigLookUp();
     assertThat(builder.lookUpServiceConfig).isFalse();
-  }
-
-  static class Builder extends AbstractManagedChannelImplBuilder<Builder> {
-    Builder(String target) {
-      super(target);
-    }
-
-    Builder(SocketAddress directServerAddress, String authority) {
-      super(directServerAddress, authority);
-    }
-
-    @Override
-    protected ClientTransportFactory buildTransportFactory() {
-      throw new UnsupportedOperationException();
-    }
   }
 }
