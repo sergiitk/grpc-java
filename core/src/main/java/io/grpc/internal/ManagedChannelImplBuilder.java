@@ -16,11 +16,26 @@
 
 package io.grpc.internal;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.MoreExecutors;
+import io.grpc.BinaryLog;
+import io.grpc.ClientInterceptor;
+import io.grpc.CompressorRegistry;
+import io.grpc.DecompressorRegistry;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.NameResolver;
+import io.grpc.ProxyDetector;
 import java.net.SocketAddress;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 
 /**
@@ -145,6 +160,304 @@ public final class ManagedChannelImplBuilder
         TimeProvider.SYSTEM_TIME_PROVIDER));
   }
 
+  @Override
+  public ManagedChannelImplBuilder directExecutor() {
+    return executor(MoreExecutors.directExecutor());
+  }
+
+  @Override
+  public ManagedChannelImplBuilder executor(Executor executor) {
+    if (executor != null) {
+      this.executorPool = new FixedObjectPool<>(executor);
+    } else {
+      this.executorPool = DEFAULT_EXECUTOR_POOL;
+    }
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder offloadExecutor(Executor executor) {
+    if (executor != null) {
+      this.offloadExecutorPool = new FixedObjectPool<>(executor);
+    } else {
+      this.offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
+    }
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder intercept(List<ClientInterceptor> interceptors) {
+    this.interceptors.addAll(interceptors);
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder intercept(ClientInterceptor... interceptors) {
+    return intercept(Arrays.asList(interceptors));
+  }
+
+  @Override
+  public ManagedChannelImplBuilder userAgent(@Nullable String userAgent) {
+    this.userAgent = userAgent;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder overrideAuthority(String authority) {
+    this.authorityOverride = checkAuthority(authority);
+    return this;
+  }
+
+  @Deprecated
+  @Override
+  public ManagedChannelImplBuilder nameResolverFactory(NameResolver.Factory resolverFactory) {
+    Preconditions.checkState(directServerAddress == null,
+        "directServerAddress is set (%s), which forbids the use of NameResolverFactory",
+        directServerAddress);
+    if (resolverFactory != null) {
+      this.nameResolverFactory = resolverFactory;
+    } else {
+      this.nameResolverFactory = nameResolverRegistry.asFactory();
+    }
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder defaultLoadBalancingPolicy(String policy) {
+    Preconditions.checkState(directServerAddress == null,
+        "directServerAddress is set (%s), which forbids the use of load-balancing policy",
+        directServerAddress);
+    Preconditions.checkArgument(policy != null, "policy cannot be null");
+    this.defaultLbPolicy = policy;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder enableFullStreamDecompression() {
+    this.fullStreamDecompression = true;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder decompressorRegistry(DecompressorRegistry registry) {
+    if (registry != null) {
+      this.decompressorRegistry = registry;
+    } else {
+      this.decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
+    }
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder compressorRegistry(CompressorRegistry registry) {
+    if (registry != null) {
+      this.compressorRegistry = registry;
+    } else {
+      this.compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
+    }
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder idleTimeout(long value, TimeUnit unit) {
+    Preconditions.checkArgument(value > 0, "idle timeout is %s, but must be positive", value);
+    // We convert to the largest unit to avoid overflow
+    if (unit.toDays(value) >= IDLE_MODE_MAX_TIMEOUT_DAYS) {
+      // This disables idle mode
+      this.idleTimeoutMillis = ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE;
+    } else {
+      this.idleTimeoutMillis = Math.max(unit.toMillis(value), IDLE_MODE_MIN_TIMEOUT_MILLIS);
+    }
+    return this;
+  }
+
+  /**
+   * Sets the maximum message size allowed for a single gRPC frame. If an inbound messages
+   * larger than this limit is received it will not be processed and the RPC will fail with
+   * RESOURCE_EXHAUSTED.
+   */
+  @Override
+  public ManagedChannelImplBuilder maxInboundMessageSize(int max) {
+    Preconditions.checkArgument(max >= 0, "negative max");
+    maxInboundMessageSize = max;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder maxRetryAttempts(int maxRetryAttempts) {
+    this.maxRetryAttempts = maxRetryAttempts;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder maxHedgedAttempts(int maxHedgedAttempts) {
+    this.maxHedgedAttempts = maxHedgedAttempts;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder retryBufferSize(long bytes) {
+    Preconditions.checkArgument(bytes > 0L, "retry buffer size must be positive");
+    retryBufferSize = bytes;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder perRpcBufferLimit(long bytes) {
+    Preconditions.checkArgument(bytes > 0L, "per RPC buffer limit must be positive");
+    perRpcBufferLimit = bytes;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder disableRetry() {
+    retryEnabled = false;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder enableRetry() {
+    retryEnabled = true;
+    statsEnabled = false;
+    tracingEnabled = false;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder setBinaryLog(BinaryLog binlog) {
+    this.binlog = binlog;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder maxTraceEvents(int maxTraceEvents) {
+    Preconditions.checkArgument(maxTraceEvents >= 0, "maxTraceEvents must be non-negative");
+    this.maxTraceEvents = maxTraceEvents;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder proxyDetector(@Nullable ProxyDetector proxyDetector) {
+    this.proxyDetector = proxyDetector;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder defaultServiceConfig(@Nullable Map<String, ?> serviceConfig) {
+    // TODO(notcarl): use real parsing
+    defaultServiceConfig = checkMapEntryTypes(serviceConfig);
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder disableServiceConfigLookUp() {
+    this.lookUpServiceConfig = false;
+    return this;
+  }
+
+  @Nullable
+  private static Map<String, ?> checkMapEntryTypes(@Nullable Map<?, ?> map) {
+    if (map == null) {
+      return null;
+    }
+    // Not using ImmutableMap.Builder because of extra guava dependency for Android.
+    Map<String, Object> parsedMap = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> entry : map.entrySet()) {
+      Preconditions.checkArgument(
+          entry.getKey() instanceof String,
+          "The key of the entry '%s' is not of String type", entry);
+
+      String key = (String) entry.getKey();
+      Object value = entry.getValue();
+      if (value == null) {
+        parsedMap.put(key, null);
+      } else if (value instanceof Map) {
+        parsedMap.put(key, checkMapEntryTypes((Map<?, ?>) value));
+      } else if (value instanceof List) {
+        parsedMap.put(key, checkListEntryTypes((List<?>) value));
+      } else if (value instanceof String) {
+        parsedMap.put(key, value);
+      } else if (value instanceof Double) {
+        parsedMap.put(key, value);
+      } else if (value instanceof Boolean) {
+        parsedMap.put(key, value);
+      } else {
+        throw new IllegalArgumentException(
+            "The value of the map entry '" + entry + "' is of type '" + value.getClass()
+                + "', which is not supported");
+      }
+    }
+    return Collections.unmodifiableMap(parsedMap);
+  }
+
+  private static List<?> checkListEntryTypes(List<?> list) {
+    List<Object> parsedList = new ArrayList<>(list.size());
+    for (Object value : list) {
+      if (value == null) {
+        parsedList.add(null);
+      } else if (value instanceof Map) {
+        parsedList.add(checkMapEntryTypes((Map<?, ?>) value));
+      } else if (value instanceof List) {
+        parsedList.add(checkListEntryTypes((List<?>) value));
+      } else if (value instanceof String) {
+        parsedList.add(value);
+      } else if (value instanceof Double) {
+        parsedList.add(value);
+      } else if (value instanceof Boolean) {
+        parsedList.add(value);
+      } else {
+        throw new IllegalArgumentException(
+            "The entry '" + value + "' is of type '" + value.getClass()
+                + "', which is not supported");
+      }
+    }
+    return Collections.unmodifiableList(parsedList);
+  }
+
+  /**
+   * Disable or enable stats features. Enabled by default.
+   *
+   * <p>For the current release, calling {@code setStatsEnabled(true)} may have a side effect that
+   * disables retry.
+   */
+  public void setStatsEnabled(boolean value) {
+    statsEnabled = value;
+  }
+
+  /**
+   * Disable or enable stats recording for RPC upstarts.  Effective only if {@link
+   * #setStatsEnabled} is set to true.  Enabled by default.
+   */
+  public void setStatsRecordStartedRpcs(boolean value) {
+    recordStartedRpcs = value;
+  }
+
+  /**
+   * Disable or enable stats recording for RPC completions.  Effective only if {@link
+   * #setStatsEnabled} is set to true.  Enabled by default.
+   */
+  public void setStatsRecordFinishedRpcs(boolean value) {
+    recordFinishedRpcs = value;
+  }
+
+  /**
+   * Disable or enable real-time metrics recording.  Effective only if {@link #setStatsEnabled} is
+   * set to true.  Disabled by default.
+   */
+  public void setStatsRecordRealTimeMetrics(boolean value) {
+    recordRealTimeMetrics = value;
+  }
+
+  /**
+   * Disable or enable tracing features.  Enabled by default.
+   *
+   * <p>For the current release, calling {@code setTracingEnabled(true)} may have a side effect that
+   * disables retry.
+   */
+  public void setTracingEnabled(boolean value) {
+    tracingEnabled = value;
+  }
+
   /** Disable the check whether the authority is valid. */
   public ManagedChannelImplBuilder disableCheckAuthority() {
     authorityCheckerDisabled = true;
@@ -157,37 +470,20 @@ public final class ManagedChannelImplBuilder
     return this;
   }
 
-  @Override
-  protected String checkAuthority(String authority) {
+  @VisibleForTesting
+  final long getIdleTimeoutMillis() {
+    return idleTimeoutMillis;
+  }
+
+  /**
+   * Verifies the authority is valid.
+   */
+  @VisibleForTesting
+  String checkAuthority(String authority) {
     if (authorityCheckerDisabled) {
       return authority;
     }
-    return super.checkAuthority(authority);
-  }
-
-  @Override
-  public void setStatsEnabled(boolean value) {
-    super.setStatsEnabled(value);
-  }
-
-  @Override
-  public void setStatsRecordStartedRpcs(boolean value) {
-    super.setStatsRecordStartedRpcs(value);
-  }
-
-  @Override
-  public void setStatsRecordFinishedRpcs(boolean value) {
-    super.setStatsRecordFinishedRpcs(value);
-  }
-
-  @Override
-  public void setStatsRecordRealTimeMetrics(boolean value) {
-    super.setStatsRecordRealTimeMetrics(value);
-  }
-
-  @Override
-  public void setTracingEnabled(boolean value) {
-    super.setTracingEnabled(value);
+    return GrpcUtil.checkAuthority(authority);
   }
 
   @Override
