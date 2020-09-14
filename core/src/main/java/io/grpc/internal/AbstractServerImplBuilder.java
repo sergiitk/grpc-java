@@ -16,13 +16,10 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.util.concurrent.MoreExecutors;
 import io.grpc.BinaryLog;
-import io.grpc.BindableService;
 import io.grpc.CompressorRegistry;
 import io.grpc.Deadline;
 import io.grpc.DecompressorRegistry;
@@ -60,113 +57,36 @@ public abstract class AbstractServerImplBuilder<T extends AbstractServerImplBuil
   }
 
   // defaults
-  private static final ObjectPool<? extends Executor> DEFAULT_EXECUTOR_POOL =
+  protected static final ObjectPool<? extends Executor> DEFAULT_EXECUTOR_POOL =
       SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR);
-  private static final HandlerRegistry DEFAULT_FALLBACK_REGISTRY = new DefaultFallbackRegistry();
-  private static final DecompressorRegistry DEFAULT_DECOMPRESSOR_REGISTRY =
+  protected static final HandlerRegistry DEFAULT_FALLBACK_REGISTRY = new DefaultFallbackRegistry();
+  protected static final DecompressorRegistry DEFAULT_DECOMPRESSOR_REGISTRY =
       DecompressorRegistry.getDefaultInstance();
-  private static final CompressorRegistry DEFAULT_COMPRESSOR_REGISTRY =
+  protected static final CompressorRegistry DEFAULT_COMPRESSOR_REGISTRY =
       CompressorRegistry.getDefaultInstance();
-  private static final long DEFAULT_HANDSHAKE_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(120);
+  protected static final long DEFAULT_HANDSHAKE_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(120);
 
   // mutable state
   final InternalHandlerRegistry.Builder registryBuilder =
       new InternalHandlerRegistry.Builder();
   final List<ServerTransportFilter> transportFilters = new ArrayList<>();
   final List<ServerInterceptor> interceptors = new ArrayList<>();
-  private final List<ServerStreamTracer.Factory> streamTracerFactories = new ArrayList<>();
+  protected final List<ServerStreamTracer.Factory> streamTracerFactories = new ArrayList<>();
   HandlerRegistry fallbackRegistry = DEFAULT_FALLBACK_REGISTRY;
   ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
   DecompressorRegistry decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
   CompressorRegistry compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
   long handshakeTimeoutMillis = DEFAULT_HANDSHAKE_TIMEOUT_MILLIS;
   Deadline.Ticker ticker = Deadline.getSystemTicker();
-  private boolean statsEnabled = true;
-  private boolean recordStartedRpcs = true;
-  private boolean recordFinishedRpcs = true;
-  private boolean recordRealTimeMetrics = false;
-  private boolean tracingEnabled = true;
+  protected boolean statsEnabled = true;
+  protected boolean recordStartedRpcs = true;
+  protected boolean recordFinishedRpcs = true;
+  protected boolean recordRealTimeMetrics = false;
+  protected boolean tracingEnabled = true;
   @Nullable BinaryLog binlog;
   TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
   InternalChannelz channelz = InternalChannelz.instance();
   CallTracer.Factory callTracerFactory = CallTracer.getDefaultFactory();
-
-  @Override
-  public final T directExecutor() {
-    return executor(MoreExecutors.directExecutor());
-  }
-
-  @Override
-  public final T executor(@Nullable Executor executor) {
-    this.executorPool = executor != null ? new FixedObjectPool<>(executor) : DEFAULT_EXECUTOR_POOL;
-    return thisT();
-  }
-
-  @Override
-  public final T addService(ServerServiceDefinition service) {
-    registryBuilder.addService(checkNotNull(service, "service"));
-    return thisT();
-  }
-
-  @Override
-  public final T addService(BindableService bindableService) {
-    return addService(checkNotNull(bindableService, "bindableService").bindService());
-  }
-
-  @Override
-  public final T addTransportFilter(ServerTransportFilter filter) {
-    transportFilters.add(checkNotNull(filter, "filter"));
-    return thisT();
-  }
-
-  @Override
-  public final T intercept(ServerInterceptor interceptor) {
-    interceptors.add(checkNotNull(interceptor, "interceptor"));
-    return thisT();
-  }
-
-  @Override
-  public final T addStreamTracerFactory(ServerStreamTracer.Factory factory) {
-    streamTracerFactories.add(checkNotNull(factory, "factory"));
-    return thisT();
-  }
-
-  @Override
-  public final T fallbackHandlerRegistry(@Nullable HandlerRegistry registry) {
-    this.fallbackRegistry = registry != null ? registry : DEFAULT_FALLBACK_REGISTRY;
-    return thisT();
-  }
-
-  @Override
-  public final T decompressorRegistry(@Nullable DecompressorRegistry registry) {
-    this.decompressorRegistry = registry != null ? registry : DEFAULT_DECOMPRESSOR_REGISTRY;
-    return thisT();
-  }
-
-  @Override
-  public final T compressorRegistry(@Nullable CompressorRegistry registry) {
-    this.compressorRegistry = registry != null ? registry : DEFAULT_COMPRESSOR_REGISTRY;
-    return thisT();
-  }
-
-  @Override
-  public final T handshakeTimeout(long timeout, TimeUnit unit) {
-    checkArgument(timeout > 0, "handshake timeout is %s, but must be positive", timeout);
-    this.handshakeTimeoutMillis = checkNotNull(unit, "unit").toMillis(timeout);
-    return thisT();
-  }
-
-  @Override
-  public final T setBinaryLog(@Nullable BinaryLog binaryLog) {
-    this.binlog = binaryLog;
-    return thisT();
-  }
-
-  @VisibleForTesting
-  public final T setTransportTracerFactory(TransportTracer.Factory transportTracerFactory) {
-    this.transportTracerFactory = transportTracerFactory;
-    return thisT();
-  }
 
   /**
    * Disable or enable stats features.  Enabled by default.
@@ -293,12 +213,6 @@ public abstract class AbstractServerImplBuilder<T extends AbstractServerImplBuil
    */
   protected abstract List<? extends io.grpc.internal.InternalServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories);
-
-  private T thisT() {
-    @SuppressWarnings("unchecked")
-    T thisT = (T) this;
-    return thisT;
-  }
 
   private static final class DefaultFallbackRegistry extends HandlerRegistry {
     @Override

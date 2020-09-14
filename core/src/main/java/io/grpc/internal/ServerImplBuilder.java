@@ -16,16 +16,31 @@
 
 package io.grpc.internal;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.MoreExecutors;
+import io.grpc.BinaryLog;
+import io.grpc.BindableService;
+import io.grpc.CompressorRegistry;
 import io.grpc.Context;
 import io.grpc.Deadline;
+import io.grpc.DecompressorRegistry;
+import io.grpc.HandlerRegistry;
 import io.grpc.InternalChannelz;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.ServerInterceptor;
+import io.grpc.ServerServiceDefinition;
 import io.grpc.ServerStreamTracer;
+import io.grpc.ServerTransportFilter;
 import java.io.File;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 
 /**
  * Default builder for {@link io.grpc.Server} instances, for usage in Transport implementations.
@@ -51,7 +66,7 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   }
 
   @Override
-  public final Server build() {
+  public Server build() {
     return new ServerImpl(this, buildTransportServers(getTracerFactories()), Context.ROOT);
   }
 
@@ -59,6 +74,84 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   protected List<? extends InternalServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
     return clientTransportServersBuilder.buildClientTransportServers(streamTracerFactories);
+  }
+
+  @Override
+  public ServerImplBuilder directExecutor() {
+    return executor(MoreExecutors.directExecutor());
+  }
+
+  @Override
+  public ServerImplBuilder executor(@Nullable Executor executor) {
+    this.executorPool = executor != null ? new FixedObjectPool<>(executor) : DEFAULT_EXECUTOR_POOL;
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder addService(ServerServiceDefinition service) {
+    registryBuilder.addService(checkNotNull(service, "service"));
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder addService(BindableService bindableService) {
+    return addService(checkNotNull(bindableService, "bindableService").bindService());
+  }
+
+  @Override
+  public ServerImplBuilder addTransportFilter(ServerTransportFilter filter) {
+    transportFilters.add(checkNotNull(filter, "filter"));
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder intercept(ServerInterceptor interceptor) {
+    interceptors.add(checkNotNull(interceptor, "interceptor"));
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder addStreamTracerFactory(ServerStreamTracer.Factory factory) {
+    streamTracerFactories.add(checkNotNull(factory, "factory"));
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder fallbackHandlerRegistry(@Nullable HandlerRegistry registry) {
+    this.fallbackRegistry = registry != null ? registry : DEFAULT_FALLBACK_REGISTRY;
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder decompressorRegistry(@Nullable DecompressorRegistry registry) {
+    this.decompressorRegistry = registry != null ? registry : DEFAULT_DECOMPRESSOR_REGISTRY;
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder compressorRegistry(@Nullable CompressorRegistry registry) {
+    this.compressorRegistry = registry != null ? registry : DEFAULT_COMPRESSOR_REGISTRY;
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder handshakeTimeout(long timeout, TimeUnit unit) {
+    checkArgument(timeout > 0, "handshake timeout is %s, but must be positive", timeout);
+    this.handshakeTimeoutMillis = checkNotNull(unit, "unit").toMillis(timeout);
+    return this;
+  }
+
+  @Override
+  public ServerImplBuilder setBinaryLog(@Nullable BinaryLog binaryLog) {
+    this.binlog = binaryLog;
+    return this;
+  }
+
+  @VisibleForTesting
+  public ServerImplBuilder setTransportTracerFactory(
+      TransportTracer.Factory transportTracerFactory) {
+    this.transportTracerFactory = transportTracerFactory;
+    return this;
   }
 
   @Override
@@ -107,6 +200,7 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   }
 
   public static ServerBuilder<?> forPort(int port) {
-    throw new UnsupportedOperationException("ClientTransportServersBuilder is required");
+    throw new UnsupportedOperationException(
+        "ClientTransportServersBuilder is required, use a constructor");
   }
 }
