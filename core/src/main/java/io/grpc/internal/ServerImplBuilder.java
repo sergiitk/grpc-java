@@ -17,8 +17,10 @@
 package io.grpc.internal;
 
 import com.google.common.base.Preconditions;
+import io.grpc.Context;
 import io.grpc.Deadline;
 import io.grpc.InternalChannelz;
+import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerStreamTracer;
 import java.io.File;
@@ -46,6 +48,11 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   public ServerImplBuilder(ClientTransportServersBuilder clientTransportServersBuilder) {
     this.clientTransportServersBuilder = Preconditions
         .checkNotNull(clientTransportServersBuilder, "clientTransportServersBuilder");
+  }
+
+  @Override
+  public final Server build() {
+    return new ServerImpl(this, buildTransportServers(getTracerFactories()), Context.ROOT);
   }
 
   @Override

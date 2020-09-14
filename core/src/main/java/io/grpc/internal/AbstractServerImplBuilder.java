@@ -24,12 +24,10 @@ import com.google.common.util.concurrent.MoreExecutors;
 import io.grpc.BinaryLog;
 import io.grpc.BindableService;
 import io.grpc.CompressorRegistry;
-import io.grpc.Context;
 import io.grpc.Deadline;
 import io.grpc.DecompressorRegistry;
 import io.grpc.HandlerRegistry;
 import io.grpc.InternalChannelz;
-import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerInterceptor;
 import io.grpc.ServerMethodDefinition;
@@ -213,11 +211,6 @@ public abstract class AbstractServerImplBuilder<T extends AbstractServerImplBuil
    */
   protected void setDeadlineTicker(Deadline.Ticker ticker) {
     this.ticker = checkNotNull(ticker, "ticker");
-  }
-
-  @Override
-  public final Server build() {
-    return new ServerImpl(this, buildTransportServers(getTracerFactories()), Context.ROOT);
   }
 
   @VisibleForTesting

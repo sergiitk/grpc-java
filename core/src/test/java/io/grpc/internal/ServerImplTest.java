@@ -76,12 +76,12 @@ import io.grpc.ServiceDescriptor;
 import io.grpc.Status;
 import io.grpc.StringMarshaller;
 import io.grpc.internal.ServerImpl.JumpToApplicationThreadServerStreamListener;
+import io.grpc.internal.ServerImplBuilder.ClientTransportServersBuilder;
 import io.grpc.internal.testing.SingleMessageProducer;
 import io.grpc.internal.testing.TestServerStreamTracer;
 import io.grpc.util.MutableHandlerRegistry;
 import io.perfmark.PerfMark;
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
@@ -112,7 +112,8 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 /** Unit tests for {@link ServerImpl}. */
 @RunWith(JUnit4.class)
@@ -139,6 +140,7 @@ public class ServerImplTest {
       };
   private static final String AUTHORITY = "some_authority";
 
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   @Rule public final ExpectedException thrown = ExpectedException.none();
 
   @BeforeClass
@@ -162,9 +164,9 @@ public class ServerImplTest {
         return newCtx.withValue(SERVER_TRACER_ADDED_KEY, "context added by tracer");
       }
     };
-  @Mock
-  private ObjectPool<Executor> executorPool;
-  private Builder builder = new Builder();
+  @Mock private ObjectPool<Executor> executorPool;
+  @Mock private ClientTransportServersBuilder mockClientTransportServersBuilder;
+  private ServerImplBuilder builder;
   private MutableHandlerRegistry mutableFallbackRegistry = new MutableHandlerRegistry();
   private HandlerRegistry fallbackRegistry = mock(
       HandlerRegistry.class,
@@ -200,7 +202,7 @@ public class ServerImplTest {
   /** Set up for test. */
   @Before
   public void startUp() throws IOException {
-    MockitoAnnotations.initMocks(this);
+    builder = new ServerImplBuilder(mockClientTransportServersBuilder);
     builder.channelz = channelz;
     builder.ticker = timer.getDeadlineTicker();
     streamTracerFactories = Arrays.asList(streamTracerFactory);
@@ -1504,17 +1506,6 @@ public class ServerImplTest {
       SettableFuture<SocketStats> ret = SettableFuture.create();
       ret.set(null);
       return ret;
-    }
-  }
-
-  private static class Builder extends AbstractServerImplBuilder<Builder> {
-    @Override protected List<InternalServer> buildTransportServers(
-        List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override public Builder useTransportSecurity(File f1, File f2)  {
-      throw new UnsupportedOperationException();
     }
   }
 
