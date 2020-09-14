@@ -215,9 +215,9 @@ public final class ManagedChannelImplBuilder
   @Override
   public ManagedChannelImplBuilder executor(Executor executor) {
     if (executor != null) {
-      this.executorPool = new FixedObjectPool<>(executor);
+      executorPool = new FixedObjectPool<>(executor);
     } else {
-      this.executorPool = DEFAULT_EXECUTOR_POOL;
+      executorPool = DEFAULT_EXECUTOR_POOL;
     }
     return this;
   }
@@ -225,9 +225,9 @@ public final class ManagedChannelImplBuilder
   @Override
   public ManagedChannelImplBuilder offloadExecutor(Executor executor) {
     if (executor != null) {
-      this.offloadExecutorPool = new FixedObjectPool<>(executor);
+      offloadExecutorPool = new FixedObjectPool<>(executor);
     } else {
-      this.offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
+      offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
     }
     return this;
   }
@@ -320,7 +320,7 @@ public final class ManagedChannelImplBuilder
 
   @Override
   public ManagedChannelImplBuilder overrideAuthority(String authority) {
-    this.authorityOverride = checkAuthority(authority);
+    authorityOverride = checkAuthority(authority);
     return this;
   }
 
@@ -337,9 +337,9 @@ public final class ManagedChannelImplBuilder
         "directServerAddress is set (%s), which forbids the use of NameResolverFactory",
         directServerAddress);
     if (resolverFactory != null) {
-      this.nameResolverFactory = resolverFactory;
+      nameResolverFactory = resolverFactory;
     } else {
-      this.nameResolverFactory = nameResolverRegistry.asFactory();
+      nameResolverFactory = nameResolverRegistry.asFactory();
     }
     return this;
   }
@@ -361,22 +361,22 @@ public final class ManagedChannelImplBuilder
         "directServerAddress is set (%s), which forbids the use of load-balancing policy",
         directServerAddress);
     Preconditions.checkArgument(policy != null, "policy cannot be null");
-    this.defaultLbPolicy = policy;
+    defaultLbPolicy = policy;
     return this;
   }
 
   @Override
   public ManagedChannelImplBuilder enableFullStreamDecompression() {
-    this.fullStreamDecompression = true;
+    fullStreamDecompression = true;
     return this;
   }
 
   @Override
   public ManagedChannelImplBuilder decompressorRegistry(DecompressorRegistry registry) {
     if (registry != null) {
-      this.decompressorRegistry = registry;
+      decompressorRegistry = registry;
     } else {
-      this.decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
+      decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
     }
     return this;
   }
@@ -384,9 +384,9 @@ public final class ManagedChannelImplBuilder
   @Override
   public ManagedChannelImplBuilder compressorRegistry(CompressorRegistry registry) {
     if (registry != null) {
-      this.compressorRegistry = registry;
+      compressorRegistry = registry;
     } else {
-      this.compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
+      compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
     }
     return this;
   }
@@ -397,9 +397,9 @@ public final class ManagedChannelImplBuilder
     // We convert to the largest unit to avoid overflow
     if (unit.toDays(value) >= IDLE_MODE_MAX_TIMEOUT_DAYS) {
       // This disables idle mode
-      this.idleTimeoutMillis = ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE;
+      idleTimeoutMillis = ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE;
     } else {
-      this.idleTimeoutMillis = Math.max(unit.toMillis(value), IDLE_MODE_MIN_TIMEOUT_MILLIS);
+      idleTimeoutMillis = Math.max(unit.toMillis(value), IDLE_MODE_MIN_TIMEOUT_MILLIS);
     }
     return this;
   }
@@ -472,7 +472,7 @@ public final class ManagedChannelImplBuilder
 
   @Override
   public ManagedChannelImplBuilder disableServiceConfigLookUp() {
-    this.lookUpServiceConfig = false;
+    lookUpServiceConfig = false;
     return this;
   }
 
@@ -606,7 +606,7 @@ public final class ManagedChannelImplBuilder
    * Returns the internal offload executor pool for offloading tasks.
    */
   public ObjectPool<? extends Executor> getOffloadExecutorPool() {
-    return this.offloadExecutorPool;
+    return offloadExecutorPool;
   }
 
   public static ManagedChannelBuilder<?> forAddress(String name, int port) {
