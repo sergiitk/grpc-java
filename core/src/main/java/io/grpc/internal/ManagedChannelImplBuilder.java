@@ -77,15 +77,12 @@ public final class ManagedChannelImplBuilder
   static final long IDLE_MODE_DEFAULT_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(30);
 
   final String target;
-  @Nullable
-  private final SocketAddress directServerAddress;
+  @Nullable private final SocketAddress directServerAddress;
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
   private final List<ClientInterceptor> interceptors = new ArrayList<>();
 
-  @VisibleForTesting
-  @Nullable
-  String authorityOverride;
+  @Nullable private String authorityOverride;
   private boolean authorityCheckerDisabled;
   private boolean statsEnabled = true;
   private boolean recordStartedRpcs = true;
@@ -108,25 +105,22 @@ public final class ManagedChannelImplBuilder
   long retryBufferSize = DEFAULT_RETRY_BUFFER_SIZE_IN_BYTES;
   long perRpcBufferLimit = DEFAULT_PER_RPC_BUFFER_LIMIT_IN_BYTES;
   boolean retryEnabled = false; // TODO(zdapeng): default to true
-
-  long idleTimeoutMillis = IDLE_MODE_DEFAULT_TIMEOUT_MILLIS;
-  @Nullable
-  String userAgent;
-  String defaultLbPolicy = GrpcUtil.DEFAULT_LB_POLICY;
-  boolean fullStreamDecompression;
   // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
   // what should be the desired behavior for retry + stats/tracing.
   // TODO(zdapeng): delete me
   boolean temporarilyDisableRetry;
+
+  long idleTimeoutMillis = IDLE_MODE_DEFAULT_TIMEOUT_MILLIS;
+  @Nullable String userAgent;
+  String defaultLbPolicy = GrpcUtil.DEFAULT_LB_POLICY;
+  boolean fullStreamDecompression;
+
   int maxTraceEvents;
   InternalChannelz channelz = InternalChannelz.instance();
-  @Nullable
-  Map<String, ?> defaultServiceConfig;
+  @Nullable Map<String, ?> defaultServiceConfig;
   boolean lookUpServiceConfig = true;
-  @Nullable
-  BinaryLog binlog;
-  @Nullable
-  ProxyDetector proxyDetector;
+  @Nullable BinaryLog binlog;
+  @Nullable ProxyDetector proxyDetector;
 
   /**
    * Creates a new managed channel builder with a target string, which can be either a valid {@link
@@ -329,6 +323,12 @@ public final class ManagedChannelImplBuilder
   public ManagedChannelImplBuilder overrideAuthority(String authority) {
     this.authorityOverride = checkAuthority(authority);
     return this;
+  }
+
+  @Nullable
+  @VisibleForTesting
+  String getOverrideAuthority() {
+    return authorityOverride;
   }
 
   @Deprecated

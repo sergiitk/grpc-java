@@ -302,14 +302,14 @@ public class ManagedChannelImplBuilderTest {
 
   @Test
   public void overrideAuthority_default() {
-    assertNull(builder.authorityOverride);
+    assertNull(builder.getOverrideAuthority());
   }
 
   @Test
   public void overrideAuthority_normal() {
     String overrideAuthority = "best-authority";
     assertEquals(builder, builder.overrideAuthority(overrideAuthority));
-    assertEquals(overrideAuthority, builder.authorityOverride);
+    assertEquals(overrideAuthority, builder.getOverrideAuthority());
   }
 
   @Test(expected = NullPointerException.class)
@@ -324,7 +324,7 @@ public class ManagedChannelImplBuilderTest {
 
   @Test
   public void overrideAuthority_getNameResolverFactory() {
-    assertNull(builder.authorityOverride);
+    assertNull(builder.getOverrideAuthority());
     assertFalse(builder.getNameResolverFactory() instanceof OverrideAuthorityNameResolverFactory);
     builder.overrideAuthority("google.com");
     assertTrue(builder.getNameResolverFactory() instanceof OverrideAuthorityNameResolverFactory);
