@@ -16,22 +16,7 @@
 
 package io.grpc.internal;
 
-import com.google.common.annotations.VisibleForTesting;
-import io.grpc.BinaryLog;
-import io.grpc.ClientInterceptor;
-import io.grpc.CompressorRegistry;
-import io.grpc.DecompressorRegistry;
-import io.grpc.InternalChannelz;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.NameResolver;
-import io.grpc.NameResolverRegistry;
-import io.grpc.ProxyDetector;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
 
 /**
  * Abstract base class for channel builders.
@@ -47,91 +32,4 @@ public abstract class AbstractManagedChannelImplBuilder
   public static ManagedChannelBuilder<?> forTarget(String target) {
     throw new UnsupportedOperationException("Subclass failed to hide static factory");
   }
-
-  /**
-   * An idle timeout larger than this would disable idle mode.
-   */
-  @VisibleForTesting
-  static final long IDLE_MODE_MAX_TIMEOUT_DAYS = 30;
-
-  /**
-   * The default idle timeout.
-   */
-  @VisibleForTesting
-  static final long IDLE_MODE_DEFAULT_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(30);
-
-  /**
-   * An idle timeout smaller than this would be capped to it.
-   */
-  static final long IDLE_MODE_MIN_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(1);
-
-  protected static final ObjectPool<? extends Executor> DEFAULT_EXECUTOR_POOL =
-      SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR);
-
-  protected static final DecompressorRegistry DEFAULT_DECOMPRESSOR_REGISTRY =
-      DecompressorRegistry.getDefaultInstance();
-
-  protected static final CompressorRegistry DEFAULT_COMPRESSOR_REGISTRY =
-      CompressorRegistry.getDefaultInstance();
-
-  private static final long DEFAULT_RETRY_BUFFER_SIZE_IN_BYTES = 1L << 24;  // 16M
-  private static final long DEFAULT_PER_RPC_BUFFER_LIMIT_IN_BYTES = 1L << 20; // 1M
-
-  ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
-
-  ObjectPool<? extends Executor> offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
-
-  protected final List<ClientInterceptor> interceptors = new ArrayList<>();
-  final NameResolverRegistry nameResolverRegistry = NameResolverRegistry.getDefaultRegistry();
-
-  // Access via getter, which may perform authority override as needed
-  protected NameResolver.Factory nameResolverFactory = nameResolverRegistry.asFactory();
-
-  @Nullable
-  String userAgent;
-
-  @VisibleForTesting
-  @Nullable
-  String authorityOverride;
-
-  String defaultLbPolicy = GrpcUtil.DEFAULT_LB_POLICY;
-
-  boolean fullStreamDecompression;
-
-  DecompressorRegistry decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
-
-  CompressorRegistry compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
-
-  long idleTimeoutMillis = IDLE_MODE_DEFAULT_TIMEOUT_MILLIS;
-
-  int maxRetryAttempts = 5;
-  int maxHedgedAttempts = 5;
-  long retryBufferSize = DEFAULT_RETRY_BUFFER_SIZE_IN_BYTES;
-  long perRpcBufferLimit = DEFAULT_PER_RPC_BUFFER_LIMIT_IN_BYTES;
-  boolean retryEnabled = false; // TODO(zdapeng): default to true
-  // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
-  // what should be the desired behavior for retry + stats/tracing.
-  // TODO(zdapeng): delete me
-  boolean temporarilyDisableRetry;
-
-  InternalChannelz channelz = InternalChannelz.instance();
-  int maxTraceEvents;
-
-  @Nullable
-  Map<String, ?> defaultServiceConfig;
-  boolean lookUpServiceConfig = true;
-
-  protected int maxInboundMessageSize = GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE;
-
-  @Nullable
-  BinaryLog binlog;
-
-  @Nullable
-  ProxyDetector proxyDetector;
-
-  protected boolean statsEnabled = true;
-  protected boolean recordStartedRpcs = true;
-  protected boolean recordFinishedRpcs = true;
-  protected boolean recordRealTimeMetrics = false;
-  protected boolean tracingEnabled = true;
 }

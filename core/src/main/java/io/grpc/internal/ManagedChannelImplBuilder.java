@@ -25,9 +25,11 @@ import io.grpc.ClientInterceptor;
 import io.grpc.CompressorRegistry;
 import io.grpc.DecompressorRegistry;
 import io.grpc.EquivalentAddressGroup;
+import io.grpc.InternalChannelz;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.NameResolver;
+import io.grpc.NameResolverRegistry;
 import io.grpc.ProxyDetector;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -51,77 +53,80 @@ import javax.annotation.Nullable;
  */
 public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
-
-  /**
-   * An interface for Transport implementors to provide the {@link ClientTransportFactory}
-   * appropriate for the channel.
-   */
-  public interface ClientTransportFactoryBuilder {
-    ClientTransportFactory buildClientTransportFactory();
-  }
-
-  /**
-   * TODO(sergiitk): javadoc.
-   */
-  public static class ClientTransportFactoryBuilderImpl implements ClientTransportFactoryBuilder {
-    @Override
-    public ClientTransportFactory buildClientTransportFactory() {
-      throw new UnsupportedOperationException();
-    }
-  }
-
-  /**
-   * An interface for Transport implementors to provide a default port to {@link
-   * io.grpc.NameResolver} for use in cases where the target string doesn't include a port. The
-   * default implementation returns {@link GrpcUtil#DEFAULT_PORT_SSL}.
-   */
-  public interface ChannelBuilderDefaultPortProvider {
-    int getDefaultPort();
-  }
-
-  /**
-   * Default implementation of {@link ChannelBuilderDefaultPortProvider} that returns a fixed port.
-   */
-  public static final class FixedPortProvider implements ChannelBuilderDefaultPortProvider {
-    private final int port;
-
-    public FixedPortProvider(int port) {
-      this.port = port;
-    }
-
-    @Override
-    public int getDefaultPort() {
-      return port;
-    }
-  }
-
-  private static final class ManagedChannelDefaultPortProvider implements
-      ChannelBuilderDefaultPortProvider {
-    @Override
-    public int getDefaultPort() {
-      return GrpcUtil.DEFAULT_PORT_SSL;
-    }
-  }
-
-  private static final String DIRECT_ADDRESS_SCHEME = "directaddress";
   private static final Logger log = Logger.getLogger(ManagedChannelImplBuilder.class.getName());
+  private static final String DIRECT_ADDRESS_SCHEME = "directaddress";
+  private static final long DEFAULT_RETRY_BUFFER_SIZE_IN_BYTES = 1L << 24;  // 16M
+  private static final long DEFAULT_PER_RPC_BUFFER_LIMIT_IN_BYTES = 1L << 20; // 1Ms
+
+  private static final ObjectPool<? extends Executor> DEFAULT_EXECUTOR_POOL =
+      SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR);
+  private static final DecompressorRegistry DEFAULT_DECOMPRESSOR_REGISTRY =
+      DecompressorRegistry.getDefaultInstance();
+  private static final CompressorRegistry DEFAULT_COMPRESSOR_REGISTRY =
+      CompressorRegistry.getDefaultInstance();
+
+
+  /**  An idle timeout smaller than this would be capped to it. */
+  static final long IDLE_MODE_MIN_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(1);
+
+  /** An idle timeout larger than this would disable idle mode. */
+  @VisibleForTesting static final long IDLE_MODE_MAX_TIMEOUT_DAYS = 30;
+
+  /** The default idle timeout. */
+  @VisibleForTesting
+  static final long IDLE_MODE_DEFAULT_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(30);
 
   final String target;
   @Nullable
   private final SocketAddress directServerAddress;
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
+  private final List<ClientInterceptor> interceptors = new ArrayList<>();
+
+  @VisibleForTesting
+  @Nullable
+  String authorityOverride;
   private boolean authorityCheckerDisabled;
+  private boolean statsEnabled = true;
+  private boolean recordStartedRpcs = true;
+  private boolean recordFinishedRpcs = true;
+  private boolean recordRealTimeMetrics = false;
+  private boolean tracingEnabled = true;
 
-  public static ManagedChannelBuilder<?> forAddress(String name, int port) {
-    throw new UnsupportedOperationException(
-        "ClientTransportFactoryBuilder is required, use a constructor");
-  }
+  ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
+  ObjectPool<? extends Executor> offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
 
-  public static ManagedChannelBuilder<?> forTarget(String target) {
-    throw new UnsupportedOperationException(
-        "ClientTransportFactoryBuilder is required, use a constructor");
-  }
+  DecompressorRegistry decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
+  CompressorRegistry compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
+
+  final NameResolverRegistry nameResolverRegistry = NameResolverRegistry.getDefaultRegistry();
+  // Access via getter, which may perform authority override as needed
+  NameResolver.Factory nameResolverFactory = nameResolverRegistry.asFactory();
+
+  int maxRetryAttempts = 5;
+  int maxHedgedAttempts = 5;
+  long retryBufferSize = DEFAULT_RETRY_BUFFER_SIZE_IN_BYTES;
+  long perRpcBufferLimit = DEFAULT_PER_RPC_BUFFER_LIMIT_IN_BYTES;
+  boolean retryEnabled = false; // TODO(zdapeng): default to true
+
+  long idleTimeoutMillis = IDLE_MODE_DEFAULT_TIMEOUT_MILLIS;
+  @Nullable
+  String userAgent;
+  String defaultLbPolicy = GrpcUtil.DEFAULT_LB_POLICY;
+  boolean fullStreamDecompression;
+  // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
+  // what should be the desired behavior for retry + stats/tracing.
+  // TODO(zdapeng): delete me
+  boolean temporarilyDisableRetry;
+  int maxTraceEvents;
+  InternalChannelz channelz = InternalChannelz.instance();
+  @Nullable
+  Map<String, ?> defaultServiceConfig;
+  boolean lookUpServiceConfig = true;
+  @Nullable
+  BinaryLog binlog;
+  @Nullable
+  ProxyDetector proxyDetector;
 
   /**
    * Creates a new managed channel builder with a target string, which can be either a valid {@link
@@ -316,18 +321,6 @@ public final class ManagedChannelImplBuilder
     } else {
       this.idleTimeoutMillis = Math.max(unit.toMillis(value), IDLE_MODE_MIN_TIMEOUT_MILLIS);
     }
-    return this;
-  }
-
-  /**
-   * Sets the maximum message size allowed for a single gRPC frame. If an inbound messages larger
-   * than this limit is received it will not be processed and the RPC will fail with
-   * RESOURCE_EXHAUSTED.
-   */
-  @Override
-  public ManagedChannelImplBuilder maxInboundMessageSize(int max) {
-    Preconditions.checkArgument(max >= 0, "negative max");
-    maxInboundMessageSize = max;
     return this;
   }
 
@@ -619,6 +612,67 @@ public final class ManagedChannelImplBuilder
       }
     }
     return effectiveInterceptors;
+  }
+
+  public static ManagedChannelBuilder<?> forAddress(String name, int port) {
+    throw new UnsupportedOperationException(
+        "ClientTransportFactoryBuilder is required, use a constructor");
+  }
+
+  public static ManagedChannelBuilder<?> forTarget(String target) {
+    throw new UnsupportedOperationException(
+        "ClientTransportFactoryBuilder is required, use a constructor");
+  }
+
+  /**
+   * An interface for Transport implementors to provide the {@link ClientTransportFactory}
+   * appropriate for the channel.
+   */
+  public interface ClientTransportFactoryBuilder {
+    ClientTransportFactory buildClientTransportFactory();
+  }
+
+  /**
+   * TODO(sergiitk): javadoc.
+   */
+  public static class ClientTransportFactoryBuilderImpl implements ClientTransportFactoryBuilder {
+    @Override
+    public ClientTransportFactory buildClientTransportFactory() {
+      throw new UnsupportedOperationException();
+    }
+  }
+
+  /**
+   * An interface for Transport implementors to provide a default port to {@link
+   * io.grpc.NameResolver} for use in cases where the target string doesn't include a port. The
+   * default implementation returns {@link GrpcUtil#DEFAULT_PORT_SSL}.
+   */
+  public interface ChannelBuilderDefaultPortProvider {
+    int getDefaultPort();
+  }
+
+  /**
+   * Default implementation of {@link ChannelBuilderDefaultPortProvider} that returns a fixed port.
+   */
+  public static final class FixedPortProvider implements ChannelBuilderDefaultPortProvider {
+    private final int port;
+
+    public FixedPortProvider(int port) {
+      this.port = port;
+    }
+
+    @Override
+    public int getDefaultPort() {
+      return port;
+    }
+  }
+
+  private static final class ManagedChannelDefaultPortProvider implements
+      ChannelBuilderDefaultPortProvider {
+    @Override
+    public int getDefaultPort() {
+      return GrpcUtil.DEFAULT_PORT_SSL;
+    }
   }
 
   private static class DirectAddressNameResolverFactory extends NameResolver.Factory {
