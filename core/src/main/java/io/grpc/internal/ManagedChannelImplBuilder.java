@@ -90,7 +90,7 @@ public final class ManagedChannelImplBuilder
   private boolean recordRealTimeMetrics = false;
   private boolean tracingEnabled = true;
 
-  // Package-private properties below used to build ManagedChannelImpl.
+  // Package-private properties below are accessed directly to build ManagedChannelImpl.
   final String target;
   ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
   ObjectPool<? extends Executor> offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
