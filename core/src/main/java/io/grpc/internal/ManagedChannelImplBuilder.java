@@ -52,7 +52,7 @@ import javax.annotation.Nullable;
  * Default managed channel builder, for usage in Transport implementations.
  */
 public final class ManagedChannelImplBuilder
-    extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
+    extends ManagedChannelBuilder<ManagedChannelImplBuilder> {
   private static final Logger log = Logger.getLogger(ManagedChannelImplBuilder.class.getName());
   private static final String DIRECT_ADDRESS_SCHEME = "directaddress";
   private static final long DEFAULT_RETRY_BUFFER_SIZE_IN_BYTES = 1L << 24;  // 16M
