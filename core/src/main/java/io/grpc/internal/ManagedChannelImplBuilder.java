@@ -70,13 +70,13 @@ public final class ManagedChannelImplBuilder
   static final long IDLE_MODE_MIN_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(1);
 
   /** An idle timeout larger than this would disable idle mode. */
-  @VisibleForTesting static final long IDLE_MODE_MAX_TIMEOUT_DAYS = 30;
+  @VisibleForTesting
+  static final long IDLE_MODE_MAX_TIMEOUT_DAYS = 30;
 
   /** The default idle timeout. */
   @VisibleForTesting
   static final long IDLE_MODE_DEFAULT_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(30);
 
-  final String target;
   @Nullable private final SocketAddress directServerAddress;
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
@@ -90,6 +90,8 @@ public final class ManagedChannelImplBuilder
   private boolean recordRealTimeMetrics = false;
   private boolean tracingEnabled = true;
 
+  // Package-private properties below used to build ManagedChannelImpl.
+  final String target;
   ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
   ObjectPool<? extends Executor> offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
 
@@ -98,7 +100,7 @@ public final class ManagedChannelImplBuilder
 
   final NameResolverRegistry nameResolverRegistry = NameResolverRegistry.getDefaultRegistry();
   // Access via getter, which may perform authority override as needed
-  NameResolver.Factory nameResolverFactory = nameResolverRegistry.asFactory();
+  private NameResolver.Factory nameResolverFactory = nameResolverRegistry.asFactory();
 
   int maxRetryAttempts = 5;
   int maxHedgedAttempts = 5;
@@ -107,14 +109,11 @@ public final class ManagedChannelImplBuilder
   boolean retryEnabled = false; // TODO(zdapeng): default to true
   // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
   // what should be the desired behavior for retry + stats/tracing.
-  // TODO(zdapeng): delete me
-  boolean temporarilyDisableRetry;
-
+  boolean temporarilyDisableRetry; // TODO(zdapeng): delete me
   long idleTimeoutMillis = IDLE_MODE_DEFAULT_TIMEOUT_MILLIS;
   @Nullable String userAgent;
   String defaultLbPolicy = GrpcUtil.DEFAULT_LB_POLICY;
   boolean fullStreamDecompression;
-
   int maxTraceEvents;
   InternalChannelz channelz = InternalChannelz.instance();
   @Nullable Map<String, ?> defaultServiceConfig;
@@ -403,11 +402,6 @@ public final class ManagedChannelImplBuilder
       this.idleTimeoutMillis = Math.max(unit.toMillis(value), IDLE_MODE_MIN_TIMEOUT_MILLIS);
     }
     return this;
-  }
-
-  @VisibleForTesting
-  long getIdleTimeoutMillis() {
-    return idleTimeoutMillis;
   }
 
   @Override

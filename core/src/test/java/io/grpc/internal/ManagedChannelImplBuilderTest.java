@@ -426,14 +426,14 @@ public class ManagedChannelImplBuilderTest {
   @Test
   public void idleTimeout() {
     assertEquals(ManagedChannelImplBuilder.IDLE_MODE_DEFAULT_TIMEOUT_MILLIS,
-        builder.getIdleTimeoutMillis());
+        builder.idleTimeoutMillis);
 
     builder.idleTimeout(Long.MAX_VALUE, TimeUnit.DAYS);
-    assertEquals(ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE, builder.getIdleTimeoutMillis());
+    assertEquals(ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE, builder.idleTimeoutMillis);
 
     builder.idleTimeout(ManagedChannelImplBuilder.IDLE_MODE_MAX_TIMEOUT_DAYS,
         TimeUnit.DAYS);
-    assertEquals(ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE, builder.getIdleTimeoutMillis());
+    assertEquals(ManagedChannelImpl.IDLE_TIMEOUT_MILLIS_DISABLE, builder.idleTimeoutMillis);
 
     try {
       builder.idleTimeout(0, TimeUnit.SECONDS);
@@ -444,10 +444,10 @@ public class ManagedChannelImplBuilderTest {
 
     builder.idleTimeout(1, TimeUnit.NANOSECONDS);
     assertEquals(ManagedChannelImplBuilder.IDLE_MODE_MIN_TIMEOUT_MILLIS,
-        builder.getIdleTimeoutMillis());
+        builder.idleTimeoutMillis);
 
     builder.idleTimeout(30, TimeUnit.SECONDS);
-    assertEquals(TimeUnit.SECONDS.toMillis(30), builder.getIdleTimeoutMillis());
+    assertEquals(TimeUnit.SECONDS.toMillis(30), builder.idleTimeoutMillis);
   }
 
   @Test
