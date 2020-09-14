@@ -19,15 +19,21 @@ package io.grpc.internal;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.MoreExecutors;
+import io.grpc.Attributes;
 import io.grpc.BinaryLog;
 import io.grpc.ClientInterceptor;
 import io.grpc.CompressorRegistry;
 import io.grpc.DecompressorRegistry;
+import io.grpc.EquivalentAddressGroup;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.NameResolver;
 import io.grpc.ProxyDetector;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.SocketAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -36,6 +42,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.annotation.Nullable;
 
 /**
@@ -43,8 +51,6 @@ import javax.annotation.Nullable;
  */
 public final class ManagedChannelImplBuilder
     extends AbstractManagedChannelImplBuilder<ManagedChannelImplBuilder> {
-
-  private boolean authorityCheckerDisabled;
 
   /**
    * An interface for Transport implementors to provide the {@link ClientTransportFactory}
@@ -89,16 +95,33 @@ public final class ManagedChannelImplBuilder
     }
   }
 
-  private final class ManagedChannelDefaultPortProvider implements
+  private static final class ManagedChannelDefaultPortProvider implements
       ChannelBuilderDefaultPortProvider {
     @Override
     public int getDefaultPort() {
-      return ManagedChannelImplBuilder.super.getDefaultPort();
+      return GrpcUtil.DEFAULT_PORT_SSL;
     }
   }
 
+  private static final String DIRECT_ADDRESS_SCHEME = "directaddress";
+  private static final Logger log = Logger.getLogger(ManagedChannelImplBuilder.class.getName());
+
+  final String target;
+  @Nullable
+  private final SocketAddress directServerAddress;
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
+  private boolean authorityCheckerDisabled;
+
+  public static ManagedChannelBuilder<?> forAddress(String name, int port) {
+    throw new UnsupportedOperationException(
+        "ClientTransportFactoryBuilder is required, use a constructor");
+  }
+
+  public static ManagedChannelBuilder<?> forTarget(String target) {
+    throw new UnsupportedOperationException(
+        "ClientTransportFactoryBuilder is required, use a constructor");
+  }
 
   /**
    * Creates a new managed channel builder with a target string, which can be either a valid {@link
@@ -108,9 +131,10 @@ public final class ManagedChannelImplBuilder
   public ManagedChannelImplBuilder(String target,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
-    super(target);
+    this.target = Preconditions.checkNotNull(target, "target");
     this.clientTransportFactoryBuilder = Preconditions
         .checkNotNull(clientTransportFactoryBuilder, "clientTransportFactoryBuilder");
+    this.directServerAddress = null;
 
     if (channelBuilderDefaultPortProvider != null) {
       this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
@@ -127,9 +151,11 @@ public final class ManagedChannelImplBuilder
   public ManagedChannelImplBuilder(SocketAddress directServerAddress, String authority,
       ClientTransportFactoryBuilder clientTransportFactoryBuilder,
       @Nullable ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider) {
-    super(directServerAddress, authority);
+    this.target = makeTargetStringForDirectAddress(directServerAddress);
     this.clientTransportFactoryBuilder = Preconditions
         .checkNotNull(clientTransportFactoryBuilder, "clientTransportFactoryBuilder");
+    this.directServerAddress = directServerAddress;
+    this.nameResolverFactory = new DirectAddressNameResolverFactory(directServerAddress, authority);
 
     if (channelBuilderDefaultPortProvider != null) {
       this.channelBuilderDefaultPortProvider = channelBuilderDefaultPortProvider;
@@ -138,13 +164,35 @@ public final class ManagedChannelImplBuilder
     }
   }
 
-  @Override
-  protected ClientTransportFactory buildTransportFactory() {
+  /**
+   * Returns a target string for the SocketAddress. It is only used as a placeholder, because
+   * DirectAddressNameResolverFactory will not actually try to use it. However, it must be a valid
+   * URI.
+   */
+  @VisibleForTesting
+  static String makeTargetStringForDirectAddress(SocketAddress address) {
+    try {
+      return new URI(DIRECT_ADDRESS_SCHEME, "", "/" + address, null).toString();
+    } catch (URISyntaxException e) {
+      // It should not happen.
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Transport implementors must provide {@link ClientTransportFactoryBuilder} that returns {@link
+   * ClientTransportFactory} appropriate the channel. This method is meant for Transport
+   * implementors and should not be used by normal users.
+   */
+  ClientTransportFactory buildTransportFactory() {
     return clientTransportFactoryBuilder.buildClientTransportFactory();
   }
 
-  @Override
-  protected int getDefaultPort() {
+  /**
+   * Returns a default port to {@link NameResolver} for use in cases where the target string doesn't
+   * include a port. The default implementation returns {@link GrpcUtil#DEFAULT_PORT_SSL}.
+   */
+  int getDefaultPort() {
     return channelBuilderDefaultPortProvider.getDefaultPort();
   }
 
@@ -272,8 +320,8 @@ public final class ManagedChannelImplBuilder
   }
 
   /**
-   * Sets the maximum message size allowed for a single gRPC frame. If an inbound messages
-   * larger than this limit is received it will not be processed and the RPC will fail with
+   * Sets the maximum message size allowed for a single gRPC frame. If an inbound messages larger
+   * than this limit is received it will not be processed and the RPC will fail with
    * RESOURCE_EXHAUSTED.
    */
   @Override
@@ -425,8 +473,8 @@ public final class ManagedChannelImplBuilder
   }
 
   /**
-   * Disable or enable stats recording for RPC upstarts.  Effective only if {@link
-   * #setStatsEnabled} is set to true.  Enabled by default.
+   * Disable or enable stats recording for RPC upstarts.  Effective only if {@link #setStatsEnabled}
+   * is set to true.  Enabled by default.
    */
   public void setStatsRecordStartedRpcs(boolean value) {
     recordStartedRpcs = value;
@@ -451,8 +499,8 @@ public final class ManagedChannelImplBuilder
   /**
    * Disable or enable tracing features.  Enabled by default.
    *
-   * <p>For the current release, calling {@code setTracingEnabled(true)} may have a side effect that
-   * disables retry.
+   * <p>For the current release, calling {@code setTracingEnabled(true)} may have a side effect
+   * that disables retry.
    */
   public void setTracingEnabled(boolean value) {
     tracingEnabled = value;
@@ -486,16 +534,127 @@ public final class ManagedChannelImplBuilder
     return GrpcUtil.checkAuthority(authority);
   }
 
-  @Override
+  /**
+   * Returns the internal offload executor pool for offloading tasks.
+   */
   public ObjectPool<? extends Executor> getOffloadExecutorPool() {
-    return super.getOffloadExecutorPool();
+    return this.offloadExecutorPool;
   }
 
-  public static ManagedChannelBuilder<?> forAddress(String name, int port) {
-    throw new UnsupportedOperationException("ClientTransportFactoryBuilder is required");
+  /**
+   * Returns a {@link NameResolver.Factory} for the channel.
+   */
+  NameResolver.Factory getNameResolverFactory() {
+    if (authorityOverride == null) {
+      return nameResolverFactory;
+    } else {
+      return new OverrideAuthorityNameResolverFactory(nameResolverFactory, authorityOverride);
+    }
   }
 
-  public static ManagedChannelBuilder<?> forTarget(String target) {
-    throw new UnsupportedOperationException("ClientTransportFactoryBuilder is required");
+  // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
+  // what should be the desired behavior for retry + stats/tracing.
+  // TODO(zdapeng): FIX IT
+  @VisibleForTesting
+  final List<ClientInterceptor> getEffectiveInterceptors() {
+    List<ClientInterceptor> effectiveInterceptors =
+        new ArrayList<>(this.interceptors);
+    temporarilyDisableRetry = false;
+    if (statsEnabled) {
+      temporarilyDisableRetry = true;
+      ClientInterceptor statsInterceptor = null;
+      try {
+        Class<?> censusStatsAccessor =
+            Class.forName("io.grpc.census.InternalCensusStatsAccessor");
+        Method getClientInterceptorMethod =
+            censusStatsAccessor.getDeclaredMethod(
+                "getClientInterceptor",
+                boolean.class,
+                boolean.class,
+                boolean.class);
+        statsInterceptor =
+            (ClientInterceptor) getClientInterceptorMethod
+                .invoke(
+                    null,
+                    recordStartedRpcs,
+                    recordFinishedRpcs,
+                    recordRealTimeMetrics);
+      } catch (ClassNotFoundException e) {
+        // Replace these separate catch statements with multicatch when Android min-API >= 19
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (NoSuchMethodException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (IllegalAccessException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (InvocationTargetException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      }
+      if (statsInterceptor != null) {
+        // First interceptor runs last (see ClientInterceptors.intercept()), so that no
+        // other interceptor can override the tracer factory we set in CallOptions.
+        effectiveInterceptors.add(0, statsInterceptor);
+      }
+    }
+    if (tracingEnabled) {
+      temporarilyDisableRetry = true;
+      ClientInterceptor tracingInterceptor = null;
+      try {
+        Class<?> censusTracingAccessor =
+            Class.forName("io.grpc.census.InternalCensusTracingAccessor");
+        Method getClientInterceptroMethod =
+            censusTracingAccessor.getDeclaredMethod("getClientInterceptor");
+        tracingInterceptor = (ClientInterceptor) getClientInterceptroMethod.invoke(null);
+      } catch (ClassNotFoundException e) {
+        // Replace these separate catch statements with multicatch when Android min-API >= 19
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (NoSuchMethodException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (IllegalAccessException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (InvocationTargetException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      }
+      if (tracingInterceptor != null) {
+        effectiveInterceptors.add(0, tracingInterceptor);
+      }
+    }
+    return effectiveInterceptors;
+  }
+
+  private static class DirectAddressNameResolverFactory extends NameResolver.Factory {
+    final SocketAddress address;
+    final String authority;
+
+    DirectAddressNameResolverFactory(SocketAddress address, String authority) {
+      this.address = address;
+      this.authority = authority;
+    }
+
+    @Override
+    public NameResolver newNameResolver(URI notUsedUri, NameResolver.Args args) {
+      return new NameResolver() {
+        @Override
+        public String getServiceAuthority() {
+          return authority;
+        }
+
+        @Override
+        public void start(Listener2 listener) {
+          listener.onResult(
+              ResolutionResult.newBuilder()
+                  .setAddresses(Collections.singletonList(new EquivalentAddressGroup(address)))
+                  .setAttributes(Attributes.EMPTY)
+                  .build());
+        }
+
+        @Override
+        public void shutdown() {}
+      };
+    }
+
+    @Override
+    public String getDefaultScheme() {
+      return DIRECT_ADDRESS_SCHEME;
+    }
   }
 }
