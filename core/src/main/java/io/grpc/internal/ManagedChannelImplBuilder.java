@@ -189,6 +189,7 @@ public final class ManagedChannelImplBuilder
    * ClientTransportFactory} appropriate the channel. This method is meant for Transport
    * implementors and should not be used by normal users.
    */
+  @VisibleForTesting
   ClientTransportFactory buildTransportFactory() {
     return clientTransportFactoryBuilder.buildClientTransportFactory();
   }
@@ -249,6 +250,75 @@ public final class ManagedChannelImplBuilder
     return intercept(Arrays.asList(interceptors));
   }
 
+  // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
+  // what should be the desired behavior for retry + stats/tracing.
+  // TODO(zdapeng): FIX IT
+  @VisibleForTesting
+  List<ClientInterceptor> getEffectiveInterceptors() {
+    List<ClientInterceptor> effectiveInterceptors =
+        new ArrayList<>(this.interceptors);
+    temporarilyDisableRetry = false;
+    if (statsEnabled) {
+      temporarilyDisableRetry = true;
+      ClientInterceptor statsInterceptor = null;
+      try {
+        Class<?> censusStatsAccessor =
+            Class.forName("io.grpc.census.InternalCensusStatsAccessor");
+        Method getClientInterceptorMethod =
+            censusStatsAccessor.getDeclaredMethod(
+                "getClientInterceptor",
+                boolean.class,
+                boolean.class,
+                boolean.class);
+        statsInterceptor =
+            (ClientInterceptor) getClientInterceptorMethod
+                .invoke(
+                    null,
+                    recordStartedRpcs,
+                    recordFinishedRpcs,
+                    recordRealTimeMetrics);
+      } catch (ClassNotFoundException e) {
+        // Replace these separate catch statements with multicatch when Android min-API >= 19
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (NoSuchMethodException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (IllegalAccessException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (InvocationTargetException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      }
+      if (statsInterceptor != null) {
+        // First interceptor runs last (see ClientInterceptors.intercept()), so that no
+        // other interceptor can override the tracer factory we set in CallOptions.
+        effectiveInterceptors.add(0, statsInterceptor);
+      }
+    }
+    if (tracingEnabled) {
+      temporarilyDisableRetry = true;
+      ClientInterceptor tracingInterceptor = null;
+      try {
+        Class<?> censusTracingAccessor =
+            Class.forName("io.grpc.census.InternalCensusTracingAccessor");
+        Method getClientInterceptroMethod =
+            censusTracingAccessor.getDeclaredMethod("getClientInterceptor");
+        tracingInterceptor = (ClientInterceptor) getClientInterceptroMethod.invoke(null);
+      } catch (ClassNotFoundException e) {
+        // Replace these separate catch statements with multicatch when Android min-API >= 19
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (NoSuchMethodException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (IllegalAccessException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (InvocationTargetException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      }
+      if (tracingInterceptor != null) {
+        effectiveInterceptors.add(0, tracingInterceptor);
+      }
+    }
+    return effectiveInterceptors;
+  }
+
   @Override
   public ManagedChannelImplBuilder userAgent(@Nullable String userAgent) {
     this.userAgent = userAgent;
@@ -273,6 +343,17 @@ public final class ManagedChannelImplBuilder
       this.nameResolverFactory = nameResolverRegistry.asFactory();
     }
     return this;
+  }
+
+  /**
+   * Returns a {@link NameResolver.Factory} for the channel.
+   */
+  NameResolver.Factory getNameResolverFactory() {
+    if (authorityOverride == null) {
+      return nameResolverFactory;
+    } else {
+      return new OverrideAuthorityNameResolverFactory(nameResolverFactory, authorityOverride);
+    }
   }
 
   @Override
@@ -322,6 +403,11 @@ public final class ManagedChannelImplBuilder
       this.idleTimeoutMillis = Math.max(unit.toMillis(value), IDLE_MODE_MIN_TIMEOUT_MILLIS);
     }
     return this;
+  }
+
+  @VisibleForTesting
+  long getIdleTimeoutMillis() {
+    return idleTimeoutMillis;
   }
 
   @Override
@@ -511,11 +597,6 @@ public final class ManagedChannelImplBuilder
     return this;
   }
 
-  @VisibleForTesting
-  final long getIdleTimeoutMillis() {
-    return idleTimeoutMillis;
-  }
-
   /**
    * Verifies the authority is valid.
    */
@@ -532,86 +613,6 @@ public final class ManagedChannelImplBuilder
    */
   public ObjectPool<? extends Executor> getOffloadExecutorPool() {
     return this.offloadExecutorPool;
-  }
-
-  /**
-   * Returns a {@link NameResolver.Factory} for the channel.
-   */
-  NameResolver.Factory getNameResolverFactory() {
-    if (authorityOverride == null) {
-      return nameResolverFactory;
-    } else {
-      return new OverrideAuthorityNameResolverFactory(nameResolverFactory, authorityOverride);
-    }
-  }
-
-  // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
-  // what should be the desired behavior for retry + stats/tracing.
-  // TODO(zdapeng): FIX IT
-  @VisibleForTesting
-  final List<ClientInterceptor> getEffectiveInterceptors() {
-    List<ClientInterceptor> effectiveInterceptors =
-        new ArrayList<>(this.interceptors);
-    temporarilyDisableRetry = false;
-    if (statsEnabled) {
-      temporarilyDisableRetry = true;
-      ClientInterceptor statsInterceptor = null;
-      try {
-        Class<?> censusStatsAccessor =
-            Class.forName("io.grpc.census.InternalCensusStatsAccessor");
-        Method getClientInterceptorMethod =
-            censusStatsAccessor.getDeclaredMethod(
-                "getClientInterceptor",
-                boolean.class,
-                boolean.class,
-                boolean.class);
-        statsInterceptor =
-            (ClientInterceptor) getClientInterceptorMethod
-                .invoke(
-                    null,
-                    recordStartedRpcs,
-                    recordFinishedRpcs,
-                    recordRealTimeMetrics);
-      } catch (ClassNotFoundException e) {
-        // Replace these separate catch statements with multicatch when Android min-API >= 19
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (NoSuchMethodException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (IllegalAccessException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (InvocationTargetException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      }
-      if (statsInterceptor != null) {
-        // First interceptor runs last (see ClientInterceptors.intercept()), so that no
-        // other interceptor can override the tracer factory we set in CallOptions.
-        effectiveInterceptors.add(0, statsInterceptor);
-      }
-    }
-    if (tracingEnabled) {
-      temporarilyDisableRetry = true;
-      ClientInterceptor tracingInterceptor = null;
-      try {
-        Class<?> censusTracingAccessor =
-            Class.forName("io.grpc.census.InternalCensusTracingAccessor");
-        Method getClientInterceptroMethod =
-            censusTracingAccessor.getDeclaredMethod("getClientInterceptor");
-        tracingInterceptor = (ClientInterceptor) getClientInterceptroMethod.invoke(null);
-      } catch (ClassNotFoundException e) {
-        // Replace these separate catch statements with multicatch when Android min-API >= 19
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (NoSuchMethodException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (IllegalAccessException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (InvocationTargetException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      }
-      if (tracingInterceptor != null) {
-        effectiveInterceptors.add(0, tracingInterceptor);
-      }
-    }
-    return effectiveInterceptors;
   }
 
   public static ManagedChannelBuilder<?> forAddress(String name, int port) {
