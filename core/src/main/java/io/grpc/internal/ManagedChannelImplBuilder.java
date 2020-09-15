@@ -53,80 +53,39 @@ import javax.annotation.Nullable;
  */
 public final class ManagedChannelImplBuilder
     extends ManagedChannelBuilder<ManagedChannelImplBuilder> {
+  private static final Logger log = Logger.getLogger(ManagedChannelImplBuilder.class.getName());
   private static final String DIRECT_ADDRESS_SCHEME = "directaddress";
-
-  private static final Logger log =
-      Logger.getLogger(ManagedChannelImplBuilder.class.getName());
-
-  public static ManagedChannelBuilder<?> forAddress(String name, int port) {
-    throw new UnsupportedOperationException(
-        "ClientTransportFactoryBuilder is required, use a constructor");
-  }
-
-  public static ManagedChannelBuilder<?> forTarget(String target) {
-    throw new UnsupportedOperationException(
-        "ClientTransportFactoryBuilder is required, use a constructor");
-  }
-
-  /**
-   * An idle timeout larger than this would disable idle mode.
-   */
-  @VisibleForTesting
-  static final long IDLE_MODE_MAX_TIMEOUT_DAYS = 30;
-
-  /**
-   * The default idle timeout.
-   */
-  @VisibleForTesting
-  static final long IDLE_MODE_DEFAULT_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(30);
-
-  /**
-   * An idle timeout smaller than this would be capped to it.
-   */
-  static final long IDLE_MODE_MIN_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(1);
-
+  private static final long DEFAULT_RETRY_BUFFER_SIZE_IN_BYTES = 1L << 24;  // 16M
+  private static final long DEFAULT_PER_RPC_BUFFER_LIMIT_IN_BYTES = 1L << 20; // 1Ms
   private static final ObjectPool<? extends Executor> DEFAULT_EXECUTOR_POOL =
       SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR);
-
   private static final DecompressorRegistry DEFAULT_DECOMPRESSOR_REGISTRY =
       DecompressorRegistry.getDefaultInstance();
-
   private static final CompressorRegistry DEFAULT_COMPRESSOR_REGISTRY =
       CompressorRegistry.getDefaultInstance();
 
-  private static final long DEFAULT_RETRY_BUFFER_SIZE_IN_BYTES = 1L << 24;  // 16M
-  private static final long DEFAULT_PER_RPC_BUFFER_LIMIT_IN_BYTES = 1L << 20; // 1M
+  /** An idle timeout larger than this would disable idle mode. */
+  @VisibleForTesting
+  static final long IDLE_MODE_MAX_TIMEOUT_DAYS = 30;
 
-  ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
+  /** The default idle timeout. */
+  @VisibleForTesting
+  static final long IDLE_MODE_DEFAULT_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(30);
 
-  ObjectPool<? extends Executor> offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
+  /**  An idle timeout smaller than this would be capped to it. */
+  static final long IDLE_MODE_MIN_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(1);
 
-  private final List<ClientInterceptor> interceptors = new ArrayList<>();
-  final NameResolverRegistry nameResolverRegistry = NameResolverRegistry.getDefaultRegistry();
-
-  // Access via getter, which may perform authority override as needed
-  private NameResolver.Factory nameResolverFactory = nameResolverRegistry.asFactory();
-
+  // Package-private properties, accessed directly to build ManagedChannelImpl.
   final String target;
-
-  @Nullable
-  private final SocketAddress directServerAddress;
-
-  @Nullable
-  String userAgent;
-
-  @Nullable
-  private String authorityOverride;
-
-  String defaultLbPolicy = GrpcUtil.DEFAULT_LB_POLICY;
-
+  ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
+  ObjectPool<? extends Executor> offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
+  DecompressorRegistry decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
+  CompressorRegistry compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
   boolean fullStreamDecompression;
 
-  DecompressorRegistry decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
-
-  CompressorRegistry compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
-
-  long idleTimeoutMillis = IDLE_MODE_DEFAULT_TIMEOUT_MILLIS;
+  final NameResolverRegistry nameResolverRegistry = NameResolverRegistry.getDefaultRegistry();
+  // Access via getter, which may perform authority override as needed
+  private NameResolver.Factory nameResolverFactory = nameResolverRegistry.asFactory();
 
   int maxRetryAttempts = 5;
   int maxHedgedAttempts = 5;
@@ -135,81 +94,30 @@ public final class ManagedChannelImplBuilder
   boolean retryEnabled = false; // TODO(zdapeng): default to true
   // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
   // what should be the desired behavior for retry + stats/tracing.
-  // TODO(zdapeng): delete me
-  boolean temporarilyDisableRetry;
+  boolean temporarilyDisableRetry; // TODO(zdapeng): delete me
 
   InternalChannelz channelz = InternalChannelz.instance();
-  int maxTraceEvents;
-
-  @Nullable
-  Map<String, ?> defaultServiceConfig;
+  @Nullable Map<String, ?> defaultServiceConfig;
   boolean lookUpServiceConfig = true;
+  String defaultLbPolicy = GrpcUtil.DEFAULT_LB_POLICY;
+  long idleTimeoutMillis = IDLE_MODE_DEFAULT_TIMEOUT_MILLIS;
+  int maxTraceEvents;
+  @Nullable String userAgent;
+  @Nullable BinaryLog binlog;
+  @Nullable ProxyDetector proxyDetector;
 
-  @Nullable
-  BinaryLog binlog;
-
-  @Nullable
-  ProxyDetector proxyDetector;
-
+  // Private mutable state.
   private boolean authorityCheckerDisabled;
   private boolean statsEnabled = true;
   private boolean recordStartedRpcs = true;
   private boolean recordFinishedRpcs = true;
   private boolean recordRealTimeMetrics = false;
   private boolean tracingEnabled = true;
+  @Nullable private String authorityOverride;
+  private final List<ClientInterceptor> interceptors = new ArrayList<>();
 
-  /**
-   * An interface for Transport implementors to provide the {@link ClientTransportFactory}
-   * appropriate for the channel.
-   */
-  public interface ClientTransportFactoryBuilder {
-    ClientTransportFactory buildClientTransportFactory();
-  }
-
-  /**
-   * Convenience ClientTransportFactoryBuilder, throws UnsupportedOperationException().
-   */
-  public static class UnsupportedClientTransportFactoryBuilder implements
-      ClientTransportFactoryBuilder {
-    @Override
-    public ClientTransportFactory buildClientTransportFactory() {
-      throw new UnsupportedOperationException();
-    }
-  }
-
-  /**
-   * An interface for Transport implementors to provide a default port to {@link
-   * io.grpc.NameResolver} for use in cases where the target string doesn't include a port. The
-   * default implementation returns {@link GrpcUtil#DEFAULT_PORT_SSL}.
-   */
-  public interface ChannelBuilderDefaultPortProvider {
-    int getDefaultPort();
-  }
-
-  /**
-   * Default implementation of {@link ChannelBuilderDefaultPortProvider} that returns a fixed port.
-   */
-  public static final class FixedPortProvider implements ChannelBuilderDefaultPortProvider {
-    private final int port;
-
-    public FixedPortProvider(int port) {
-      this.port = port;
-    }
-
-    @Override
-    public int getDefaultPort() {
-      return port;
-    }
-  }
-
-  private static final class ManagedChannelDefaultPortProvider implements
-      ChannelBuilderDefaultPortProvider {
-    @Override
-    public int getDefaultPort() {
-      return GrpcUtil.DEFAULT_PORT_SSL;
-    }
-  }
-
+  // Private immutable.
+  @Nullable private final SocketAddress directServerAddress;
   private final ClientTransportFactoryBuilder clientTransportFactoryBuilder;
   private final ChannelBuilderDefaultPortProvider channelBuilderDefaultPortProvider;
 
@@ -234,21 +142,6 @@ public final class ManagedChannelImplBuilder
   }
 
   /**
-   * Returns a target string for the SocketAddress. It is only used as a placeholder, because
-   * DirectAddressNameResolverFactory will not actually try to use it. However, it must be a valid
-   * URI.
-   */
-  @VisibleForTesting
-  static String makeTargetStringForDirectAddress(SocketAddress address) {
-    try {
-      return new URI(DIRECT_ADDRESS_SCHEME, "", "/" + address, null).toString();
-    } catch (URISyntaxException e) {
-      // It should not happen.
-      throw new RuntimeException(e);
-    }
-  }
-
-  /**
    * Creates a new managed channel builder with the given server address, authority string of the
    * channel. Transport implementors must provide client transport factory builder, and may set
    * custom channel default port provider.
@@ -267,6 +160,51 @@ public final class ManagedChannelImplBuilder
     } else {
       this.channelBuilderDefaultPortProvider = new ManagedChannelDefaultPortProvider();
     }
+  }
+
+  /**
+   * Returns a target string for the SocketAddress. It is only used as a placeholder, because
+   * DirectAddressNameResolverFactory will not actually try to use it. However, it must be a valid
+   * URI.
+   */
+  @VisibleForTesting
+  static String makeTargetStringForDirectAddress(SocketAddress address) {
+    try {
+      return new URI(DIRECT_ADDRESS_SCHEME, "", "/" + address, null).toString();
+    } catch (URISyntaxException e) {
+      // It should not happen.
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Transport implementors must provide {@link ClientTransportFactoryBuilder} that returns {@link
+   * ClientTransportFactory} appropriate the channel. This method is meant for Transport
+   * implementors and should not be used by normal users.
+   */
+  @VisibleForTesting
+  ClientTransportFactory buildTransportFactory() {
+    return clientTransportFactoryBuilder.buildClientTransportFactory();
+  }
+
+  /**
+   * Returns a default port to {@link NameResolver} for use in cases where the target string doesn't
+   * include a port. The default implementation returns {@link GrpcUtil#DEFAULT_PORT_SSL}.
+   */
+  int getDefaultPort() {
+    return channelBuilderDefaultPortProvider.getDefaultPort();
+  }
+
+  @Override
+  public ManagedChannel build() {
+    return new ManagedChannelOrphanWrapper(new ManagedChannelImpl(
+        this,
+        buildTransportFactory(),
+        new ExponentialBackoffPolicy.Provider(),
+        SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR),
+        GrpcUtil.STOPWATCH_SUPPLIER,
+        getEffectiveInterceptors(),
+        TimeProvider.SYSTEM_TIME_PROVIDER));
   }
 
   @Override
@@ -305,6 +243,93 @@ public final class ManagedChannelImplBuilder
     return intercept(Arrays.asList(interceptors));
   }
 
+  // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
+  // what should be the desired behavior for retry + stats/tracing.
+  // TODO(zdapeng): FIX IT
+  @VisibleForTesting
+  List<ClientInterceptor> getEffectiveInterceptors() {
+    List<ClientInterceptor> effectiveInterceptors =
+        new ArrayList<>(this.interceptors);
+    temporarilyDisableRetry = false;
+    if (statsEnabled) {
+      temporarilyDisableRetry = true;
+      ClientInterceptor statsInterceptor = null;
+      try {
+        Class<?> censusStatsAccessor =
+            Class.forName("io.grpc.census.InternalCensusStatsAccessor");
+        Method getClientInterceptorMethod =
+            censusStatsAccessor.getDeclaredMethod(
+                "getClientInterceptor",
+                boolean.class,
+                boolean.class,
+                boolean.class);
+        statsInterceptor =
+            (ClientInterceptor) getClientInterceptorMethod
+                .invoke(
+                    null,
+                    recordStartedRpcs,
+                    recordFinishedRpcs,
+                    recordRealTimeMetrics);
+      } catch (ClassNotFoundException e) {
+        // Replace these separate catch statements with multicatch when Android min-API >= 19
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (NoSuchMethodException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (IllegalAccessException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (InvocationTargetException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      }
+      if (statsInterceptor != null) {
+        // First interceptor runs last (see ClientInterceptors.intercept()), so that no
+        // other interceptor can override the tracer factory we set in CallOptions.
+        effectiveInterceptors.add(0, statsInterceptor);
+      }
+    }
+    if (tracingEnabled) {
+      temporarilyDisableRetry = true;
+      ClientInterceptor tracingInterceptor = null;
+      try {
+        Class<?> censusTracingAccessor =
+            Class.forName("io.grpc.census.InternalCensusTracingAccessor");
+        Method getClientInterceptroMethod =
+            censusTracingAccessor.getDeclaredMethod("getClientInterceptor");
+        tracingInterceptor = (ClientInterceptor) getClientInterceptroMethod.invoke(null);
+      } catch (ClassNotFoundException e) {
+        // Replace these separate catch statements with multicatch when Android min-API >= 19
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (NoSuchMethodException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (IllegalAccessException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (InvocationTargetException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      }
+      if (tracingInterceptor != null) {
+        effectiveInterceptors.add(0, tracingInterceptor);
+      }
+    }
+    return effectiveInterceptors;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder userAgent(@Nullable String userAgent) {
+    this.userAgent = userAgent;
+    return this;
+  }
+
+  @Override
+  public ManagedChannelImplBuilder overrideAuthority(String authority) {
+    authorityOverride = checkAuthority(authority);
+    return this;
+  }
+
+  @Nullable
+  @VisibleForTesting
+  String getOverrideAuthority() {
+    return authorityOverride;
+  }
+
   @Deprecated
   @Override
   public ManagedChannelImplBuilder nameResolverFactory(NameResolver.Factory resolverFactory) {
@@ -317,6 +342,17 @@ public final class ManagedChannelImplBuilder
       nameResolverFactory = nameResolverRegistry.asFactory();
     }
     return this;
+  }
+
+  /**
+   * Returns a {@link NameResolver.Factory} for the channel.
+   */
+  NameResolver.Factory getNameResolverFactory() {
+    if (authorityOverride == null) {
+      return nameResolverFactory;
+    } else {
+      return new OverrideAuthorityNameResolverFactory(nameResolverFactory, authorityOverride);
+    }
   }
 
   @Override
@@ -353,24 +389,6 @@ public final class ManagedChannelImplBuilder
       compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
     }
     return this;
-  }
-
-  @Override
-  public ManagedChannelImplBuilder userAgent(@Nullable String userAgent) {
-    this.userAgent = userAgent;
-    return this;
-  }
-
-  @Override
-  public ManagedChannelImplBuilder overrideAuthority(String authority) {
-    authorityOverride = checkAuthority(authority);
-    return this;
-  }
-
-  @Nullable
-  @VisibleForTesting
-  String getOverrideAuthority() {
-    return authorityOverride;
   }
 
   @Override
@@ -452,6 +470,12 @@ public final class ManagedChannelImplBuilder
     return this;
   }
 
+  @Override
+  public ManagedChannelImplBuilder disableServiceConfigLookUp() {
+    lookUpServiceConfig = false;
+    return this;
+  }
+
   @Nullable
   private static Map<String, ?> checkMapEntryTypes(@Nullable Map<?, ?> map) {
     if (map == null) {
@@ -511,12 +535,6 @@ public final class ManagedChannelImplBuilder
     return Collections.unmodifiableList(parsedList);
   }
 
-  @Override
-  public ManagedChannelImplBuilder disableServiceConfigLookUp() {
-    lookUpServiceConfig = false;
-    return this;
-  }
-
   /**
    * Disable or enable stats features. Enabled by default.
    *
@@ -561,17 +579,6 @@ public final class ManagedChannelImplBuilder
     tracingEnabled = value;
   }
 
-  /**
-   * Verifies the authority is valid.
-   */
-  @VisibleForTesting
-  String checkAuthority(String authority) {
-    if (authorityCheckerDisabled) {
-      return authority;
-    }
-    return GrpcUtil.checkAuthority(authority);
-  }
-
   /** Disable the check whether the authority is valid. */
   public ManagedChannelImplBuilder disableCheckAuthority() {
     authorityCheckerDisabled = true;
@@ -584,113 +591,83 @@ public final class ManagedChannelImplBuilder
     return this;
   }
 
-  @Override
-  public ManagedChannel build() {
-    return new ManagedChannelOrphanWrapper(new ManagedChannelImpl(
-        this,
-        buildTransportFactory(),
-        new ExponentialBackoffPolicy.Provider(),
-        SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR),
-        GrpcUtil.STOPWATCH_SUPPLIER,
-        getEffectiveInterceptors(),
-        TimeProvider.SYSTEM_TIME_PROVIDER));
-  }
-
-  // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
-  // what should be the desired behavior for retry + stats/tracing.
-  // TODO(zdapeng): FIX IT
-  @VisibleForTesting
-  List<ClientInterceptor> getEffectiveInterceptors() {
-    List<ClientInterceptor> effectiveInterceptors =
-        new ArrayList<>(this.interceptors);
-    temporarilyDisableRetry = false;
-    if (statsEnabled) {
-      temporarilyDisableRetry = true;
-      ClientInterceptor statsInterceptor = null;
-      try {
-        Class<?> censusStatsAccessor =
-            Class.forName("io.grpc.census.InternalCensusStatsAccessor");
-        Method getClientInterceptorMethod =
-            censusStatsAccessor.getDeclaredMethod(
-                "getClientInterceptor",
-                boolean.class,
-                boolean.class,
-                boolean.class);
-        statsInterceptor =
-            (ClientInterceptor) getClientInterceptorMethod
-                .invoke(
-                    null,
-                    recordStartedRpcs,
-                    recordFinishedRpcs,
-                    recordRealTimeMetrics);
-      } catch (ClassNotFoundException e) {
-        // Replace these separate catch statements with multicatch when Android min-API >= 19
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (NoSuchMethodException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (IllegalAccessException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (InvocationTargetException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      }
-      if (statsInterceptor != null) {
-        // First interceptor runs last (see ClientInterceptors.intercept()), so that no
-        // other interceptor can override the tracer factory we set in CallOptions.
-        effectiveInterceptors.add(0, statsInterceptor);
-      }
-    }
-    if (tracingEnabled) {
-      temporarilyDisableRetry = true;
-      ClientInterceptor tracingInterceptor = null;
-      try {
-        Class<?> censusTracingAccessor =
-            Class.forName("io.grpc.census.InternalCensusTracingAccessor");
-        Method getClientInterceptroMethod =
-            censusTracingAccessor.getDeclaredMethod("getClientInterceptor");
-        tracingInterceptor = (ClientInterceptor) getClientInterceptroMethod.invoke(null);
-      } catch (ClassNotFoundException e) {
-        // Replace these separate catch statements with multicatch when Android min-API >= 19
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (NoSuchMethodException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (IllegalAccessException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (InvocationTargetException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      }
-      if (tracingInterceptor != null) {
-        effectiveInterceptors.add(0, tracingInterceptor);
-      }
-    }
-    return effectiveInterceptors;
-  }
-
   /**
-   * Transport implementors must provide {@link ClientTransportFactoryBuilder} that returns {@link
-   * ClientTransportFactory} appropriate the channel. This method is meant for Transport
-   * implementors and should not be used by normal users.
+   * Verifies the authority is valid.
    */
   @VisibleForTesting
-  ClientTransportFactory buildTransportFactory() {
-    return clientTransportFactoryBuilder.buildClientTransportFactory();
+  String checkAuthority(String authority) {
+    if (authorityCheckerDisabled) {
+      return authority;
+    }
+    return GrpcUtil.checkAuthority(authority);
   }
 
   /**
-   * Returns a default port to {@link NameResolver} for use in cases where the target string doesn't
-   * include a port. The default implementation returns {@link GrpcUtil#DEFAULT_PORT_SSL}.
+   * Returns the internal offload executor pool for offloading tasks.
    */
-  int getDefaultPort() {
-    return channelBuilderDefaultPortProvider.getDefaultPort();
+  public ObjectPool<? extends Executor> getOffloadExecutorPool() {
+    return offloadExecutorPool;
+  }
+
+  public static ManagedChannelBuilder<?> forAddress(String name, int port) {
+    throw new UnsupportedOperationException(
+        "ClientTransportFactoryBuilder is required, use a constructor");
+  }
+
+  public static ManagedChannelBuilder<?> forTarget(String target) {
+    throw new UnsupportedOperationException(
+        "ClientTransportFactoryBuilder is required, use a constructor");
   }
 
   /**
-   * Returns a {@link NameResolver.Factory} for the channel.
+   * An interface for Transport implementors to provide the {@link ClientTransportFactory}
+   * appropriate for the channel.
    */
-  NameResolver.Factory getNameResolverFactory() {
-    if (authorityOverride == null) {
-      return nameResolverFactory;
-    } else {
-      return new OverrideAuthorityNameResolverFactory(nameResolverFactory, authorityOverride);
+  public interface ClientTransportFactoryBuilder {
+    ClientTransportFactory buildClientTransportFactory();
+  }
+
+  /**
+   * Convenience ClientTransportFactoryBuilder, throws UnsupportedOperationException().
+   */
+  public static class UnsupportedClientTransportFactoryBuilder implements
+      ClientTransportFactoryBuilder {
+    @Override
+    public ClientTransportFactory buildClientTransportFactory() {
+      throw new UnsupportedOperationException();
+    }
+  }
+
+  /**
+   * An interface for Transport implementors to provide a default port to {@link
+   * io.grpc.NameResolver} for use in cases where the target string doesn't include a port. The
+   * default implementation returns {@link GrpcUtil#DEFAULT_PORT_SSL}.
+   */
+  public interface ChannelBuilderDefaultPortProvider {
+    int getDefaultPort();
+  }
+
+  /**
+   * Default implementation of {@link ChannelBuilderDefaultPortProvider} that returns a fixed port.
+   */
+  public static final class FixedPortProvider implements ChannelBuilderDefaultPortProvider {
+    private final int port;
+
+    public FixedPortProvider(int port) {
+      this.port = port;
+    }
+
+    @Override
+    public int getDefaultPort() {
+      return port;
+    }
+  }
+
+  private static final class ManagedChannelDefaultPortProvider implements
+      ChannelBuilderDefaultPortProvider {
+    @Override
+    public int getDefaultPort() {
+      return GrpcUtil.DEFAULT_PORT_SSL;
     }
   }
 
@@ -729,12 +706,5 @@ public final class ManagedChannelImplBuilder
     public String getDefaultScheme() {
       return DIRECT_ADDRESS_SCHEME;
     }
-  }
-
-  /**
-   * Returns the internal offload executor pool for offloading tasks.
-   */
-  public ObjectPool<? extends Executor> getOffloadExecutorPool() {
-    return offloadExecutorPool;
   }
 }
