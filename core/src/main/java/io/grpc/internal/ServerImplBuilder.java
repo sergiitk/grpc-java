@@ -16,9 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -37,15 +34,26 @@ import io.grpc.ServerServiceDefinition;
 import io.grpc.ServerStreamTracer;
 import io.grpc.ServerTransportFilter;
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.annotation.Nullable;
 
 /**
  * Default builder for {@link io.grpc.Server} instances, for usage in Transport implementations.
  */
 public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImplBuilder> {
+
+  private static final Logger log = Logger.getLogger(ServerImplBuilder.class.getName());
+
+  InternalChannelz channelz = InternalChannelz.instance();
+
   private final ClientTransportServersBuilder clientTransportServersBuilder;
 
   /**
@@ -89,30 +97,30 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
 
   @Override
   public ServerImplBuilder addService(ServerServiceDefinition service) {
-    registryBuilder.addService(checkNotNull(service, "service"));
+    registryBuilder.addService(Preconditions.checkNotNull(service, "service"));
     return this;
   }
 
   @Override
   public ServerImplBuilder addService(BindableService bindableService) {
-    return addService(checkNotNull(bindableService, "bindableService").bindService());
+    return addService(Preconditions.checkNotNull(bindableService, "bindableService").bindService());
   }
 
   @Override
   public ServerImplBuilder addTransportFilter(ServerTransportFilter filter) {
-    transportFilters.add(checkNotNull(filter, "filter"));
+    transportFilters.add(Preconditions.checkNotNull(filter, "filter"));
     return this;
   }
 
   @Override
   public ServerImplBuilder intercept(ServerInterceptor interceptor) {
-    interceptors.add(checkNotNull(interceptor, "interceptor"));
+    interceptors.add(Preconditions.checkNotNull(interceptor, "interceptor"));
     return this;
   }
 
   @Override
   public ServerImplBuilder addStreamTracerFactory(ServerStreamTracer.Factory factory) {
-    streamTracerFactories.add(checkNotNull(factory, "factory"));
+    streamTracerFactories.add(Preconditions.checkNotNull(factory, "factory"));
     return this;
   }
 
@@ -136,8 +144,9 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
 
   @Override
   public ServerImplBuilder handshakeTimeout(long timeout, TimeUnit unit) {
-    checkArgument(timeout > 0, "handshake timeout is %s, but must be positive", timeout);
-    this.handshakeTimeoutMillis = checkNotNull(unit, "unit").toMillis(timeout);
+    Preconditions
+        .checkArgument(timeout > 0, "handshake timeout is %s, but must be positive", timeout);
+    this.handshakeTimeoutMillis = Preconditions.checkNotNull(unit, "unit").toMillis(timeout);
     return this;
   }
 
@@ -154,39 +163,116 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
     return this;
   }
 
-  @Override
-  public void setDeadlineTicker(Deadline.Ticker ticker) {
-    super.setDeadlineTicker(ticker);
-  }
-
-  @Override
-  public void setTracingEnabled(boolean value) {
-    super.setTracingEnabled(value);
-  }
-
-  @Override
+  /**
+   * Disable or enable stats features.  Enabled by default.
+   */
   public void setStatsEnabled(boolean value) {
-    super.setStatsEnabled(value);
+    this.statsEnabled = value;
   }
 
-  @Override
+  /**
+   * Disable or enable stats recording for RPC upstarts.  Effective only if {@link
+   * #setStatsEnabled} is set to true.  Enabled by default.
+   */
   public void setStatsRecordStartedRpcs(boolean value) {
-    super.setStatsRecordStartedRpcs(value);
+    recordStartedRpcs = value;
   }
 
-  @Override
+  /**
+   * Disable or enable stats recording for RPC completions.  Effective only if {@link
+   * #setStatsEnabled} is set to true.  Enabled by default.
+   */
   public void setStatsRecordFinishedRpcs(boolean value) {
-    super.setStatsRecordFinishedRpcs(value);
+    recordFinishedRpcs = value;
   }
 
-  @Override
+  /**
+   * Disable or enable real-time metrics recording.  Effective only if {@link #setStatsEnabled} is
+   * set to true.  Disabled by default.
+   */
   public void setStatsRecordRealTimeMetrics(boolean value) {
-    super.setStatsRecordRealTimeMetrics(value);
+    recordRealTimeMetrics = value;
   }
 
-  @Override
+  /**
+   * Disable or enable tracing features.  Enabled by default.
+   */
+  public void setTracingEnabled(boolean value) {
+    tracingEnabled = value;
+  }
+
+  /**
+   * Sets a custom deadline ticker.  This should only be called from InProcessServerBuilder.
+   */
+  public void setDeadlineTicker(Deadline.Ticker ticker) {
+    this.ticker = Preconditions.checkNotNull(ticker, "ticker");
+  }
+
+  @VisibleForTesting
+  List<? extends ServerStreamTracer.Factory> getTracerFactories() {
+    ArrayList<ServerStreamTracer.Factory> tracerFactories = new ArrayList<>();
+    if (statsEnabled) {
+      ServerStreamTracer.Factory censusStatsTracerFactory = null;
+      try {
+        Class<?> censusStatsAccessor =
+            Class.forName("io.grpc.census.InternalCensusStatsAccessor");
+        Method getServerStreamTracerFactoryMethod =
+            censusStatsAccessor.getDeclaredMethod(
+                "getServerStreamTracerFactory",
+                boolean.class,
+                boolean.class,
+                boolean.class);
+        censusStatsTracerFactory =
+            (ServerStreamTracer.Factory) getServerStreamTracerFactoryMethod
+                .invoke(
+                    null,
+                    recordStartedRpcs,
+                    recordFinishedRpcs,
+                    recordRealTimeMetrics);
+      } catch (ClassNotFoundException e) {
+        // Replace these separate catch statements with multicatch when Android min-API >= 19
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (NoSuchMethodException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (IllegalAccessException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (InvocationTargetException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      }
+      if (censusStatsTracerFactory != null) {
+        tracerFactories.add(censusStatsTracerFactory);
+      }
+    }
+    if (tracingEnabled) {
+      ServerStreamTracer.Factory tracingStreamTracerFactory = null;
+      try {
+        Class<?> censusTracingAccessor =
+            Class.forName("io.grpc.census.InternalCensusTracingAccessor");
+        Method getServerStreamTracerFactoryMethod =
+            censusTracingAccessor.getDeclaredMethod("getServerStreamTracerFactory");
+        tracingStreamTracerFactory =
+            (ServerStreamTracer.Factory) getServerStreamTracerFactoryMethod.invoke(null);
+      } catch (ClassNotFoundException e) {
+        // Replace these separate catch statements with multicatch when Android min-API >= 19
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (NoSuchMethodException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (IllegalAccessException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      } catch (InvocationTargetException e) {
+        log.log(Level.FINE, "Unable to apply census stats", e);
+      }
+      if (tracingStreamTracerFactory != null) {
+        tracerFactories.add(tracingStreamTracerFactory);
+      }
+    }
+    tracerFactories.addAll(streamTracerFactories);
+    tracerFactories.trimToSize();
+    return Collections.unmodifiableList(tracerFactories);
+  }
+
   public InternalChannelz getChannelz() {
-    return super.getChannelz();
+    return channelz;
   }
 
   @Override

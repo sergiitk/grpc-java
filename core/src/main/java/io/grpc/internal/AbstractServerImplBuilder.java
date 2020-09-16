@@ -16,30 +16,22 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
-import com.google.common.annotations.VisibleForTesting;
 import io.grpc.BinaryLog;
 import io.grpc.CompressorRegistry;
 import io.grpc.Deadline;
 import io.grpc.DecompressorRegistry;
 import io.grpc.HandlerRegistry;
-import io.grpc.InternalChannelz;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerInterceptor;
 import io.grpc.ServerMethodDefinition;
 import io.grpc.ServerServiceDefinition;
 import io.grpc.ServerStreamTracer;
 import io.grpc.ServerTransportFilter;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.annotation.Nullable;
 
 /**
@@ -49,8 +41,6 @@ import javax.annotation.Nullable;
  */
 public abstract class AbstractServerImplBuilder<T extends AbstractServerImplBuilder<T>>
         extends ServerBuilder<T> {
-
-  private static final Logger log = Logger.getLogger(AbstractServerImplBuilder.class.getName());
 
   public static ServerBuilder<?> forPort(int port) {
     throw new UnsupportedOperationException("Subclass failed to hide static factory");
@@ -85,120 +75,7 @@ public abstract class AbstractServerImplBuilder<T extends AbstractServerImplBuil
   protected boolean tracingEnabled = true;
   @Nullable BinaryLog binlog;
   TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
-  InternalChannelz channelz = InternalChannelz.instance();
   CallTracer.Factory callTracerFactory = CallTracer.getDefaultFactory();
-
-  /**
-   * Disable or enable stats features.  Enabled by default.
-   */
-  protected void setStatsEnabled(boolean value) {
-    this.statsEnabled = value;
-  }
-
-  /**
-   * Disable or enable stats recording for RPC upstarts.  Effective only if {@link
-   * #setStatsEnabled} is set to true.  Enabled by default.
-   */
-  protected void setStatsRecordStartedRpcs(boolean value) {
-    recordStartedRpcs = value;
-  }
-
-  /**
-   * Disable or enable stats recording for RPC completions.  Effective only if {@link
-   * #setStatsEnabled} is set to true.  Enabled by default.
-   */
-  protected void setStatsRecordFinishedRpcs(boolean value) {
-    recordFinishedRpcs = value;
-  }
-
-  /**
-   * Disable or enable real-time metrics recording.  Effective only if {@link #setStatsEnabled} is
-   * set to true.  Disabled by default.
-   */
-  protected void setStatsRecordRealTimeMetrics(boolean value) {
-    recordRealTimeMetrics = value;
-  }
-
-  /**
-   * Disable or enable tracing features.  Enabled by default.
-   */
-  protected void setTracingEnabled(boolean value) {
-    tracingEnabled = value;
-  }
-
-  /**
-   * Sets a custom deadline ticker.  This should only be called from InProcessServerBuilder.
-   */
-  protected void setDeadlineTicker(Deadline.Ticker ticker) {
-    this.ticker = checkNotNull(ticker, "ticker");
-  }
-
-  @VisibleForTesting
-  final List<? extends ServerStreamTracer.Factory> getTracerFactories() {
-    ArrayList<ServerStreamTracer.Factory> tracerFactories = new ArrayList<>();
-    if (statsEnabled) {
-      ServerStreamTracer.Factory censusStatsTracerFactory = null;
-      try {
-        Class<?> censusStatsAccessor =
-            Class.forName("io.grpc.census.InternalCensusStatsAccessor");
-        Method getServerStreamTracerFactoryMethod =
-            censusStatsAccessor.getDeclaredMethod(
-                "getServerStreamTracerFactory",
-                boolean.class,
-                boolean.class,
-                boolean.class);
-        censusStatsTracerFactory =
-            (ServerStreamTracer.Factory) getServerStreamTracerFactoryMethod
-                .invoke(
-                    null,
-                    recordStartedRpcs,
-                    recordFinishedRpcs,
-                    recordRealTimeMetrics);
-      } catch (ClassNotFoundException e) {
-        // Replace these separate catch statements with multicatch when Android min-API >= 19
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (NoSuchMethodException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (IllegalAccessException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (InvocationTargetException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      }
-      if (censusStatsTracerFactory != null) {
-        tracerFactories.add(censusStatsTracerFactory);
-      }
-    }
-    if (tracingEnabled) {
-      ServerStreamTracer.Factory tracingStreamTracerFactory = null;
-      try {
-        Class<?> censusTracingAccessor =
-            Class.forName("io.grpc.census.InternalCensusTracingAccessor");
-        Method getServerStreamTracerFactoryMethod =
-            censusTracingAccessor.getDeclaredMethod("getServerStreamTracerFactory");
-        tracingStreamTracerFactory =
-            (ServerStreamTracer.Factory) getServerStreamTracerFactoryMethod.invoke(null);
-      } catch (ClassNotFoundException e) {
-        // Replace these separate catch statements with multicatch when Android min-API >= 19
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (NoSuchMethodException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (IllegalAccessException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      } catch (InvocationTargetException e) {
-        log.log(Level.FINE, "Unable to apply census stats", e);
-      }
-      if (tracingStreamTracerFactory != null) {
-        tracerFactories.add(tracingStreamTracerFactory);
-      }
-    }
-    tracerFactories.addAll(streamTracerFactories);
-    tracerFactories.trimToSize();
-    return Collections.unmodifiableList(tracerFactories);
-  }
-
-  protected InternalChannelz getChannelz() {
-    return channelz;
-  }
 
   protected final TransportTracer.Factory getTransportTracerFactory() {
     return transportTracerFactory;
