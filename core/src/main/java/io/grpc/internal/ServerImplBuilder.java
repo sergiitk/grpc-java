@@ -16,8 +16,10 @@
 
 package io.grpc.internal;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.MoreExecutors;
 import io.grpc.BinaryLog;
 import io.grpc.BindableService;
@@ -105,13 +107,8 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
    * Creates a new server builder with given transport servers provider.
    */
   public ServerImplBuilder(ClientTransportServersBuilder clientTransportServersBuilder) {
-    this.clientTransportServersBuilder = Preconditions
-        .checkNotNull(clientTransportServersBuilder, "clientTransportServersBuilder");
-  }
-
-  @Override
-  public ServerImplBuilder useTransportSecurity(File certChain, File privateKey) {
-    throw new UnsupportedOperationException("TLS not supported in ServerImplBuilder");
+    this.clientTransportServersBuilder = checkNotNull(clientTransportServersBuilder,
+        "clientTransportServersBuilder");
   }
 
   @Override
@@ -127,30 +124,30 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
 
   @Override
   public ServerImplBuilder addService(ServerServiceDefinition service) {
-    registryBuilder.addService(Preconditions.checkNotNull(service, "service"));
+    registryBuilder.addService(checkNotNull(service, "service"));
     return this;
   }
 
   @Override
   public ServerImplBuilder addService(BindableService bindableService) {
-    return addService(Preconditions.checkNotNull(bindableService, "bindableService").bindService());
+    return addService(checkNotNull(bindableService, "bindableService").bindService());
   }
 
   @Override
   public ServerImplBuilder addTransportFilter(ServerTransportFilter filter) {
-    transportFilters.add(Preconditions.checkNotNull(filter, "filter"));
+    transportFilters.add(checkNotNull(filter, "filter"));
     return this;
   }
 
   @Override
   public ServerImplBuilder intercept(ServerInterceptor interceptor) {
-    interceptors.add(Preconditions.checkNotNull(interceptor, "interceptor"));
+    interceptors.add(checkNotNull(interceptor, "interceptor"));
     return this;
   }
 
   @Override
   public ServerImplBuilder addStreamTracerFactory(ServerStreamTracer.Factory factory) {
-    streamTracerFactories.add(Preconditions.checkNotNull(factory, "factory"));
+    streamTracerFactories.add(checkNotNull(factory, "factory"));
     return this;
   }
 
@@ -174,9 +171,8 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
 
   @Override
   public ServerImplBuilder handshakeTimeout(long timeout, TimeUnit unit) {
-    Preconditions
-        .checkArgument(timeout > 0, "handshake timeout is %s, but must be positive", timeout);
-    this.handshakeTimeoutMillis = Preconditions.checkNotNull(unit, "unit").toMillis(timeout);
+    checkArgument(timeout > 0, "handshake timeout is %s, but must be positive", timeout);
+    this.handshakeTimeoutMillis = checkNotNull(unit, "unit").toMillis(timeout);
     return this;
   }
 
@@ -235,7 +231,7 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
    * Sets a custom deadline ticker.  This should only be called from InProcessServerBuilder.
    */
   public void setDeadlineTicker(Deadline.Ticker ticker) {
-    this.ticker = Preconditions.checkNotNull(ticker, "ticker");
+    this.ticker = checkNotNull(ticker, "ticker");
   }
 
   @Override
@@ -341,5 +337,10 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
    */
   public ObjectPool<? extends Executor> getExecutorPool() {
     return this.executorPool;
+  }
+
+  @Override
+  public ServerImplBuilder useTransportSecurity(File certChain, File privateKey) {
+    throw new UnsupportedOperationException("TLS not supported in ServerImplBuilder");
   }
 }
