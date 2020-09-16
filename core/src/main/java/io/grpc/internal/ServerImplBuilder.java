@@ -49,7 +49,7 @@ import javax.annotation.Nullable;
 /**
  * Default builder for {@link io.grpc.Server} instances, for usage in Transport implementations.
  */
-public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImplBuilder> {
+public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
 
   private static final Logger log = Logger.getLogger(ServerImplBuilder.class.getName());
 
