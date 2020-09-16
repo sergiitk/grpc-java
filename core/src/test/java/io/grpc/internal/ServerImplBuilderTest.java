@@ -56,11 +56,19 @@ public class ServerImplBuilderTest {
 
   @Before
   public void setUp() throws Exception {
-    builder = new ServerImplBuilder(mockClientTransportServersBuilder);
+    builder = new ServerImplBuilder(
+        new ClientTransportServersBuilder() {
+          @Override
+          public List<? extends InternalServer> buildClientTransportServers(
+              List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
+            throw new UnsupportedOperationException();
+          }
+        });
   }
 
   @Test
   public void buildTransportServers() {
+    builder = new ServerImplBuilder(mockClientTransportServersBuilder);
     doReturn(mockInternalServers).when(mockClientTransportServersBuilder)
         .buildClientTransportServers(ArgumentMatchers.<ServerStreamTracer.Factory>anyList());
 

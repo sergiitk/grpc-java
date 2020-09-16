@@ -112,8 +112,7 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
+import org.mockito.MockitoAnnotations;
 
 /** Unit tests for {@link ServerImpl}. */
 @RunWith(JUnit4.class)
@@ -140,7 +139,6 @@ public class ServerImplTest {
       };
   private static final String AUTHORITY = "some_authority";
 
-  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   @Rule public final ExpectedException thrown = ExpectedException.none();
 
   @BeforeClass
@@ -164,8 +162,8 @@ public class ServerImplTest {
         return newCtx.withValue(SERVER_TRACER_ADDED_KEY, "context added by tracer");
       }
     };
-  @Mock private ObjectPool<Executor> executorPool;
-  @Mock private ClientTransportServersBuilder mockClientTransportServersBuilder;
+  @Mock
+  private ObjectPool<Executor> executorPool;
   private ServerImplBuilder builder;
   private MutableHandlerRegistry mutableFallbackRegistry = new MutableHandlerRegistry();
   private HandlerRegistry fallbackRegistry = mock(
@@ -202,7 +200,15 @@ public class ServerImplTest {
   /** Set up for test. */
   @Before
   public void startUp() throws IOException {
-    builder = new ServerImplBuilder(mockClientTransportServersBuilder);
+    MockitoAnnotations.initMocks(this);
+    builder = new ServerImplBuilder(
+        new ClientTransportServersBuilder() {
+          @Override
+          public List<? extends InternalServer> buildClientTransportServers(
+              List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
+            throw new UnsupportedOperationException();
+          }
+        });
     builder.channelz = channelz;
     builder.ticker = timer.getDeadlineTicker();
     streamTracerFactories = Arrays.asList(streamTracerFactory);
