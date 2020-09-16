@@ -30,6 +30,7 @@ import io.grpc.InternalChannelz;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerInterceptor;
+import io.grpc.ServerMethodDefinition;
 import io.grpc.ServerServiceDefinition;
 import io.grpc.ServerStreamTracer;
 import io.grpc.ServerTransportFilter;
@@ -52,7 +53,42 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
 
   private static final Logger log = Logger.getLogger(ServerImplBuilder.class.getName());
 
+  public static ServerBuilder<?> forPort(int port) {
+    throw new UnsupportedOperationException(
+        "ClientTransportServersBuilder is required, use a constructor");
+  }
+
+  // defaults
+  private static final ObjectPool<? extends Executor> DEFAULT_EXECUTOR_POOL =
+      SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR);
+  private static final HandlerRegistry DEFAULT_FALLBACK_REGISTRY = new DefaultFallbackRegistry();
+  private static final DecompressorRegistry DEFAULT_DECOMPRESSOR_REGISTRY =
+      DecompressorRegistry.getDefaultInstance();
+  private static final CompressorRegistry DEFAULT_COMPRESSOR_REGISTRY =
+      CompressorRegistry.getDefaultInstance();
+  private static final long DEFAULT_HANDSHAKE_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(120);
+
+  // mutable state
+  final InternalHandlerRegistry.Builder registryBuilder =
+      new InternalHandlerRegistry.Builder();
+  final List<ServerTransportFilter> transportFilters = new ArrayList<>();
+  final List<ServerInterceptor> interceptors = new ArrayList<>();
+  private final List<ServerStreamTracer.Factory> streamTracerFactories = new ArrayList<>();
+  HandlerRegistry fallbackRegistry = DEFAULT_FALLBACK_REGISTRY;
+  ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
+  DecompressorRegistry decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
+  CompressorRegistry compressorRegistry = DEFAULT_COMPRESSOR_REGISTRY;
+  long handshakeTimeoutMillis = DEFAULT_HANDSHAKE_TIMEOUT_MILLIS;
+  Deadline.Ticker ticker = Deadline.getSystemTicker();
+  private boolean statsEnabled = true;
+  private boolean recordStartedRpcs = true;
+  private boolean recordFinishedRpcs = true;
+  private boolean recordRealTimeMetrics = false;
+  private boolean tracingEnabled = true;
+  @Nullable BinaryLog binlog;
+  TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
   InternalChannelz channelz = InternalChannelz.instance();
+  CallTracer.Factory callTracerFactory = CallTracer.getDefaultFactory();
 
   private final ClientTransportServersBuilder clientTransportServersBuilder;
 
@@ -74,14 +110,8 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
   }
 
   @Override
-  public Server build() {
-    return new ServerImpl(this, buildTransportServers(getTracerFactories()), Context.ROOT);
-  }
-
-  @Override
-  protected List<? extends InternalServer> buildTransportServers(
-      List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
-    return clientTransportServersBuilder.buildClientTransportServers(streamTracerFactories);
+  public ServerImplBuilder useTransportSecurity(File certChain, File privateKey) {
+    throw new UnsupportedOperationException("TLS not supported in ServerImplBuilder");
   }
 
   @Override
@@ -208,6 +238,11 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
     this.ticker = Preconditions.checkNotNull(ticker, "ticker");
   }
 
+  @Override
+  public Server build() {
+    return new ServerImpl(this, buildTransportServers(getTracerFactories()), Context.ROOT);
+  }
+
   @VisibleForTesting
   List<? extends ServerStreamTracer.Factory> getTracerFactories() {
     ArrayList<ServerStreamTracer.Factory> tracerFactories = new ArrayList<>();
@@ -275,18 +310,36 @@ public final class ServerImplBuilder extends AbstractServerImplBuilder<ServerImp
     return channelz;
   }
 
-  @Override
+  /**
+   * Transport implementors must implement {@link ClientTransportServersBuilder} to transport
+   * specific information for the server. This method is mean for Transport implementors and should
+   * not be used by normal users.
+   *
+   * @param streamTracerFactories an immutable list of stream tracer factories
+   */
+  List<? extends InternalServer> buildTransportServers(
+      List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
+    return clientTransportServersBuilder.buildClientTransportServers(streamTracerFactories);
+  }
+
+  private static final class DefaultFallbackRegistry extends HandlerRegistry {
+    @Override
+    public List<ServerServiceDefinition> getServices() {
+      return Collections.emptyList();
+    }
+
+    @Nullable
+    @Override
+    public ServerMethodDefinition<?, ?> lookupMethod(
+        String methodName, @Nullable String authority) {
+      return null;
+    }
+  }
+
+  /**
+   * Returns the internal ExecutorPool for offloading tasks.
+   */
   public ObjectPool<? extends Executor> getExecutorPool() {
-    return super.getExecutorPool();
-  }
-
-  @Override
-  public ServerImplBuilder useTransportSecurity(File certChain, File privateKey) {
-    throw new UnsupportedOperationException("TLS not supported in ServerImplBuilder");
-  }
-
-  public static ServerBuilder<?> forPort(int port) {
-    throw new UnsupportedOperationException(
-        "ClientTransportServersBuilder is required, use a constructor");
+    return this.executorPool;
   }
 }
