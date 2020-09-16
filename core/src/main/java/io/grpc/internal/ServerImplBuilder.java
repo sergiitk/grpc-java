@@ -76,6 +76,7 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
   final List<ServerTransportFilter> transportFilters = new ArrayList<>();
   final List<ServerInterceptor> interceptors = new ArrayList<>();
   private final List<ServerStreamTracer.Factory> streamTracerFactories = new ArrayList<>();
+  private final ClientTransportServersBuilder clientTransportServersBuilder;
   HandlerRegistry fallbackRegistry = DEFAULT_FALLBACK_REGISTRY;
   ObjectPool<? extends Executor> executorPool = DEFAULT_EXECUTOR_POOL;
   DecompressorRegistry decompressorRegistry = DEFAULT_DECOMPRESSOR_REGISTRY;
@@ -88,11 +89,8 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
   private boolean recordRealTimeMetrics = false;
   private boolean tracingEnabled = true;
   @Nullable BinaryLog binlog;
-  TransportTracer.Factory transportTracerFactory = TransportTracer.getDefaultFactory();
   InternalChannelz channelz = InternalChannelz.instance();
   CallTracer.Factory callTracerFactory = CallTracer.getDefaultFactory();
-
-  private final ClientTransportServersBuilder clientTransportServersBuilder;
 
   /**
    * An interface to provide to provide transport specific information for the server. This method
@@ -179,13 +177,6 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
   @Override
   public ServerImplBuilder setBinaryLog(@Nullable BinaryLog binaryLog) {
     this.binlog = binaryLog;
-    return this;
-  }
-
-  @VisibleForTesting
-  public ServerImplBuilder setTransportTracerFactory(
-      TransportTracer.Factory transportTracerFactory) {
-    this.transportTracerFactory = transportTracerFactory;
     return this;
   }
 
@@ -313,6 +304,7 @@ public final class ServerImplBuilder extends ServerBuilder<ServerImplBuilder> {
    *
    * @param streamTracerFactories an immutable list of stream tracer factories
    */
+  @VisibleForTesting
   List<? extends InternalServer> buildTransportServers(
       List<? extends ServerStreamTracer.Factory> streamTracerFactories) {
     return clientTransportServersBuilder.buildClientTransportServers(streamTracerFactories);
