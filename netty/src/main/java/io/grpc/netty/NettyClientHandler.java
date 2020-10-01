@@ -222,6 +222,7 @@ class NettyClientHandler extends AbstractNettyHandler {
 
     Http2Settings settings = new Http2Settings();
     settings.pushEnabled(false);
+    settings.maxFrameSize(64 * 1024);
     settings.initialWindowSize(flowControlWindow);
     settings.maxConcurrentStreams(0);
     settings.maxHeaderListSize(maxHeaderListSize);
