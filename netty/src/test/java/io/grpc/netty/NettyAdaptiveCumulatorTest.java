@@ -19,7 +19,12 @@ package io.grpc.netty;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import io.netty.buffer.AbstractByteBufAllocator;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
@@ -40,7 +45,7 @@ public class NettyAdaptiveCumulatorTest {
   private ByteBuf cumulation;
 
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     cumulator = new NettyAdaptiveCumulator();
   }
 
@@ -68,5 +73,52 @@ public class NettyAdaptiveCumulatorTest {
     assertSame(cumulation, composite);
     assertEquals(buf, composite.component(0));
     assertEquals(in, composite.component(1));
+  }
+
+  @Test
+  public void cumulate_inputReleasedOnError() {
+    final UnsupportedOperationException expectedError = new UnsupportedOperationException();
+    composite = new CompositeByteBuf(alloc, false, 16, buf) {
+      @Override
+      public CompositeByteBuf addFlattenedComponents(boolean increaseWriterIndex, ByteBuf buffer) {
+        throw expectedError;
+      }
+    };
+
+    try {
+      cumulation = cumulator.cumulate(alloc, composite, in);
+      fail("Cumulator didn't throw");
+    } catch (UnsupportedOperationException actualError) {
+      assertSame(expectedError, actualError);
+      assertEquals(0, in.refCnt());
+    }
+  }
+
+  @Test
+  public void cumulate_newCumulationReleasedOnError() {
+    final UnsupportedOperationException expectedError = new UnsupportedOperationException();
+    composite = new CompositeByteBuf(alloc, false, 16) {
+      @Override
+      @SuppressWarnings("ReferenceEquality")
+      public CompositeByteBuf addFlattenedComponents(boolean increaseWriterIndex, ByteBuf buffer) {
+        // Allow to add previous cumulation to the new one.
+        if (buffer == buf) {
+          return super.addFlattenedComponents(increaseWriterIndex, buffer);
+        }
+        throw expectedError;
+      }
+    };
+
+    alloc = mock(AbstractByteBufAllocator.class);
+    when(alloc.compositeBuffer(anyInt())).thenReturn(composite);
+
+    try {
+      cumulation = cumulator.cumulate(alloc, buf, in);
+      fail("Cumulator didn't throw");
+    } catch (UnsupportedOperationException actualError) {
+      assertSame(expectedError, actualError);
+      assertEquals(0, in.refCnt());
+      assertEquals(0, composite.refCnt());
+    }
   }
 }
