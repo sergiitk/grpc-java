@@ -25,7 +25,6 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.UnpooledByteBufAllocator;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -34,23 +33,15 @@ import org.junit.runners.JUnit4;
 @RunWith(JUnit4.class)
 public class NettyAdaptiveCumulatorTest {
   private NettyAdaptiveCumulator cumulator;
-  private ByteBufAllocator alloc = UnpooledByteBufAllocator.DEFAULT;
+  private ByteBufAllocator alloc = new UnpooledByteBufAllocator(false);
   private ByteBuf in = ByteBufUtil.writeAscii(alloc, "New data!");
   private ByteBuf buf = ByteBufUtil.writeAscii(alloc, "Some data.");
+  private CompositeByteBuf composite = alloc.compositeBuffer(16);
+  private ByteBuf cumulation;
 
   @Before
   public void setUp() throws Exception {
     cumulator = new NettyAdaptiveCumulator();
-  }
-
-  @After
-  public void tearDown() throws Exception {
-    while (in.refCnt() != 0) {
-      in.release();
-    }
-    while (buf.refCnt() != 0) {
-      buf.release();
-    }
   }
 
   @Test
@@ -63,7 +54,7 @@ public class NettyAdaptiveCumulatorTest {
 
   @Test
   public void cumulate_nonCompositeCumulation() {
-    ByteBuf cumulation = cumulator.cumulate(alloc, buf, in);
+    cumulation = cumulator.cumulate(alloc, buf, in);
     assertThat(cumulation).isInstanceOf(CompositeByteBuf.class);
     CompositeByteBuf composite = (CompositeByteBuf) cumulation;
     assertEquals(buf, composite.component(0));
@@ -72,8 +63,8 @@ public class NettyAdaptiveCumulatorTest {
 
   @Test
   public void cumulate_compositeCumulation() {
-    CompositeByteBuf composite = alloc.compositeBuffer(2).addComponent(true, buf);
-    ByteBuf cumulation = cumulator.cumulate(alloc, composite, in);
+    composite = alloc.compositeBuffer(2).addComponent(true, buf);
+    cumulation = cumulator.cumulate(alloc, composite, in);
     assertSame(cumulation, composite);
     assertEquals(buf, composite.component(0));
     assertEquals(in, composite.component(1));
