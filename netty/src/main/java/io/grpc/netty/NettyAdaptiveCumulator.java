@@ -22,8 +22,37 @@ import io.netty.buffer.CompositeByteBuf;
 
 // TODO(sergiitk): unstable api?
 public final class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDecoder.Cumulator {
-  // public NettyAdaptiveCumulator(int minFrameSize) {
-  // }
+
+  private final AdaptiveCumulatorConsolidateHeuristic heuristic;
+
+  public interface AdaptiveCumulatorConsolidateHeuristic {
+    int consolidateLast(CompositeByteBuf composite);
+  }
+
+  public static class MinLastComponentsCapacityConsolidateHeuristic implements
+      AdaptiveCumulatorConsolidateHeuristic {
+    private final int numComponents;
+    private final int minCapacity;
+
+    public MinLastComponentsCapacityConsolidateHeuristic(int numComponents, int minCapacity) {
+      this.numComponents = numComponents;
+      this.minCapacity = minCapacity;
+    }
+
+    @Override
+    public int consolidateLast(CompositeByteBuf composite) {
+      if (composite.numComponents() < numComponents) {
+        return 0;
+      }
+      int startComponent = composite.numComponents() - numComponents;
+      int capacity = composite.capacity() - composite.toByteIndex(startComponent);
+      return capacity < minCapacity ? numComponents : 0;
+    }
+  }
+
+  public NettyAdaptiveCumulator(AdaptiveCumulatorConsolidateHeuristic heuristic) {
+    this.heuristic = heuristic;
+  }
 
   @Override
   @SuppressWarnings("ReferenceEquality")
@@ -32,6 +61,7 @@ public final class NettyAdaptiveCumulator implements io.netty.handler.codec.Byte
       cumulation.release();
       return in;
     }
+    // logger.warning(in.toString());
     CompositeByteBuf composite = null;
     try {
       if (cumulation instanceof CompositeByteBuf && cumulation.refCnt() == 1) {
@@ -46,6 +76,10 @@ public final class NettyAdaptiveCumulator implements io.netty.handler.codec.Byte
             .addFlattenedComponents(true, cumulation);
       }
       composite.addFlattenedComponents(true, in);
+      int consolidateNum = this.heuristic.consolidateLast(composite);
+      if (consolidateNum > 0) {
+        composite.consolidate(composite.numComponents() - consolidateNum, consolidateNum);
+      }
       in = null;
       return composite;
     } finally {

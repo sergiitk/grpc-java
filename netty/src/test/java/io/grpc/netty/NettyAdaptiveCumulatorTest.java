@@ -24,12 +24,14 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import io.grpc.netty.NettyAdaptiveCumulator.AdaptiveCumulatorConsolidateHeuristic;
 import io.netty.buffer.AbstractByteBufAllocator;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.UnpooledByteBufAllocator;
+import io.netty.util.CharsetUtil;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -46,7 +48,11 @@ public class NettyAdaptiveCumulatorTest {
 
   @Before
   public void setUp() {
-    cumulator = new NettyAdaptiveCumulator();
+    cumulator = new NettyAdaptiveCumulator(new AdaptiveCumulatorConsolidateHeuristic() {
+      @Override public int consolidateLast(CompositeByteBuf composite) {
+        return 0;
+      }
+    });
   }
 
   @Test
@@ -120,5 +126,58 @@ public class NettyAdaptiveCumulatorTest {
       assertEquals(0, in.refCnt());
       assertEquals(0, composite.refCnt());
     }
+  }
+
+  @Test
+  public void cumulate_consolidatesComponents_notCalled() {
+    composite = new CompositeByteBuf(alloc, false, 16) {
+      @Override public CompositeByteBuf consolidate(int cIndex, int numComponents) {
+        throw new UnsupportedOperationException("Must not be called");
+      }
+    };
+    composite.addComponent(true, buf);
+
+    cumulation = cumulator.cumulate(alloc, composite, in);
+    CompositeByteBuf composite = (CompositeByteBuf) cumulation;
+    assertEquals(buf, composite.component(0));
+    assertEquals(in, composite.component(1));
+  }
+
+  @Test
+  public void cumulate_consolidatesComponents_consolidateAll() {
+    cumulator = new NettyAdaptiveCumulator(new AdaptiveCumulatorConsolidateHeuristic() {
+      @Override public int consolidateLast(CompositeByteBuf composite) {
+        return 2;
+      }
+    });
+
+    String expectedResult = buf.toString(CharsetUtil.US_ASCII) + in.toString(CharsetUtil.US_ASCII);
+    composite.addComponent(true, buf);
+    cumulation = cumulator.cumulate(alloc, composite, in);
+
+    CompositeByteBuf composite = (CompositeByteBuf) cumulation;
+    assertEquals(1, composite.numComponents());
+    assertEquals(expectedResult, composite.toString(CharsetUtil.US_ASCII));
+  }
+
+  @Test
+  public void cumulate_consolidatesComponents_consolidatePart() {
+    cumulator = new NettyAdaptiveCumulator(new AdaptiveCumulatorConsolidateHeuristic() {
+      @Override public int consolidateLast(CompositeByteBuf composite) {
+        return 2;
+      }
+    });
+
+    String expectedComp0 = buf.toString(CharsetUtil.US_ASCII);
+    String expectedComp1 = buf.toString(CharsetUtil.US_ASCII)  + in.toString(CharsetUtil.US_ASCII);
+
+    composite.addComponent(true, buf);
+    composite.addComponent(true, buf.copy());
+    cumulation = cumulator.cumulate(alloc, composite, in);
+
+    CompositeByteBuf composite = (CompositeByteBuf) cumulation;
+    assertEquals(2, composite.numComponents());
+    assertEquals(expectedComp0, composite.component(0).toString(CharsetUtil.US_ASCII));
+    assertEquals(expectedComp1, composite.component(1).toString(CharsetUtil.US_ASCII));
   }
 }
