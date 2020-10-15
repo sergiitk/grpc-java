@@ -22,7 +22,8 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.CompositeByteBuf;
 
-final class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDecoder.Cumulator {
+class NettyAdaptiveCumulator implements
+    io.netty.handler.codec.ByteToMessageDecoder.Cumulator {
   private final int composeMinSize;
 
   public NettyAdaptiveCumulator(int composeMinSize) {
@@ -32,7 +33,7 @@ final class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessa
 
   @Override
   @SuppressWarnings("ReferenceEquality")
-  public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+  final public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
     if (!cumulation.isReadable()) {
       cumulation.release();
       return in;
