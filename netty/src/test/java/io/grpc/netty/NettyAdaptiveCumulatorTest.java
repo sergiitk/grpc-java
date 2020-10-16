@@ -62,9 +62,9 @@ public class NettyAdaptiveCumulatorTest {
     public void setUp() {
       cumulator = new NettyAdaptiveCumulator(0) {
         @Override
-        ByteBuf mergeIfNeeded(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
-          // To restrict testing scope to NettyAdaptiveCumulator.cumulate(), return input buf as is.
-          return in;
+        void appendInput(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
+          // To limit the testing scope to NettyAdaptiveCumulator.cumulate(), always compose
+          composite.addFlattenedComponents(true, in);
         }
       };
     }
@@ -156,7 +156,7 @@ public class NettyAdaptiveCumulatorTest {
     }
 
     @Test
-    public void skip_emptyComposite() {
+    public void shouldMerge_emptyComposite() {
       composite = alloc.compositeBuffer();
       ByteBuf component = NettyAdaptiveCumulator
           .mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, Integer.MAX_VALUE);

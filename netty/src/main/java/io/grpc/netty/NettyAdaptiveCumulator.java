@@ -50,7 +50,7 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
         composite = alloc.compositeBuffer(Integer.MAX_VALUE)
             .addFlattenedComponents(true, cumulation);
       }
-      mergeOrCompose(alloc, composite, in);
+      appendInput(alloc, composite, in);
       in = null;
       return composite;
     } finally {
@@ -66,24 +66,23 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
   }
 
   @VisibleForTesting
-  ByteBuf mergeOrCompose(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
-    if (shouldCompose(composite, in, composeMinSize)) {
-      composite.addFlattenedComponents(true, in);
-    } else {
+  void appendInput(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
+    if (shouldMerge(composite, in, composeMinSize)) {
       // The total size of the new data and the last component are below the threshold. Merge them.
       appendToCompositeTail(alloc, composite, in);
+    } else {
+      composite.addFlattenedComponents(true, in);
     }
   }
 
   @VisibleForTesting
-  static final boolean shouldCompose(CompositeByteBuf composite, ByteBuf in,
-      int composeMinSize) {
+  static final boolean shouldMerge(CompositeByteBuf composite, ByteBuf in, int composeMinSize) {
     int componentCount = composite.numComponents();
     if (composite.numComponents() == 0) {
-      return true;
+      return false;
     }
     int tailSize = composite.capacity() - composite.toByteIndex(componentCount - 1);
-    return tailSize + in.readableBytes() >= composeMinSize;
+    return tailSize + in.readableBytes() < composeMinSize;
   }
 
   /**
@@ -99,7 +98,7 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
    * which normalized required capacity to the closest power of two.
    */
   @VisibleForTesting
-  static final ByteBuf appendToCompositeTail(ByteBufAllocator alloc, CompositeByteBuf composite,
+  static final void appendToCompositeTail(ByteBufAllocator alloc, CompositeByteBuf composite,
       ByteBuf in) {
 
     int newBytes = in.readableBytes();
