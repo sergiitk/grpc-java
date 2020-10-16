@@ -168,7 +168,7 @@ public class NettyAdaptiveCumulatorTest {
     }
 
     @Test
-    public void skip_notBelowMinSize() {
+    public void skip_minComposeSizeSatisfied() {
       ByteBuf component = NettyAdaptiveCumulator
           .mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, DATA_CUMULATED.length());
       // Unmodified input returned

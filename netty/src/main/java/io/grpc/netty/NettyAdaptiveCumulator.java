@@ -50,8 +50,7 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
         composite = alloc.compositeBuffer(Integer.MAX_VALUE)
             .addFlattenedComponents(true, cumulation);
       }
-      in = mergeIfNeeded(alloc, composite, in);
-      composite.addFlattenedComponents(true, in);
+      mergeOrCompose(alloc, composite, in);
       in = null;
       return composite;
     } finally {
@@ -67,36 +66,51 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
   }
 
   @VisibleForTesting
-  ByteBuf mergeIfNeeded(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
-    return mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, composeMinSize);
+  ByteBuf mergeOrCompose(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
+    if (shouldCompose(composite, in, composeMinSize)) {
+      composite.addFlattenedComponents(true, in);
+    } else {
+      // The total size of the new data and the last component are below the threshold. Merge them.
+      appendToCompositeTail(alloc, composite, in);
+    }
   }
 
   @VisibleForTesting
-  static final ByteBuf mergeTailAndInputIfBelowComposeMinSize(ByteBufAllocator alloc,
-      CompositeByteBuf composite, ByteBuf in, int composeMinSize) {
+  static final boolean shouldCompose(CompositeByteBuf composite, ByteBuf in,
+      int composeMinSize) {
     int componentCount = composite.numComponents();
-    if (componentCount == 0) {
-      return in;
+    if (composite.numComponents() == 0) {
+      return true;
     }
+    int tailSize = composite.capacity() - composite.toByteIndex(componentCount - 1);
+    return tailSize + in.readableBytes() >= composeMinSize;
+  }
+
+  /**
+   * Append the given {@link ByteBuf} {@code in} to {@link CompositeByteBuf} {@code composite} by
+   * expanding or replacing the tail component of the {@link CompositeByteBuf}.
+   *
+   * The goal is to prevent {@code O(n^2)} runtime in a pathological case, that forces copying the
+   * tail component into a new buffer, for each incoming single-byte buffer. We append the new bytes
+   * to the tail, when a write (or a fast write) is possible. Otherwise, the tail is replaced with a
+   * new buffer, with the capacity increased enough to achieve runtime amortization. We assume that
+   * the implementation of {@link ByteBufAllocator#calculateNewCapacity(int, int)}, which is not
+   * worse than {@link io.netty.buffer.AbstractByteBufAllocator#calculateNewCapacity(int, int)},
+   * which normalized required capacity to the closest power of two.
+   */
+  @VisibleForTesting
+  static final ByteBuf appendToCompositeTail(ByteBufAllocator alloc, CompositeByteBuf composite,
+      ByteBuf in) {
 
     int newBytes = in.readableBytes();
     int tailIndex = composite.numComponents() - 1;
     int tailStart = composite.toByteIndex(tailIndex);
     int tailBytes = composite.capacity() - tailStart;
     int totalBytes = newBytes + tailBytes;
-    if (totalBytes >= composeMinSize) {
-      return in;
-    }
 
-    // The total size of the new data and the last component are below the threshold. Merge them.
-    ByteBuf tail = composite.component(tailIndex);
+    ByteBuf tail = composite.component(composite.numComponents());
     ByteBuf merged = null;
 
-    // The goal is to prevent O(n^2) runtime in a pathological case, that forces copying the tail
-    // component into a new buffer, for each incoming single-byte buffer.
-    // We append the new bytes to the tail, when a write (or a fast write) is possible.
-    // Otherwise, to achieve runtime amortization, the tail is replaced with a new buffer,
-    // with capacity normalized to the closest power of two by alloc.calculateNewCapacity().
     try {
       if (tail.refCnt() == 1 && !tail.isReadOnly() && totalBytes <= tail.maxCapacity()) {
         // Ideal case: the tail isn't shared, and can be expanded to the required capacity.
@@ -114,12 +128,14 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
         // The tail is shared, or not expandable. Replace it with a new buffer of desired capacity.
         merged = alloc.buffer(alloc.calculateNewCapacity(totalBytes, Integer.MAX_VALUE));
         merged.setBytes(0, composite, tailStart, tailBytes)
-            .setBytes(tailBytes, in, newBytes)
+            .setBytes(tailBytes, in, in.readerIndex(), newBytes)
             .writerIndex(totalBytes);
         composite.removeComponent(tailIndex);
         in.readerIndex(in.writerIndex());
       }
-      return merged;
+
+      composite.addComponent(true, merged);
+      merged = null;
     } finally {
       in.release();
       // TODO(sergiitk): cleanup on exceptions
