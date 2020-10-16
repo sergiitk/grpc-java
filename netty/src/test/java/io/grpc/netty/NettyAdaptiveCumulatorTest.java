@@ -64,7 +64,6 @@ public class NettyAdaptiveCumulatorTest {
         @Override
         ByteBuf mergeIfNeeded(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
           // To restrict testing scope to NettyAdaptiveCumulator.cumulate(), return input buf as is.
-          // alloc.buffer(1).writeBytes();
           return in;
         }
       };
@@ -91,7 +90,7 @@ public class NettyAdaptiveCumulatorTest {
     public void compositeCumulation_inputAppendedAsANewComponent() {
       assertSame(composite, cumulator.cumulate(alloc, composite, in));
       assertEquals(DATA_INITIAL, composite.component(0).toString(US_ASCII));
-      assertEquals(DATA_INCOMING, composite.component(0).toString(US_ASCII));
+      assertEquals(DATA_INCOMING, composite.component(1).toString(US_ASCII));
       assertEquals(DATA_CUMULATED, composite.toString(US_ASCII));
     }
 
@@ -153,24 +152,31 @@ public class NettyAdaptiveCumulatorTest {
   public static class MergeIfNeededTests extends SharedNettyAdaptiveCumulatorTest {
     @Before
     public void setUp() {
-      cumulator = new NettyAdaptiveCumulator(10);
+      // cumulator = new NettyAdaptiveCumulator(DATA_INCOMING.length());
     }
 
     @Test
     public void skip_emptyComposite() {
-      ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
-      // Input returned as is, composite is unchanged.
+      composite = alloc.compositeBuffer();
+      ByteBuf component = NettyAdaptiveCumulator
+          .mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, Integer.MAX_VALUE);
+      // Unmodified input returned
       assertSame(in, component);
+      assertEquals(DATA_INCOMING, component.toString(US_ASCII));
+      // Composite unchanged
       assertEquals(0, composite.numComponents());
     }
 
     @Test
-    public void skip_largeEnough() {
-      ByteBuf component = cumulator
-          .mergeIfNeeded(alloc, composite.writeBytes(contiguous, 9), in.writerIndex(1));
-      // Input returned as is, composite is unchanged.
+    public void skip_notBelowMinSize() {
+      ByteBuf component = NettyAdaptiveCumulator
+          .mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, DATA_CUMULATED.length());
+      // Unmodified input returned
       assertSame(in, component);
+      assertEquals(DATA_INCOMING, component.toString(US_ASCII));
+      // Composite unchanged
       assertEquals(1, composite.numComponents());
+      assertEquals(DATA_INITIAL, composite.toString(US_ASCII));
     }
 
     @Test
@@ -330,5 +336,4 @@ public class NettyAdaptiveCumulatorTest {
       assertEquals(0, in.readableBytes());
     }
   }
-
 }

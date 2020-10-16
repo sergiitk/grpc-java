@@ -22,11 +22,10 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.CompositeByteBuf;
 
-class NettyAdaptiveCumulator implements
-    io.netty.handler.codec.ByteToMessageDecoder.Cumulator {
+class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDecoder.Cumulator {
   private final int composeMinSize;
 
-  public NettyAdaptiveCumulator(int composeMinSize) {
+  NettyAdaptiveCumulator(int composeMinSize) {
     Preconditions.checkArgument(composeMinSize >= 0, "composeMinSize must be non-negative");
     this.composeMinSize = composeMinSize;
   }
@@ -69,6 +68,12 @@ class NettyAdaptiveCumulator implements
 
   @VisibleForTesting
   ByteBuf mergeIfNeeded(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
+    return mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, composeMinSize);
+  }
+
+  @VisibleForTesting
+  static final ByteBuf mergeTailAndInputIfBelowComposeMinSize(ByteBufAllocator alloc,
+      CompositeByteBuf composite, ByteBuf in, int composeMinSize) {
     int componentCount = composite.numComponents();
     if (componentCount == 0) {
       return in;
