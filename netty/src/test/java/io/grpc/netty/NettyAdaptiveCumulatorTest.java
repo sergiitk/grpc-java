@@ -17,6 +17,7 @@
 package io.grpc.netty;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.TruthJUnit.assume;
 import static io.netty.util.CharsetUtil.US_ASCII;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -29,35 +30,50 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.google.common.base.Function;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import io.netty.buffer.AbstractByteBufAllocator;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.CompositeByteBuf;
-import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
+import java.util.Collection;
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameter;
+import org.junit.runners.Parameterized.Parameters;
 
 @RunWith(Enclosed.class)
 public class NettyAdaptiveCumulatorTest {
-  abstract public static class SharedNettyAdaptiveCumulatorTest {
+  abstract private static class AbstractNettyAdaptiveCumulatorTest {
     // Represent data as immutable ASCII Strings for easy and readable ByteBuf equality assertions.
     protected static final String DATA_INITIAL = "0123";
     protected static final String DATA_INCOMING = "456789";
     protected static final String DATA_CUMULATED = "0123456789";
+    private static final ByteBufAllocator alloc = new UnpooledByteBufAllocator(false);
+
     protected NettyAdaptiveCumulator cumulator;
-    protected ByteBufAllocator alloc = new UnpooledByteBufAllocator(false);
-    protected ByteBuf contiguous = ByteBufUtil.writeAscii(alloc, DATA_INITIAL);
-    protected CompositeByteBuf composite = alloc.compositeBuffer().addComponent(true, contiguous);
-    protected ByteBuf in = ByteBufUtil.writeAscii(alloc, DATA_INCOMING);
+    protected ByteBufAllocator unpooledAlloc() {
+      return alloc;
+    }
   }
 
   @RunWith(JUnit4.class)
-  public static class CumulateTests extends SharedNettyAdaptiveCumulatorTest {
+  public static class CumulateTests extends AbstractNettyAdaptiveCumulatorTest {
+    private final ByteBufAllocator alloc = unpooledAlloc();
+
+    // Buffers for testing
+    private ByteBuf contiguous = ByteBufUtil.writeAscii(alloc, DATA_INITIAL);
+    private CompositeByteBuf composite = alloc.compositeBuffer().addComponent(true, contiguous);
+    private ByteBuf in = ByteBufUtil.writeAscii(alloc, DATA_INCOMING);
+
     @Before
     public void setUp() {
       cumulator = new NettyAdaptiveCumulator(0) {
@@ -133,10 +149,10 @@ public class NettyAdaptiveCumulatorTest {
         }
       };
       // Return our instance of new composite to ensure it's released.
-      alloc = mock(AbstractByteBufAllocator.class);
-      when(alloc.compositeBuffer(anyInt())).thenReturn(composite);
+      ByteBufAllocator mockAlloc = mock(ByteBufAllocator.class);
+      when(mockAlloc.compositeBuffer(anyInt())).thenReturn(composite);
       try {
-        cumulator.cumulate(alloc, contiguous, in);
+        cumulator.cumulate(mockAlloc, contiguous, in);
         fail("Cumulator didn't throw");
       } catch (UnsupportedOperationException actualError) {
         assertSame(expectedError, actualError);
@@ -148,192 +164,275 @@ public class NettyAdaptiveCumulatorTest {
     }
   }
 
-  @RunWith(JUnit4.class)
-  public static class MergeIfNeededTests extends SharedNettyAdaptiveCumulatorTest {
+  @RunWith(Parameterized.class)
+  public static class AppendInputTests extends AbstractNettyAdaptiveCumulatorTest {
+    @Parameters(name = "{index}: composeMinSize={0}, tailData={1}, inData={2}")
+    public static Collection<Object[]> params() {
+      // toString = Object::toString;
+      // List<Integer> composeMinSize = ImmutableList.of(0, 10, 11, Integer.MAX_VALUE);
+      // List<String> tailData = ImmutableList.of("", DATA_INITIAL);
+      // List<String> inData = ImmutableList.of("", DATA_INCOMING);
+      // List<? extends List<? extends Object>> data = ImmutableList.of(composeMinSize, tailData, inData);
+      // List<? extends List<?>> data = ImmutableList.of(composeMinSize, tailData, inData);
+
+      // ImmutableList<Object> composeMinSize = ImmutableList.of(0, 10, 11, Integer.MAX_VALUE);
+
+      List<?> composeMinSize = ImmutableList.of(0, 10, 11, Integer.MAX_VALUE);
+      List<?> tailData = ImmutableList.of("", DATA_INITIAL);
+      List<?> inData = ImmutableList.of("", DATA_INCOMING);
+      List<List<?>> data = ImmutableList.of(composeMinSize, tailData, inData);
+      List<List<Object>> combos = Lists.cartesianProduct(data);
+
+      return Lists.transform(combos, new Function<List<?>, Object[]>() {
+        @Override public Object[] apply(List<?> input) {
+          return input.toArray();
+        }
+      });
+
+      // ImmutableList<ImmutableList<? extends Object>> data = ImmutableList.of(composeMinSize, tailData, inData);
+
+      // List<List<Object>> data = ImmutableList.of
+      // List<?> data = Lists.cartesianProduct(composeMinSize, tailData, inData);
+      // List<List<? extends Object>> data = Lists.cartesianProduct(composeMinSize, tailData, inData);
+
+      // data = Lists.cartesianProduct(composeMinSize, tailData, inData);
+      // List<List<Object>> data;
+      // data = Lists.cartesianProduct(composeMinSize, tailData, inData);
+      // return data;
+      // List<List<? extends Object>> data = ImmutableList.of(ImmutableList.of(10, DATA_INITIAL, DATA_INCOMING));
+      // List<?> row = ImmutableList.of(10, DATA_INITIAL, DATA_INCOMING);
+      // List<Object> row = ImmutableList.of(new Integer(10), DATA_INITIAL, DATA_INCOMING);
+
+
+      // return null;
+    }
+
+    @Parameter(0) public int composeMinSize;
+    @Parameter(1) public String tailData;
+    @Parameter(2) public String inData;
+
+    private final ByteBufAllocator alloc = unpooledAlloc();
+    private CompositeByteBuf composite;
+    private ByteBuf in = alloc.buffer();
+
     @Before
     public void setUp() {
-      // cumulator = new NettyAdaptiveCumulator(DATA_INCOMING.length());
+      cumulator = new NettyAdaptiveCumulator(composeMinSize);
+      composite = alloc.compositeBuffer();
+      ByteBufUtil.writeAscii(in, inData);
     }
 
     @Test
     public void shouldMerge_emptyComposite() {
-      composite = alloc.compositeBuffer();
-      ByteBuf component = NettyAdaptiveCumulator
-          .mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, Integer.MAX_VALUE);
-      // Unmodified input returned
-      assertSame(in, component);
-      assertEquals(DATA_INCOMING, component.toString(US_ASCII));
-      // Composite unchanged
-      assertEquals(0, composite.numComponents());
+      assume().that(composite.isReadable()).isFalse();
+
+      cumulator.appendInput(alloc, composite, in);
+      assertEquals(inData, composite.toString(US_ASCII));
+      assertEquals(inData.length() > 0 ? 1 : 0, composite.numComponents());
     }
 
-    @Test
-    public void skip_minComposeSizeSatisfied() {
-      ByteBuf component = NettyAdaptiveCumulator
-          .mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, DATA_CUMULATED.length());
-      // Unmodified input returned
-      assertSame(in, component);
-      assertEquals(DATA_INCOMING, component.toString(US_ASCII));
-      // Composite unchanged
-      assertEquals(1, composite.numComponents());
-      assertEquals(DATA_INITIAL, composite.toString(US_ASCII));
-    }
 
-    @Test
-    public void expandTail_write() {
-      // Create tail with 5 writable bytes left.
-      ByteBuf tail = alloc.buffer(10, 10).setIndex(3, 5);
-      tail.setCharSequence(0, "01234", US_ASCII);
-      composite.addComponent(true, tail);
 
-      // Input has 5 readable bytes left.
-      in = alloc.buffer(10, 10).setIndex(5, 10);
-      in.setCharSequence(0, "xxxxx56789", US_ASCII);
+    // private static ByteBufAllocator alloc = new UnpooledByteBufAllocator(false);
 
-      // The tail and input together are below the threshold.
-      cumulator = new NettyAdaptiveCumulator(11);
-      ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
-      // Composite buf must only contain the initial data.
-      assertEquals(1, composite.numComponents());
+    // protected ByteBuf contiguous = ByteBufUtil.writeAscii(alloc, DATA_INITIAL);
+    // protected CompositeByteBuf composite = alloc.compositeBuffer().addComponent(true, contiguous);
+    // protected ByteBuf in = ByteBufUtil.writeAscii(alloc, DATA_INCOMING);
 
-      // Modified tail is returned, but it must be the same object.
-      assertSame(tail, component);
-      // Read (discardable) bytes of the tail must stay as is.
-      // Read (discardable) bytes of the input must be discarded.
-      // Readable part of the input must be appended to the tail.
-      assertEquals("0123456789", tail.toString(0, 10, US_ASCII));
-      assertEquals(10, component.capacity());
-      assertEquals(10, component.maxCapacity());
-      assertEquals(3, component.readerIndex());
-      assertEquals(10, component.writerIndex());
-      assertEquals(1, component.refCnt());
+    // @DataPoint public static CompositeByteBuf COMPOSITE_EMPTY = alloc.compositeBuffer();
+    // @DataPoint public static CompositeByteBuf COMPOSITE_NOT_READABLE = alloc.compositeBuffer() .w
 
-      // Input buf must be released and have no readable bytes.
-      assertEquals(0, in.refCnt());
-      assertEquals(0, in.readableBytes());
-    }
 
-    @Test
-    public void expandTail_fastWrite() {
-      // Use pooled allocator to test for maxFastWritableBytes() being different from writableBytes().
-      alloc = new PooledByteBufAllocator();
-
-      // Create tail with no writable bytes left, but allow to expand it.
-      ByteBuf tail = alloc.buffer(5, 512).setIndex(3, 5);
-      tail.setCharSequence(0, "01234", US_ASCII);
-      composite.addComponent(true, tail);
-      int tailFastCapacity = tail.writerIndex() + tail.maxFastWritableBytes();
-
-      // Input has 5 readable bytes left.
-      in = alloc.buffer(10, 10).setIndex(5, 10);
-      in.setCharSequence(0, "xxxxx56789", US_ASCII);
-
-      // The tail and input together are below the threshold.
-      cumulator = new NettyAdaptiveCumulator(11);
-      ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
-      // Composite buf must only contain the initial data.
-      assertEquals(1, composite.numComponents());
-
-      // Modified tail is returned, but it must be the same object.
-      assertSame(tail, component);
-      // Read (discardable) bytes of the tail must stay as is.
-      // Read (discardable) bytes of the input must be discarded.
-      // Readable part of the input must be appended to the tail.
-      assertEquals("0123456789", tail.toString(0, 10, US_ASCII));
-      assertEquals(tailFastCapacity, component.capacity());
-      assertEquals(512, component.maxCapacity());
-      assertEquals(3, component.readerIndex());
-      assertEquals(10, component.writerIndex());
-      assertEquals(1, component.refCnt());
-
-      // Input buf must be released and have no readable bytes.
-      assertEquals(0, in.refCnt());
-      assertEquals(0, in.readableBytes());
-    }
-
-    @Test
-    public void expandTail_reallocate() {
-      // Use pooled allocator to test for maxFastWritableBytes() being different from writableBytes().
-      alloc = new PooledByteBufAllocator();
-
-      // Create tail with no writable bytes left, but allow to expand it.
-      final int tailBytes = 5;
-      ByteBuf tail = alloc.buffer(tailBytes).setIndex(3, tailBytes);
-      tail.setCharSequence(0, "01234", US_ASCII);
-      composite.addComponent(true, tail);
-      final int tailFastCapacity = tail.writerIndex() + tail.maxFastWritableBytes();
-
-      // Make input larger than tailFastCapacity
-      in = alloc.buffer(tailFastCapacity + 1).writeZero(tailFastCapacity).writeByte(1);
-      byte[] expectedInput = new byte[tailFastCapacity + 1];
-      in.getBytes(0, expectedInput);
-
-      // Force merge.
-      cumulator = new NettyAdaptiveCumulator(Integer.MAX_VALUE);
-      ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
-      // Composite buf must only contain the initial data.
-      assertEquals(1, composite.numComponents());
-
-      // Modified tail is returned, but it must be the same object.
-      assertSame(tail, component);
-      // Read (discardable) bytes of the tail must stay as is.
-      assertEquals("01234", tail.toString(0, 5, US_ASCII));
-
-      // Ensure the input is appended.
-      byte[] appendedInput = new byte[tailFastCapacity + 1];
-      component.getBytes(tailBytes, appendedInput);
-      assertArrayEquals(expectedInput, appendedInput);
-      int totalBytes = tailBytes + tailFastCapacity + 1;
-      assertEquals(alloc.calculateNewCapacity(totalBytes, Integer.MAX_VALUE), component.capacity());
-      assertEquals(totalBytes, component.writerIndex());
-      assertEquals(3, component.readerIndex());
-      assertEquals(1, component.refCnt());
-
-      // Input buf must be released and have no readable bytes.
-      assertEquals(0, in.refCnt());
-      assertEquals(0, in.readableBytes());
-    }
-
-    // TODO(sergiitk): parametrize to account for other states of the tail when we need to merge
-    @Test
-    public void manualMerge() {
-      // Create tail with no writable bytes left.
-      ByteBuf tail = alloc.buffer(5, 5).setIndex(3, 5);
-      tail.setCharSequence(0, "xxx01", US_ASCII);
-      composite.addComponent(true, tail);
-
-      // Input has 5 readable bytes left.
-      in = alloc.buffer(10, 10).setIndex(5, 10);
-      in.setCharSequence(0, "xxxxx23456", US_ASCII);
-      int totalBytes =  tail.readableBytes() + in.readableBytes();
-
-      // The tail and input together are below the threshold.
-      cumulator = new NettyAdaptiveCumulator(11);
-      ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
-      // Composite buf must only contain the initial data.
-      assertEquals(1, composite.numComponents());
-
-      // A new buffer is returned, it must be neither the tail, nor the input buf.
-      assertNotSame(tail, component);
-      assertNotEquals(tail, component);
-      assertNotSame(in, component);
-      assertNotEquals(in, component);
-
-      // Tail buf must be released
-      assertEquals(0, tail.refCnt());
-
-      // Read (discardable) bytes of the tail and the input must be discarded.
-      // Readable parts of the tail and the input must be merged.
-      assertEquals("0123456", component.toString(US_ASCII));
-      assertEquals(alloc.calculateNewCapacity(totalBytes, Integer.MAX_VALUE), component.capacity());
-      assertEquals(Integer.MAX_VALUE, component.maxCapacity());
-      assertEquals(0, component.readerIndex());
-      assertEquals(totalBytes, component.writerIndex());
-      assertEquals(1, component.refCnt());
-
-      // Input buf must be released and have no readable bytes.
-      assertEquals(0, in.refCnt());
-      assertEquals(0, in.readableBytes());
-    }
   }
+
+  //
+  //
+  // @RunWith(JUnit4.class)
+  // public static class MergeIfNeededTests extends AbstractNettyAdaptiveCumulatorTest {
+  //   @Before
+  //   public void setUp() {
+  //     // cumulator = new NettyAdaptiveCumulator(DATA_INCOMING.length());
+  //   }
+  //
+  //   @Test
+  //   public void shouldMerge_emptyComposite() {
+  //     composite = alloc.compositeBuffer();
+  //     ByteBuf component = NettyAdaptiveCumulator
+  //         .mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, Integer.MAX_VALUE);
+  //     // Unmodified input returned
+  //     assertSame(in, component);
+  //     assertEquals(DATA_INCOMING, component.toString(US_ASCII));
+  //     // Composite unchanged
+  //     assertEquals(0, composite.numComponents());
+  //   }
+  //
+  //   @Test
+  //   public void skip_minComposeSizeSatisfied() {
+  //     ByteBuf component = NettyAdaptiveCumulator
+  //         .mergeTailAndInputIfBelowComposeMinSize(alloc, composite, in, DATA_CUMULATED.length());
+  //     // Unmodified input returned
+  //     assertSame(in, component);
+  //     assertEquals(DATA_INCOMING, component.toString(US_ASCII));
+  //     // Composite unchanged
+  //     assertEquals(1, composite.numComponents());
+  //     assertEquals(DATA_INITIAL, composite.toString(US_ASCII));
+  //   }
+  //
+  //   @Test
+  //   public void expandTail_write() {
+  //     // Create tail with 5 writable bytes left.
+  //     ByteBuf tail = alloc.buffer(10, 10).setIndex(3, 5);
+  //     tail.setCharSequence(0, "01234", US_ASCII);
+  //     composite.addComponent(true, tail);
+  //
+  //     // Input has 5 readable bytes left.
+  //     in = alloc.buffer(10, 10).setIndex(5, 10);
+  //     in.setCharSequence(0, "xxxxx56789", US_ASCII);
+  //
+  //     // The tail and input together are below the threshold.
+  //     cumulator = new NettyAdaptiveCumulator(11);
+  //     ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
+  //     // Composite buf must only contain the initial data.
+  //     assertEquals(1, composite.numComponents());
+  //
+  //     // Modified tail is returned, but it must be the same object.
+  //     assertSame(tail, component);
+  //     // Read (discardable) bytes of the tail must stay as is.
+  //     // Read (discardable) bytes of the input must be discarded.
+  //     // Readable part of the input must be appended to the tail.
+  //     assertEquals("0123456789", tail.toString(0, 10, US_ASCII));
+  //     assertEquals(10, component.capacity());
+  //     assertEquals(10, component.maxCapacity());
+  //     assertEquals(3, component.readerIndex());
+  //     assertEquals(10, component.writerIndex());
+  //     assertEquals(1, component.refCnt());
+  //
+  //     // Input buf must be released and have no readable bytes.
+  //     assertEquals(0, in.refCnt());
+  //     assertEquals(0, in.readableBytes());
+  //   }
+  //
+  //   @Test
+  //   public void expandTail_fastWrite() {
+  //     // Use pooled allocator to test for maxFastWritableBytes() being different from writableBytes().
+  //     alloc = new PooledByteBufAllocator();
+  //
+  //     // Create tail with no writable bytes left, but allow to expand it.
+  //     ByteBuf tail = alloc.buffer(5, 512).setIndex(3, 5);
+  //     tail.setCharSequence(0, "01234", US_ASCII);
+  //     composite.addComponent(true, tail);
+  //     int tailFastCapacity = tail.writerIndex() + tail.maxFastWritableBytes();
+  //
+  //     // Input has 5 readable bytes left.
+  //     in = alloc.buffer(10, 10).setIndex(5, 10);
+  //     in.setCharSequence(0, "xxxxx56789", US_ASCII);
+  //
+  //     // The tail and input together are below the threshold.
+  //     cumulator = new NettyAdaptiveCumulator(11);
+  //     ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
+  //     // Composite buf must only contain the initial data.
+  //     assertEquals(1, composite.numComponents());
+  //
+  //     // Modified tail is returned, but it must be the same object.
+  //     assertSame(tail, component);
+  //     // Read (discardable) bytes of the tail must stay as is.
+  //     // Read (discardable) bytes of the input must be discarded.
+  //     // Readable part of the input must be appended to the tail.
+  //     assertEquals("0123456789", tail.toString(0, 10, US_ASCII));
+  //     assertEquals(tailFastCapacity, component.capacity());
+  //     assertEquals(512, component.maxCapacity());
+  //     assertEquals(3, component.readerIndex());
+  //     assertEquals(10, component.writerIndex());
+  //     assertEquals(1, component.refCnt());
+  //
+  //     // Input buf must be released and have no readable bytes.
+  //     assertEquals(0, in.refCnt());
+  //     assertEquals(0, in.readableBytes());
+  //   }
+  //
+  //   @Test
+  //   public void expandTail_reallocate() {
+  //     // Use pooled allocator to test for maxFastWritableBytes() being different from writableBytes().
+  //     alloc = new PooledByteBufAllocator();
+  //
+  //     // Create tail with no writable bytes left, but allow to expand it.
+  //     final int tailBytes = 5;
+  //     ByteBuf tail = alloc.buffer(tailBytes).setIndex(3, tailBytes);
+  //     tail.setCharSequence(0, "01234", US_ASCII);
+  //     composite.addComponent(true, tail);
+  //     final int tailFastCapacity = tail.writerIndex() + tail.maxFastWritableBytes();
+  //
+  //     // Make input larger than tailFastCapacity
+  //     in = alloc.buffer(tailFastCapacity + 1).writeZero(tailFastCapacity).writeByte(1);
+  //     byte[] expectedInput = new byte[tailFastCapacity + 1];
+  //     in.getBytes(0, expectedInput);
+  //
+  //     // Force merge.
+  //     cumulator = new NettyAdaptiveCumulator(Integer.MAX_VALUE);
+  //     ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
+  //     // Composite buf must only contain the initial data.
+  //     assertEquals(1, composite.numComponents());
+  //
+  //     // Modified tail is returned, but it must be the same object.
+  //     assertSame(tail, component);
+  //     // Read (discardable) bytes of the tail must stay as is.
+  //     assertEquals("01234", tail.toString(0, 5, US_ASCII));
+  //
+  //     // Ensure the input is appended.
+  //     byte[] appendedInput = new byte[tailFastCapacity + 1];
+  //     component.getBytes(tailBytes, appendedInput);
+  //     assertArrayEquals(expectedInput, appendedInput);
+  //     int totalBytes = tailBytes + tailFastCapacity + 1;
+  //     assertEquals(alloc.calculateNewCapacity(totalBytes, Integer.MAX_VALUE), component.capacity());
+  //     assertEquals(totalBytes, component.writerIndex());
+  //     assertEquals(3, component.readerIndex());
+  //     assertEquals(1, component.refCnt());
+  //
+  //     // Input buf must be released and have no readable bytes.
+  //     assertEquals(0, in.refCnt());
+  //     assertEquals(0, in.readableBytes());
+  //   }
+  //
+  //   // TODO(sergiitk): parametrize to account for other states of the tail when we need to merge
+  //   @Test
+  //   public void manualMerge() {
+  //     // Create tail with no writable bytes left.
+  //     ByteBuf tail = alloc.buffer(5, 5).setIndex(3, 5);
+  //     tail.setCharSequence(0, "xxx01", US_ASCII);
+  //     composite.addComponent(true, tail);
+  //
+  //     // Input has 5 readable bytes left.
+  //     in = alloc.buffer(10, 10).setIndex(5, 10);
+  //     in.setCharSequence(0, "xxxxx23456", US_ASCII);
+  //     int totalBytes =  tail.readableBytes() + in.readableBytes();
+  //
+  //     // The tail and input together are below the threshold.
+  //     cumulator = new NettyAdaptiveCumulator(11);
+  //     ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
+  //     // Composite buf must only contain the initial data.
+  //     assertEquals(1, composite.numComponents());
+  //
+  //     // A new buffer is returned, it must be neither the tail, nor the input buf.
+  //     assertNotSame(tail, component);
+  //     assertNotEquals(tail, component);
+  //     assertNotSame(in, component);
+  //     assertNotEquals(in, component);
+  //
+  //     // Tail buf must be released
+  //     assertEquals(0, tail.refCnt());
+  //
+  //     // Read (discardable) bytes of the tail and the input must be discarded.
+  //     // Readable parts of the tail and the input must be merged.
+  //     assertEquals("0123456", component.toString(US_ASCII));
+  //     assertEquals(alloc.calculateNewCapacity(totalBytes, Integer.MAX_VALUE), component.capacity());
+  //     assertEquals(Integer.MAX_VALUE, component.maxCapacity());
+  //     assertEquals(0, component.readerIndex());
+  //     assertEquals(totalBytes, component.writerIndex());
+  //     assertEquals(1, component.refCnt());
+  //
+  //     // Input buf must be released and have no readable bytes.
+  //     assertEquals(0, in.refCnt());
+  //     assertEquals(0, in.readableBytes());
+  //   }
+  // }
 }
