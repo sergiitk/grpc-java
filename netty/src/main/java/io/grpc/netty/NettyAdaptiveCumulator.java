@@ -32,7 +32,7 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
 
   @Override
   @SuppressWarnings("ReferenceEquality")
-  final public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+  public final ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
     if (!cumulation.isReadable()) {
       cumulation.release();
       return in;
@@ -50,7 +50,7 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
         composite = alloc.compositeBuffer(Integer.MAX_VALUE)
             .addFlattenedComponents(true, cumulation);
       }
-      appendInput(alloc, composite, in);
+      addInput(alloc, composite, in);
       in = null;
       return composite;
     } finally {
@@ -66,23 +66,23 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
   }
 
   @VisibleForTesting
-  void appendInput(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
-    if (shouldMerge(composite, in, composeMinSize)) {
-      // The total size of the new data and the last component are below the threshold. Merge them.
-      appendToCompositeTail(alloc, composite, in);
-    } else {
+  void addInput(ByteBufAllocator alloc, CompositeByteBuf composite, ByteBuf in) {
+    if (shouldCompose(composite, in, composeMinSize)) {
       composite.addFlattenedComponents(true, in);
+    } else {
+      // The total size of the new data and the last component are below the threshold. Merge them.
+      mergeWithCompositeTail(alloc, composite, in);
     }
   }
 
   @VisibleForTesting
-  static final boolean shouldMerge(CompositeByteBuf composite, ByteBuf in, int composeMinSize) {
+  static boolean shouldCompose(CompositeByteBuf composite, ByteBuf in, int composeMinSize) {
     int componentCount = composite.numComponents();
     if (composite.numComponents() == 0) {
-      return false;
+      return true;
     }
     int tailSize = composite.capacity() - composite.toByteIndex(componentCount - 1);
-    return tailSize + in.readableBytes() < composeMinSize;
+    return tailSize + in.readableBytes() >= composeMinSize;
   }
 
   /**
@@ -98,7 +98,7 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
    * which normalized required capacity to the closest power of two.
    */
   @VisibleForTesting
-  static final void appendToCompositeTail(ByteBufAllocator alloc, CompositeByteBuf composite,
+  static void mergeWithCompositeTail(ByteBufAllocator alloc, CompositeByteBuf composite,
       ByteBuf in) {
 
     int newBytes = in.readableBytes();
@@ -107,7 +107,7 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
     int tailBytes = composite.capacity() - tailStart;
     int totalBytes = newBytes + tailBytes;
 
-    ByteBuf tail = composite.component(composite.numComponents());
+    ByteBuf tail = composite.component(tailIndex);
     ByteBuf merged = null;
 
     try {
@@ -116,7 +116,8 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
         // Take ownership of the tail.
         tail = tail.retainedDuplicate().unwrap();
         composite.removeComponent(tailIndex);
-        assert tail.refCnt() == 1;
+        // Reset writer index after removing the tail
+        composite.writerIndex(tailStart);
         // The tail is a readable non-composite buffer, so writeBytes() handles everything for us.
         // - ensureWritable() performs a fast resize when possible (f.e. PooledByteBuf's simply
         //   updates its boundary to the end of consecutive memory run assigned to this buffer)
@@ -133,7 +134,7 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
         in.readerIndex(in.writerIndex());
       }
 
-      composite.addComponent(true, merged);
+      composite.addFlattenedComponents(true, merged);
       merged = null;
     } finally {
       in.release();
