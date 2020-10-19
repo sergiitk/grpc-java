@@ -115,9 +115,6 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
         // Ideal case: the tail isn't shared, and can be expanded to the required capacity.
         // Take ownership of the tail.
         tail = tail.retainedDuplicate().unwrap();
-        composite.removeComponent(tailIndex);
-        // Reset writer index after removing the tail
-        composite.writerIndex(tailStart);
         // The tail is a readable non-composite buffer, so writeBytes() handles everything for us.
         // - ensureWritable() performs a fast resize when possible (f.e. PooledByteBuf's simply
         //   updates its boundary to the end of consecutive memory run assigned to this buffer)
@@ -130,11 +127,12 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
         merged.setBytes(0, composite, tailStart, tailBytes)
             .setBytes(tailBytes, in, in.readerIndex(), newBytes)
             .writerIndex(totalBytes);
-        composite.removeComponent(tailIndex);
         in.readerIndex(in.writerIndex());
       }
 
-      composite.addFlattenedComponents(true, merged);
+      // Remove the tail, reset writer index, add merged component.
+      composite.removeComponent(tailIndex).writerIndex(tailStart)
+          .addFlattenedComponents(true, merged);
       merged = null;
     } finally {
       in.release();

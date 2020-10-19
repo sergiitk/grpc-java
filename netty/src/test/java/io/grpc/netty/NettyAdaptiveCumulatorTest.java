@@ -19,15 +19,11 @@ package io.grpc.netty;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.TruthJUnit.assume;
 import static io.netty.util.CharsetUtil.US_ASCII;
-import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -221,7 +217,7 @@ public class NettyAdaptiveCumulatorTest {
   public static class MergeWithCompositeTail {
     private static final String DATA_INCOMING_DISCARDABLE = "xxxxx";
     private static final int TAIL_READER_INDEX = 1;
-    private static final int TAIL_MAX_CAPACITY = 512;
+    private static final int TAIL_MAX_CAPACITY = 128;
 
     // @Parameters(name = "tail(initialCapacity={0}, maxCapacity={1})")
     // public static Collection<Object[]> params() {
@@ -257,15 +253,16 @@ public class NettyAdaptiveCumulatorTest {
       tail = alloc.buffer(DATA_INITIAL.length(), TAIL_MAX_CAPACITY)
           .writeBytes(DATA_INITIAL.getBytes(US_ASCII))
           .readerIndex(TAIL_READER_INDEX);
-      composite = alloc.compositeBuffer().addFlattenedComponents(true, tail);
+      composite = alloc.compositeBuffer();
       // TODO(sergiitk): test with another in composite to confirm writer index reset
       // TODO(sergiitk): test with tail partially read within composite
     }
 
     @Test
-    public void mergeWithCompositeTail_expandTailWrite() {
+    public void mergeWithCompositeTail_expandTail_write() {
       // Make incoming data fit into tail capacity.
       tail.capacity(DATA_CUMULATED.length());
+      composite.addFlattenedComponents(true, tail);
       // Confirm it fits.
       assertThat(in.readableBytes()).isAtMost(tail.writableBytes());
 
@@ -274,20 +271,22 @@ public class NettyAdaptiveCumulatorTest {
     }
 
     @Test
-    public void mergeWithCompositeTail_expandTailFastWrite() {
+    public void mergeWithCompositeTail_expandTail_fastWrite() {
       // Confirm that the tail can be expanded fast to fit the incoming data.
       assertThat(in.readableBytes()).isAtMost(tail.maxFastWritableBytes());
       int tailFastCapacity = tail.writerIndex() + tail.maxFastWritableBytes();
+      composite.addFlattenedComponents(true, tail);
 
       // Tail capacity is extended to its fast capacity.
       testTailExpansion(DATA_CUMULATED.substring(TAIL_READER_INDEX), tailFastCapacity);
     }
 
     @Test
-    public void mergeWithCompositeTail_expandTailReallocate() {
+    public void mergeWithCompositeTail_expandTail_reallocateTailMemory() {
       int tailFastCapacity = tail.writerIndex() + tail.maxFastWritableBytes();
       String inSuffixOverFastBytes = Strings.repeat("a", tailFastCapacity + 1);
       int totalBytes =  tail.readableBytes() + inSuffixOverFastBytes.length();
+      composite.addFlattenedComponents(true, tail);
 
       // Make input larger than tailFastCapacity
       in.writeCharSequence(inSuffixOverFastBytes, US_ASCII);
@@ -303,11 +302,11 @@ public class NettyAdaptiveCumulatorTest {
 
     private void testTailExpansion(String expectedReadable, int expectedNewTailCapacity) {
       NettyAdaptiveCumulator.mergeWithCompositeTail(alloc, composite, in);
-      // Composite should still have a single component.
+      // Composite component count shouldn't change.
       assertEquals(1, composite.numComponents());
-      ByteBuf newTail = composite.component(0);
-      // New tail could be wrapped, so assertSame() is not safe.
-      assertEquals(tail, newTail);
+      ByteBuf expandedTail = composite.component(0);
+      // Expanded tail could be wrapped, so assertSame() is not safe.
+      assertEquals(tail, expandedTail);
 
       // Read (discardable) bytes of the tail must stay as is.
       // Read (discardable) bytes of the input must be discarded.
@@ -315,59 +314,69 @@ public class NettyAdaptiveCumulatorTest {
       assertEquals(expectedReadable,
           composite.toString(0, composite.readableBytes(), US_ASCII));
       assertEquals(DATA_INITIAL.substring(0, TAIL_READER_INDEX),
-          newTail.toString(0, newTail.readerIndex(), US_ASCII));
-      assertEquals(expectedReadable, newTail.toString(US_ASCII));
-      assertEquals(expectedNewTailCapacity, newTail.capacity());
+          expandedTail.toString(0, expandedTail.readerIndex(), US_ASCII));
+      assertEquals(expectedReadable, expandedTail.toString(US_ASCII));
+      assertEquals(expectedNewTailCapacity, expandedTail.capacity());
 
       // Only composite buf owns the tail.
-      assertEquals(1, newTail.refCnt());
+      assertEquals(1, expandedTail.refCnt());
+      // Incoming data buf must be fully read and released.
+      assertEquals(0, in.readableBytes());
+      assertEquals(0, in.refCnt());
+    }
+
+    @Test
+    public void mergeWithCompositeTail_tailNotExpandable_maxCapacityReached() {
+      // Fill in tail to the maxCapacity.
+      String tailSuffixFullCapacity = Strings.repeat("a", tail.maxWritableBytes());
+      tail.writeCharSequence(tailSuffixFullCapacity, US_ASCII);
+      composite.addFlattenedComponents(true, tail);
+      testTailReplaced();
+    }
+
+    @Test
+    public void mergeWithCompositeTail_tailNotExpandable_shared() {
+      tail.retain();
+      composite.addFlattenedComponents(true, tail);
+      testTailReplaced();
+    }
+
+    @Test
+    public void mergeWithCompositeTail_tailNotExpandable_readOnly() {
+      composite.addFlattenedComponents(true, tail.asReadOnly());
+      testTailReplaced();
+    }
+
+    private void testTailReplaced() {
+      int initialTailRefCount = tail.refCnt();
+      String expectedReadable = tail.toString(US_ASCII) + in.toString(US_ASCII);
+      int expectedCapacity = alloc
+          .calculateNewCapacity(expectedReadable.length(), Integer.MAX_VALUE);
+
+      NettyAdaptiveCumulator.mergeWithCompositeTail(alloc, composite, in);
+      // Composite component count shouldn't change.
+      assertEquals(1, composite.numComponents());
+      ByteBuf replacedTail = composite.component(0);
+
+      // Read (discardable) bytes of the tail and the input must be discarded.
+      // Readable parts of the tail and the input must be merged.
+      assertEquals(expectedReadable, replacedTail.toString(US_ASCII));
+      assertEquals(expectedCapacity, replacedTail.capacity());
+      assertEquals(0, replacedTail.readerIndex());
+      assertEquals(expectedReadable.length(), replacedTail.writerIndex());
+      // Check the composite buf
+      assertEquals(expectedReadable, composite.toString(US_ASCII));
+      assertEquals(expectedReadable.length(), composite.capacity());
+      assertEquals(0, composite.readerIndex());
+      assertEquals(expectedReadable.length(), composite.writerIndex());
+
+      // Old tail is must be released at least once
+      assertThat(tail.refCnt()).isLessThan(initialTailRefCount);
+      // Composite buf owns the new tail.
+      assertEquals(1, replacedTail.refCnt());
       // Incoming data buf must be fully read and released.
       assertEquals(0, in.readableBytes());
       assertEquals(0, in.refCnt());
     }
   }
-
-  //   // TODO(sergiitk): parametrize to account for other states of the tail when we need to merge
-  //   @Test
-  //   public void manualMerge() {
-  //     // Create tail with no writable bytes left.
-  //     ByteBuf tail = alloc.buffer(5, 5).setIndex(3, 5);
-  //     tail.setCharSequence(0, "xxx01", US_ASCII);
-  //     composite.addComponent(true, tail);
-  //
-  //     // Input has 5 readable bytes left.
-  //     in = alloc.buffer(10, 10).setIndex(5, 10);
-  //     in.setCharSequence(0, "xxxxx23456", US_ASCII);
-  //     int totalBytes =  tail.readableBytes() + in.readableBytes();
-  //
-  //     // The tail and input together are below the threshold.
-  //     cumulator = new NettyAdaptiveCumulator(11);
-  //     ByteBuf component = cumulator.mergeIfNeeded(alloc, composite, in);
-  //     // Composite buf must only contain the initial data.
-  //     assertEquals(1, composite.numComponents());
-  //
-  //     // A new buffer is returned, it must be neither the tail, nor the input buf.
-  //     assertNotSame(tail, component);
-  //     assertNotEquals(tail, component);
-  //     assertNotSame(in, component);
-  //     assertNotEquals(in, component);
-  //
-  //     // Tail buf must be released
-  //     assertEquals(0, tail.refCnt());
-  //
-  //     // Read (discardable) bytes of the tail and the input must be discarded.
-  //     // Readable parts of the tail and the input must be merged.
-  //     assertEquals("0123456", component.toString(US_ASCII));
-  //     assertEquals(alloc.calculateNewCapacity(totalBytes, Integer.MAX_VALUE), component.capacity());
-  //     assertEquals(Integer.MAX_VALUE, component.maxCapacity());
-  //     assertEquals(0, component.readerIndex());
-  //     assertEquals(totalBytes, component.writerIndex());
-  //     assertEquals(1, component.refCnt());
-  //
-  //     // Input buf must be released and have no readable bytes.
-  //     assertEquals(0, in.refCnt());
-  //     assertEquals(0, in.readableBytes());
-  //   }
-  // }
-
 }
