@@ -213,11 +213,23 @@ public class NettyAdaptiveCumulatorTest {
     }
   }
 
-  @RunWith(JUnit4.class)
+  @RunWith(Parameterized.class)
   public static class MergeWithCompositeTail {
     private static final String DATA_INCOMING_DISCARDABLE = "xxxxx";
+    private static final String DATA_COMPOSITE_HEAD = "hhhhh";
     private static final int TAIL_READER_INDEX = 1;
     private static final int TAIL_MAX_CAPACITY = 128;
+
+    @Parameters(name = "compositeHeadData=\"{0}\", compositeReaderIndex={1}")
+    public static Collection<Object[]> params() {
+      List<?> compositeHeadData = ImmutableList.of("", DATA_COMPOSITE_HEAD);
+      // From the start, or within of head/tail.
+      List<?> compositeReaderIndex = ImmutableList.of(0, 3);
+      return cartesianProductParams(compositeHeadData, compositeReaderIndex);
+    }
+
+    @Parameter(0) public String compositeHeadData;
+    @Parameter(1) public int compositeReaderIndex;
 
     // Use pooled allocator to have maxFastWritableBytes() behave differently than writableBytes().
     private final ByteBufAllocator alloc = new PooledByteBufAllocator();
@@ -236,6 +248,8 @@ public class NettyAdaptiveCumulatorTest {
           .writeBytes(DATA_INITIAL.getBytes(US_ASCII))
           .readerIndex(TAIL_READER_INDEX);
       composite = alloc.compositeBuffer();
+      composite.addFlattenedComponents(true,
+          alloc.buffer().writeBytes(compositeHeadData.getBytes(US_ASCII)));
     }
 
     @Test
@@ -281,18 +295,20 @@ public class NettyAdaptiveCumulatorTest {
     }
 
     private void testTailExpansion(String expectedReadable, int expectedNewTailCapacity) {
+      int composeOriginalComponentsNum = composite.numComponents();
+      composite.readerIndex(compositeReaderIndex);
       NettyAdaptiveCumulator.mergeWithCompositeTail(alloc, composite, in);
       // Composite component count shouldn't change.
-      assertEquals(1, composite.numComponents());
-      ByteBuf expandedTail = composite.component(0);
+      assertEquals(composeOriginalComponentsNum, composite.numComponents());
+      ByteBuf expandedTail = composite.component(composite.numComponents() - 1);
       // Expanded tail could be wrapped, so assertSame() is not safe.
       assertEquals(tail, expandedTail);
 
       // Read (discardable) bytes of the tail must stay as is.
       // Read (discardable) bytes of the input must be discarded.
       // Readable part of the input must be appended to the tail.
-      assertEquals(expectedReadable,
-          composite.toString(0, composite.readableBytes(), US_ASCII));
+      assertEquals(compositeHeadData.concat(expectedReadable).substring(compositeReaderIndex),
+          composite.toString(US_ASCII));
       assertEquals(DATA_INITIAL.substring(0, TAIL_READER_INDEX),
           expandedTail.toString(0, expandedTail.readerIndex(), US_ASCII));
       assertEquals(expectedReadable, expandedTail.toString(US_ASCII));
@@ -328,15 +344,17 @@ public class NettyAdaptiveCumulatorTest {
     }
 
     private void testTailReplaced() {
+      int composeOriginalComponentsNum = composite.numComponents();
       int initialTailRefCount = tail.refCnt();
+      composite.readerIndex(compositeReaderIndex);
       String expectedReadable = tail.toString(US_ASCII) + in.toString(US_ASCII);
       int expectedCapacity = alloc
           .calculateNewCapacity(expectedReadable.length(), Integer.MAX_VALUE);
 
       NettyAdaptiveCumulator.mergeWithCompositeTail(alloc, composite, in);
       // Composite component count shouldn't change.
-      assertEquals(1, composite.numComponents());
-      ByteBuf replacedTail = composite.component(0);
+      assertEquals(composeOriginalComponentsNum, composite.numComponents());
+      ByteBuf replacedTail = composite.component(composite.numComponents() - 1);
 
       // Read (discardable) bytes of the tail and the input must be discarded.
       // Readable parts of the tail and the input must be merged.
@@ -345,10 +363,12 @@ public class NettyAdaptiveCumulatorTest {
       assertEquals(0, replacedTail.readerIndex());
       assertEquals(expectedReadable.length(), replacedTail.writerIndex());
       // Check the composite buf
-      assertEquals(expectedReadable, composite.toString(US_ASCII));
-      assertEquals(expectedReadable.length(), composite.capacity());
-      assertEquals(0, composite.readerIndex());
-      assertEquals(expectedReadable.length(), composite.writerIndex());
+      assertEquals(compositeHeadData.concat(expectedReadable).substring(compositeReaderIndex),
+          composite.toString(US_ASCII));
+      assertEquals(compositeHeadData.length() + expectedReadable.length(), composite.capacity());
+      assertEquals(compositeReaderIndex, composite.readerIndex());
+      assertEquals(compositeHeadData.length() + expectedReadable.length(),
+          composite.writerIndex());
 
       // Old tail is must be released at least once
       assertThat(tail.refCnt()).isLessThan(initialTailRefCount);

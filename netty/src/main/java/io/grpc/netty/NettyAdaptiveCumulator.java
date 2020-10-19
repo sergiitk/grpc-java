@@ -130,12 +130,16 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
             .writerIndex(totalBytes);
         in.readerIndex(in.writerIndex());
       }
+      // Store readerIndex to avoid out of bounds writerIndex during component replacement.
+      int prevReader = composite.readerIndex();
       // Remove the tail, reset writer index, add merged component.
-      composite.removeComponent(tailIndex).writerIndex(tailStart)
+      composite.removeComponent(tailIndex).setIndex(0, tailStart)
           .addFlattenedComponents(true, merged);
       merged = null;
       in.release();
       in = null;
+      // Restore the reader.
+      composite.readerIndex(prevReader);
     } finally {
       // Input buffer was merged with the tail.
       if (in != null) {
