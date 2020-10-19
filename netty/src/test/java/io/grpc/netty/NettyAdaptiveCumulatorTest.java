@@ -219,24 +219,6 @@ public class NettyAdaptiveCumulatorTest {
     private static final int TAIL_READER_INDEX = 1;
     private static final int TAIL_MAX_CAPACITY = 128;
 
-    // @Parameters(name = "tail(initialCapacity={0}, maxCapacity={1})")
-    // public static Collection<Object[]> params() {
-    //   // ByteBuf tailTemplate = ByteBufUtil.writeAscii(alloc, DATA_INITIAL);
-    //   List<?> tailInitialCapacity = ImmutableList.of(
-    //       // fast write: initial capacity is fully taken by the initial data
-    //       DATA_INITIAL.length(),
-    //       // regular write: incoming data fits into initial capacity
-    //       DATA_CUMULATED.length()
-    //   );
-    //   List<?> tailMaxCapacity = ImmutableList.of(
-    //       DATA_CUMULATED.length()
-    //   );
-    //   return cartesianProductParams(tailInitialCapacity, tailMaxCapacity);
-    // }
-    //
-    // @Parameter(0) public int tailInitialCapacity;
-    // @Parameter(1) public int tailMaxCapacity;
-
     // Use pooled allocator to have maxFastWritableBytes() behave differently than writableBytes().
     private final ByteBufAllocator alloc = new PooledByteBufAllocator();
     private CompositeByteBuf composite;
@@ -254,8 +236,6 @@ public class NettyAdaptiveCumulatorTest {
           .writeBytes(DATA_INITIAL.getBytes(US_ASCII))
           .readerIndex(TAIL_READER_INDEX);
       composite = alloc.compositeBuffer();
-      // TODO(sergiitk): test with another in composite to confirm writer index reset
-      // TODO(sergiitk): test with tail partially read within composite
     }
 
     @Test
