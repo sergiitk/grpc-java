@@ -259,7 +259,7 @@ public class NettyAdaptiveCumulatorTest {
     }
 
     @Test
-    public void mergeWithCompositeTail_expandTail_write() {
+    public void mergeWithCompositeTail_tailExpandable_write() {
       // Make incoming data fit into tail capacity.
       tail.capacity(DATA_CUMULATED.length());
       composite.addFlattenedComponents(true, tail);
@@ -271,7 +271,7 @@ public class NettyAdaptiveCumulatorTest {
     }
 
     @Test
-    public void mergeWithCompositeTail_expandTail_fastWrite() {
+    public void mergeWithCompositeTail_tailExpandable_fastWrite() {
       // Confirm that the tail can be expanded fast to fit the incoming data.
       assertThat(in.readableBytes()).isAtMost(tail.maxFastWritableBytes());
       int tailFastCapacity = tail.writerIndex() + tail.maxFastWritableBytes();
@@ -282,7 +282,7 @@ public class NettyAdaptiveCumulatorTest {
     }
 
     @Test
-    public void mergeWithCompositeTail_expandTail_reallocateTailMemory() {
+    public void mergeWithCompositeTail_tailExpandable_reallocateInMemory() {
       int tailFastCapacity = tail.writerIndex() + tail.maxFastWritableBytes();
       String inSuffixOverFastBytes = Strings.repeat("a", tailFastCapacity + 1);
       int totalBytes =  tail.readableBytes() + inSuffixOverFastBytes.length();
@@ -377,6 +377,62 @@ public class NettyAdaptiveCumulatorTest {
       // Incoming data buf must be fully read and released.
       assertEquals(0, in.readableBytes());
       assertEquals(0, in.refCnt());
+    }
+
+    @Test
+    public void mergeWithCompositeTail_tailExpandable_mergedReleaseOnThrow() {
+      final UnsupportedOperationException expectedError = new UnsupportedOperationException();
+      composite = new CompositeByteBuf(alloc, false, Integer.MAX_VALUE, tail) {
+        @Override
+        public CompositeByteBuf addFlattenedComponents(boolean increaseWriterIndex,
+            ByteBuf buffer) {
+          throw expectedError;
+        }
+      };
+
+      try {
+        NettyAdaptiveCumulator.mergeWithCompositeTail(alloc, composite, in);
+        fail("Cumulator didn't throw");
+      } catch (UnsupportedOperationException actualError) {
+        assertSame(expectedError, actualError);
+        // Input must be released unless its ownership has been to the composite cumulation.
+        assertEquals(0, in.refCnt());
+        // Tail released
+        assertEquals(0, tail.refCnt());
+        // Composite loses the tail
+        assertEquals(0, composite.numComponents());
+      }
+    }
+
+    @Test
+    public void mergeWithCompositeTail_tailNotExpandable_mergedReleaseOnThrow() {
+      final UnsupportedOperationException expectedError = new UnsupportedOperationException();
+      composite = new CompositeByteBuf(alloc, false, Integer.MAX_VALUE, tail.asReadOnly()) {
+        @Override
+        public CompositeByteBuf addFlattenedComponents(boolean increaseWriterIndex,
+            ByteBuf buffer) {
+          throw expectedError;
+        }
+      };
+
+      // Return our instance of the new buffer to ensure it's released.
+      int totalBytes = tail.readableBytes() + in.readableBytes();
+      ByteBuf merged = alloc.buffer(alloc.calculateNewCapacity(totalBytes, Integer.MAX_VALUE));
+      ByteBufAllocator mockAlloc = mock(ByteBufAllocator.class);
+      when(mockAlloc.buffer(anyInt())).thenReturn(merged);
+
+      try {
+        NettyAdaptiveCumulator.mergeWithCompositeTail(mockAlloc, composite, in);
+        fail("Cumulator didn't throw");
+      } catch (UnsupportedOperationException actualError) {
+        assertSame(expectedError, actualError);
+        // Input must be released unless its ownership has been to the composite cumulation.
+        assertEquals(0, in.refCnt());
+        // New buffer released
+        assertEquals(0, merged.refCnt());
+        // Composite loses the tail
+        assertEquals(0, composite.numComponents());
+      }
     }
   }
 }

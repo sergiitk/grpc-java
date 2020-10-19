@@ -114,13 +114,14 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
       if (tail.refCnt() == 1 && !tail.isReadOnly() && totalBytes <= tail.maxCapacity()) {
         // Ideal case: the tail isn't shared, and can be expanded to the required capacity.
         // Take ownership of the tail.
-        tail = tail.retainedDuplicate().unwrap();
+        merged = tail.retainedDuplicate();
+        merged = merged.unwrap();
         // The tail is a readable non-composite buffer, so writeBytes() handles everything for us.
         // - ensureWritable() performs a fast resize when possible (f.e. PooledByteBuf's simply
         //   updates its boundary to the end of consecutive memory run assigned to this buffer)
         // - when the required size doesn't fit into maxFastWritableBytes(), a new buffer is
         //   allocated, and the capacity calculated with alloc.calculateNewCapacity()
-        merged = tail.writeBytes(in);
+        merged.writeBytes(in);
       } else {
         // The tail is shared, or not expandable. Replace it with a new buffer of desired capacity.
         merged = alloc.buffer(alloc.calculateNewCapacity(totalBytes, Integer.MAX_VALUE));
@@ -129,19 +130,21 @@ class NettyAdaptiveCumulator implements io.netty.handler.codec.ByteToMessageDeco
             .writerIndex(totalBytes);
         in.readerIndex(in.writerIndex());
       }
-
       // Remove the tail, reset writer index, add merged component.
       composite.removeComponent(tailIndex).writerIndex(tailStart)
           .addFlattenedComponents(true, merged);
       merged = null;
-    } finally {
       in.release();
-      // TODO(sergiitk): cleanup on exceptions
-      // // Input buffer was merged with the tail.
-      // // In case of a failed merge, release it to prevent a leak.
-      // if (merged != null && merged.readableBytes() != totalBytes) {
-      //   merged.release();
-      // }
+      in = null;
+    } finally {
+      // Input buffer was merged with the tail.
+      if (in != null) {
+        in.release();
+      }
+      // If merge's ownership isn't transferred to the composite buf, release it to prevent a leak.
+      if (merged != null) {
+        merged.release();
+      }
     }
   }
 }
