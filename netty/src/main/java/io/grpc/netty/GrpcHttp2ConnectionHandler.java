@@ -42,6 +42,7 @@ public abstract class GrpcHttp2ConnectionHandler extends Http2ConnectionHandler 
       Http2Settings initialSettings) {
     super(decoder, encoder, initialSettings);
     this.channelUnused = channelUnused;
+    setCumulator(COMPOSITE_CUMULATOR);
   }
 
   /**

@@ -93,6 +93,7 @@ public final class TsiHandshakeHandler extends ByteToMessageDecoder {
     this.handshaker = checkNotNull(handshaker, "handshaker");
     this.handshakeValidator = checkNotNull(handshakeValidator, "handshakeValidator");
     this.next = checkNotNull(next, "next");
+    setCumulator(COMPOSITE_CUMULATOR);
   }
 
   @Override

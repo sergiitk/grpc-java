@@ -48,6 +48,7 @@ public final class TsiFrameHandler extends ByteToMessageDecoder implements Chann
 
   public TsiFrameHandler(TsiFrameProtector protector) {
     this.protector = checkNotNull(protector, "protector");
+    setCumulator(COMPOSITE_CUMULATOR);
   }
 
   @Override
