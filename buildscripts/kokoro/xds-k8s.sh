@@ -34,29 +34,33 @@ RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
 RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_test_driver"
 RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/gke"
 
+# Checkout driver source
+echo "Downloading test runner source"
+git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_DIR}"
+
 # Building lang-specific interop tests
+echo "Building Java test app"
 cd "${SRC_DIR}"
 ./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
 # Test test app binaries
 run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
 run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
 
-# Checkout driver source
-echo "Downloading test runner source"
-git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_DIR}"
-
 # Install test runner requirements
 echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
 gcloud components update -q
-gcloud components install skaffold -q
 pyenv virtualenv 3.6.1 xds_test_driver
 pyenv local xds_test_driver
+python --version
 pip install -r requirements.txt
+pip list
 
 # Build image
 echo "Building test app image"
 cd "${RUNNER_SKAFFOLD_DIR}"
+gcloud components install skaffold -q
+gcloud auth configure-docker
 docker images list
 cp -rv "${TEST_APP_BUILD_DIR}" "${RUNNER_SKAFFOLD_DIR}"
 skaffold build -v info
