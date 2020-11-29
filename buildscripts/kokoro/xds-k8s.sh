@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+
+run_safe() {
+  local exit_code=-1
+  "$@" || exit_code=$?
+  echo "Exit code: ${exit_code}"
+}
+
 # Debugging
 set -x
 
@@ -8,7 +15,7 @@ set -x
 if [[ -f /VERSION ]]; then
   cat /VERSION
 fi
-lsb_release -a
+run_safe lsb_release -a
 
 # Script start
 echo "xDS interop tests on GKE"
@@ -16,7 +23,7 @@ GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
 
 # Language-specific repo
 SRC_DIR="${GITHUB_DIR}/grpc-java"
-TEST_APP_DIR="${SRC_DIR}/interop-testing/build/install/grpc-interop-testing/"
+TEST_APP_DIR="${SRC_DIR}/interop-testing/build/install/grpc-interop-testing"
 
 # Runner
 # todo(sergiitk): replace with real values
@@ -29,9 +36,9 @@ RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/gke"
 # Building lang-specific interop tests
 cd "${SRC_DIR}"
 ./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
-# Testing test app binaries
-"${TEST_APP_DIR}/bin/xds-test-client" --help
-"${TEST_APP_DIR}/bin/xds-test-server" --help
+# Test test app binaries
+run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
+run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
 
 # Checkout driver source
 echo "Downloading test runner source"
@@ -53,8 +60,19 @@ cd "${RUNNER_DIR}"
 pyenv virtualenv 3.6.1 xds_test_driver
 pyenv local xds_test_driver
 pip install -r requirements.txt
-python -m tests.baseline_test
+
+# Prepare generated Python code.
+cd "${RUNNER_REPO_DIR}"
+PROTO_SOURCE_DIR=src/proto/grpc/testing
+python3 -m grpc_tools.protoc \
+    --proto_path=. \
+    --python_out="${RUNNER_DIR}" \
+    --grpc_python_out="${RUNNER_DIR}" \
+    "${PROTO_SOURCE_DIR}/test.proto" \
+    "${PROTO_SOURCE_DIR}/messages.proto" \
+    "${PROTO_SOURCE_DIR}/empty.proto"
+
+python -m tests.baseline_test \
   --project=grpc-testing \
   --network=default-vpc \
   --logger_levels=infrastructure:DEBUG
-
