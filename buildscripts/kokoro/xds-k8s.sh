@@ -23,7 +23,8 @@ GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
 
 # Language-specific repo
 SRC_DIR="${GITHUB_DIR}/grpc-java"
-TEST_APP_DIR="${SRC_DIR}/interop-testing/build/install/grpc-interop-testing"
+TEST_APP_BUILD_DIR="${SRC_DIR}/interop-testing/build"
+TEST_APP_DIR="${TEST_APP_BUILD_DIR}/install/grpc-interop-testing"
 
 # Runner
 # todo(sergiitk): replace with real values
@@ -46,20 +47,20 @@ git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_D
 
 # Install test runner requirements
 echo "Installing test runner requirements"
+cd "${RUNNER_DIR}"
 gcloud components update -q
 gcloud components install skaffold -q
+pyenv virtualenv 3.6.1 xds_test_driver
+pyenv local xds_test_driver
+pip install -r requirements.txt
 
 # Build image
 echo "Building test app image"
 cd "${RUNNER_SKAFFOLD_DIR}"
+docker images list
+cp -rv "${TEST_APP_BUILD_DIR}" "${RUNNER_SKAFFOLD_DIR}"
 skaffold build -v info
 docker images list
-
-# Running the driver
-cd "${RUNNER_DIR}"
-pyenv virtualenv 3.6.1 xds_test_driver
-pyenv local xds_test_driver
-pip install -r requirements.txt
 
 # Prepare generated Python code.
 cd "${RUNNER_REPO_DIR}"
@@ -72,6 +73,8 @@ python3 -m grpc_tools.protoc \
     "${PROTO_SOURCE_DIR}/messages.proto" \
     "${PROTO_SOURCE_DIR}/empty.proto"
 
+# Run the test
+cd "${RUNNER_DIR}"
 python -m tests.baseline_test \
   --project=grpc-testing \
   --network=default-vpc \
