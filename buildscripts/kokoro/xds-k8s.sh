@@ -38,13 +38,13 @@ RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/gke"
 echo "Downloading test runner source"
 git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_DIR}"
 
-# Building lang-specific interop tests
-echo "Building Java test app"
-cd "${SRC_DIR}"
-./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
-# Test test app binaries
-run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
-run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
+## Building lang-specific interop tests
+#echo "Building Java test app"
+#cd "${SRC_DIR}"
+#./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
+## Test test app binaries
+#run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
+#run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
 
 # Install test runner requirements
 echo "Installing test runner requirements"
@@ -52,13 +52,14 @@ cd "${RUNNER_DIR}"
 pyenv virtualenv 3.6.1 xds_test_driver
 pyenv local xds_test_driver
 python --version
-pip install -r requirements.txt
-pip list
-gcloud components update -q
+#pip install -r requirements.txt
+#pip list
+#gcloud components update -q
 
 # Build image
 echo "Building test app image"
 cd "${RUNNER_SKAFFOLD_DIR}"
+pyenv versions
 gcloud components install skaffold -q
 gcloud auth configure-docker
 docker images list
@@ -66,20 +67,20 @@ cp -rv "${TEST_APP_BUILD_DIR}" "${RUNNER_SKAFFOLD_DIR}"
 skaffold build -v info
 docker images list
 
-# Prepare generated Python code.
-cd "${RUNNER_REPO_DIR}"
-PROTO_SOURCE_DIR=src/proto/grpc/testing
-python3 -m grpc_tools.protoc \
-    --proto_path=. \
-    --python_out="${RUNNER_DIR}" \
-    --grpc_python_out="${RUNNER_DIR}" \
-    "${PROTO_SOURCE_DIR}/test.proto" \
-    "${PROTO_SOURCE_DIR}/messages.proto" \
-    "${PROTO_SOURCE_DIR}/empty.proto"
-
-# Run the test
-cd "${RUNNER_DIR}"
-python -m tests.baseline_test \
-  --project=grpc-testing \
-  --network=default-vpc \
-  --logger_levels=infrastructure:DEBUG
+## Prepare generated Python code.
+#cd "${RUNNER_REPO_DIR}"
+#PROTO_SOURCE_DIR=src/proto/grpc/testing
+#python3 -m grpc_tools.protoc \
+#    --proto_path=. \
+#    --python_out="${RUNNER_DIR}" \
+#    --grpc_python_out="${RUNNER_DIR}" \
+#    "${PROTO_SOURCE_DIR}/test.proto" \
+#    "${PROTO_SOURCE_DIR}/messages.proto" \
+#    "${PROTO_SOURCE_DIR}/empty.proto"
+#
+## Run the test
+#cd "${RUNNER_DIR}"
+#python -m tests.baseline_test \
+#  --project=grpc-testing \
+#  --network=default-vpc \
+#  --logger_levels=infrastructure:DEBUG
