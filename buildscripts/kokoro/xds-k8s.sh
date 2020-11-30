@@ -50,6 +50,7 @@ git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_D
 echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
 pyenv global 3.6.1
+eval "$(pyenv virtualenv-init -)"
 pyenv virtualenv 3.6.1 k8s_test_runner
 pyenv local k8s_test_runner
 pyenv activate k8s_test_runner
