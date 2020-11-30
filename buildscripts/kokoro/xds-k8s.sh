@@ -8,14 +8,18 @@ run_safe() {
   echo "Exit code: ${exit_code}"
 }
 
-# Debugging
-set -x
-
 # Debug info
 if [[ -f /VERSION ]]; then
   cat /VERSION
 fi
 run_safe lsb_release -a
+
+echo "Setup environment"
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
+
+# Debugging
+set -x
 
 # Script start
 echo "xDS interop tests on GKE"
@@ -49,9 +53,6 @@ git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_D
 # Install test runner requirements
 echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
-pyenv global 3.6.1
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
 pyenv virtualenv 3.6.1 k8s_test_runner
 pyenv local k8s_test_runner
 pyenv activate k8s_test_runner
@@ -60,20 +61,16 @@ python --version
 python -c "print('hello'); import contextlib; print(type(contextlib))"
 #pip install -r requirements.txt
 #pip list
-#gcloud components update
+gcloud -q components update
 
 # Build image
 echo "Building test app image"
 cd "${RUNNER_SKAFFOLD_DIR}"
-pyenv versions
-which gcloud
-gcloud -q components update
-
 gcloud -q components install skaffold
 gcloud -q auth configure-docker
-docker images list
 cp -rv "${TEST_APP_BUILD_DIR}" "${RUNNER_SKAFFOLD_DIR}"
 skaffold build -v info
+echo "Docker images:"
 docker images list
 
 ## Prepare generated Python code.
