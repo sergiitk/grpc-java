@@ -49,12 +49,12 @@ run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
 # Install test runner requirements
 echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
-gcloud components update -q
 pyenv virtualenv 3.6.1 xds_test_driver
 pyenv local xds_test_driver
 python --version
 pip install -r requirements.txt
 pip list
+gcloud components update -q
 
 # Build image
 echo "Building test app image"
