@@ -25,6 +25,7 @@ set -x
 echo "xDS interop tests on GKE"
 GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
 ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts"
+RUNNER_SKIP_BUILD="${RUNNER_SKIP_BUILD:-0}"
 mkdir -p "${ARTIFACTS_DIR}"
 
 # Language-specific repo
@@ -45,12 +46,16 @@ echo "Downloading test runner source"
 git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_DIR}"
 
 # Building lang-specific interop tests
-echo "Building Java test app"
-cd "${SRC_DIR}"
-./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
-# Test test app binaries
-run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
-run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
+if [ "${RUNNER_SKIP_BUILD}" -eq "0" ]; then
+  echo "Building Java test app"
+  cd "${SRC_DIR}"
+  ./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
+  # Test test app binaries
+  run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
+  run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
+else
+  echo "Skipping Java test app build"
+fi
 
 # Install test runner requirements
 echo "Installing test runner requirements"
@@ -66,14 +71,18 @@ echo "Updating gcloud components:"
 gcloud -q components update
 
 # Build image
-echo "Building test app image"
-cd "${RUNNER_SKAFFOLD_DIR}"
-gcloud -q components install skaffold
-gcloud -q auth configure-docker
-cp -rv "${TEST_APP_BUILD_DIR}" "${RUNNER_SKAFFOLD_DIR}"
-skaffold build -v info
-echo "Docker images:"
-docker images list
+if [ "${RUNNER_SKIP_BUILD}" -eq "0" ]; then
+  echo "Building test app Docker image"
+  cd "${RUNNER_SKAFFOLD_DIR}"
+  gcloud -q components install skaffold
+  gcloud -q auth configure-docker
+  cp -rv "${TEST_APP_BUILD_DIR}" "${RUNNER_SKAFFOLD_DIR}"
+  skaffold build -v info
+  echo "Docker images:"
+  docker images list
+else
+  echo "Skipping test app Docker image build"
+fi
 
 # Prepare generated Python code.
 cd "${RUNNER_REPO_DIR}"
@@ -87,9 +96,9 @@ python3 -m grpc_tools.protoc \
   "${PROTO_SOURCE_DIR}/empty.proto"
 
 # Run the test
+#--project=grpc-testing \
+#--network=default-vpc \
 cd "${RUNNER_DIR}"
 python -m tests.baseline_test \
-  --project=grpc-testing \
-  --network=default-vpc \
   -v 0 --logger_levels=infrastructure:DEBUG,__main__:DEBUG \
   --xml_output_file="${ARTIFACTS_DIR}/sponge_log.xml"
