@@ -25,7 +25,7 @@ set -x
 echo "xDS interop tests on GKE"
 GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
 ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts"
-RUNNER_SKIP_BUILD="${RUNNER_SKIP_BUILD:-0}"
+RUNNER_SKIP_BUILD="${RUNNER_SKIP_BUILD:-1}"
 mkdir -p "${ARTIFACTS_DIR}"
 
 # Language-specific repo
