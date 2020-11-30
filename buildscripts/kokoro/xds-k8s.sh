@@ -24,6 +24,8 @@ set -x
 # Script start
 echo "xDS interop tests on GKE"
 GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
+ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts"
+mkdir -p "${ARTIFACTS_DIR}"
 
 # Language-specific repo
 SRC_DIR="${GITHUB_DIR}/grpc-java"
@@ -77,16 +79,17 @@ docker images list
 cd "${RUNNER_REPO_DIR}"
 PROTO_SOURCE_DIR=src/proto/grpc/testing
 python3 -m grpc_tools.protoc \
-    --proto_path=. \
-    --python_out="${RUNNER_DIR}" \
-    --grpc_python_out="${RUNNER_DIR}" \
-    "${PROTO_SOURCE_DIR}/test.proto" \
-    "${PROTO_SOURCE_DIR}/messages.proto" \
-    "${PROTO_SOURCE_DIR}/empty.proto"
+  --proto_path=. \
+  --python_out="${RUNNER_DIR}" \
+  --grpc_python_out="${RUNNER_DIR}" \
+  "${PROTO_SOURCE_DIR}/test.proto" \
+  "${PROTO_SOURCE_DIR}/messages.proto" \
+  "${PROTO_SOURCE_DIR}/empty.proto"
 
 # Run the test
 cd "${RUNNER_DIR}"
 python -m tests.baseline_test \
   --project=grpc-testing \
   --network=default-vpc \
-  --logger_levels=infrastructure:DEBUG
+  -v 0 --logger_levels=infrastructure:DEBUG,__main__:DEBUG \
+  --xml_output_file="${ARTIFACTS_DIR}/sponge_log.xml"
