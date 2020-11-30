@@ -50,26 +50,25 @@ git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_D
 echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
 pyenv global 3.6.1
-pyenv virtualenv 3.6.1 xds_test_driver
-pyenv local xds_test_driver
+pyenv virtualenv 3.6.1 k8s_test_runner
+pyenv local k8s_test_runner
+pyenv activate k8s_test_runner
 which python
 python --version
 python -c "print('hello'); import contextlib; print(type(contextlib))"
 #pip install -r requirements.txt
 #pip list
-#gcloud components update -q
+#gcloud components update
 
 # Build image
 echo "Building test app image"
 cd "${RUNNER_SKAFFOLD_DIR}"
 pyenv versions
 which gcloud
-gcloud --version
-gcloud components update -q
-gcloud --version
+gcloud -q components update
 
-gcloud components install skaffold -q
-gcloud auth configure-docker
+gcloud -q components install skaffold
+gcloud -q auth configure-docker
 docker images list
 cp -rv "${TEST_APP_BUILD_DIR}" "${RUNNER_SKAFFOLD_DIR}"
 skaffold build -v info
