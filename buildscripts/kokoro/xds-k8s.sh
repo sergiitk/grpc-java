@@ -14,9 +14,12 @@ if [[ -f /VERSION ]]; then
 fi
 run_safe lsb_release -a
 
-echo "Setup environment"
+echo "Setup pyenv environment"
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
+
+# Start checking variables after pyenv setup.
+set -u
 
 # Debugging
 set -x
@@ -42,25 +45,25 @@ RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/gke"
 echo "Downloading test runner source"
 git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_DIR}"
 
-## Building lang-specific interop tests
-#echo "Building Java test app"
-#cd "${SRC_DIR}"
-#./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
-## Test test app binaries
-#run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
-#run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
+# Building lang-specific interop tests
+echo "Building Java test app"
+cd "${SRC_DIR}"
+./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
+# Test test app binaries
+run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
+run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
 
 # Install test runner requirements
 echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
+echo "Activating python virtual environment"
 pyenv virtualenv 3.6.1 k8s_test_runner
 pyenv local k8s_test_runner
 pyenv activate k8s_test_runner
-which python
-python --version
-python -c "print('hello'); import contextlib; print(type(contextlib))"
-#pip install -r requirements.txt
-#pip list
+pip install -r requirements.txt
+echo "Python packages installed:"
+pip list
+echo "Updating gcloud components:"
 gcloud -q components update
 
 # Build image
@@ -73,20 +76,20 @@ skaffold build -v info
 echo "Docker images:"
 docker images list
 
-## Prepare generated Python code.
-#cd "${RUNNER_REPO_DIR}"
-#PROTO_SOURCE_DIR=src/proto/grpc/testing
-#python3 -m grpc_tools.protoc \
-#    --proto_path=. \
-#    --python_out="${RUNNER_DIR}" \
-#    --grpc_python_out="${RUNNER_DIR}" \
-#    "${PROTO_SOURCE_DIR}/test.proto" \
-#    "${PROTO_SOURCE_DIR}/messages.proto" \
-#    "${PROTO_SOURCE_DIR}/empty.proto"
-#
-## Run the test
-#cd "${RUNNER_DIR}"
-#python -m tests.baseline_test \
-#  --project=grpc-testing \
-#  --network=default-vpc \
-#  --logger_levels=infrastructure:DEBUG
+# Prepare generated Python code.
+cd "${RUNNER_REPO_DIR}"
+PROTO_SOURCE_DIR=src/proto/grpc/testing
+python3 -m grpc_tools.protoc \
+    --proto_path=. \
+    --python_out="${RUNNER_DIR}" \
+    --grpc_python_out="${RUNNER_DIR}" \
+    "${PROTO_SOURCE_DIR}/test.proto" \
+    "${PROTO_SOURCE_DIR}/messages.proto" \
+    "${PROTO_SOURCE_DIR}/empty.proto"
+
+# Run the test
+cd "${RUNNER_DIR}"
+python -m tests.baseline_test \
+  --project=grpc-testing \
+  --network=default-vpc \
+  --logger_levels=infrastructure:DEBUG
