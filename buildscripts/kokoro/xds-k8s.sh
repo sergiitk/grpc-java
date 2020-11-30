@@ -49,10 +49,12 @@ git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_D
 # Install test runner requirements
 echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
-#pyenv virtualenv 3.6.1 xds_test_driver
+pyenv global 3.6.1
+pyenv virtualenv 3.6.1 xds_test_driver
 #pyenv local xds_test_driver
 which python
 python --version
+python -c "print('hello'); import contextlib; print(type(contextlib))"
 #pip install -r requirements.txt
 #pip list
 #gcloud components update -q
@@ -60,7 +62,7 @@ python --version
 # Build image
 echo "Building test app image"
 cd "${RUNNER_SKAFFOLD_DIR}"
-#pyenv versions
+pyenv versions
 which gcloud
 gcloud --version
 gcloud components update -q
