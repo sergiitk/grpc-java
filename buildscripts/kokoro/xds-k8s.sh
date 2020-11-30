@@ -51,7 +51,7 @@ echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
 pyenv global 3.6.1
 pyenv virtualenv 3.6.1 xds_test_driver
-#pyenv local xds_test_driver
+pyenv local xds_test_driver
 which python
 python --version
 python -c "print('hello'); import contextlib; print(type(contextlib))"
