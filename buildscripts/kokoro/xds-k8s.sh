@@ -60,6 +60,11 @@ python --version
 echo "Building test app image"
 cd "${RUNNER_SKAFFOLD_DIR}"
 pyenv versions
+which gcloud
+gcloud --version
+gcloud components update -q
+gcloud --version
+
 gcloud components install skaffold -q
 gcloud auth configure-docker
 docker images list
