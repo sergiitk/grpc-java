@@ -95,9 +95,16 @@ python3 -m grpc_tools.protoc \
   "${PROTO_SOURCE_DIR}/messages.proto" \
   "${PROTO_SOURCE_DIR}/empty.proto"
 
+# Authenticate on k8s
+# todo(sergiitk): replace cluster name
+echo "Authenticating on K8S cluster"
+gcloud container clusters get-credentials sergiitk-interop-dev --zone us-central1-a
+kubectl config rename-context $(kubectl config current-context) grpc-testing-sergiitk-interop-dev
+
 # Run the test
 #--project=grpc-testing \
 #--network=default-vpc \
+echo "Running tests"
 cd "${RUNNER_DIR}"
 python -m tests.baseline_test \
   -v 0 --logger_levels=infrastructure:DEBUG,__main__:DEBUG \
