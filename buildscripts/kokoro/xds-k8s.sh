@@ -18,9 +18,6 @@ echo "Setup pyenv environment"
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 
-# Start checking variables after pyenv setup.
-set -u
-
 # Debugging
 set -x
 
