@@ -25,7 +25,7 @@ set -x
 echo "xDS interop tests on GKE"
 GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
 ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts"
-RUNNER_SKIP_BUILD="${RUNNER_SKIP_BUILD:-1}"
+RUNNER_SKIP_BUILD="${RUNNER_SKIP_BUILD:-0}"
 mkdir -p "${ARTIFACTS_DIR}"
 
 # Language-specific repo
@@ -99,7 +99,7 @@ python3 -m grpc_tools.protoc \
 # todo(sergiitk): replace cluster name
 echo "Authenticating on K8S cluster"
 gcloud container clusters get-credentials sergiitk-interop-dev --zone us-central1-a
-kubectl config rename-context $(kubectl config current-context) grpc-testing-sergiitk-interop-dev
+kubectl config rename-context "$(kubectl config current-context)" grpc-testing-sergiitk-interop-dev
 
 # Run the test
 #--project=grpc-testing \
