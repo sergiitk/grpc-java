@@ -24,7 +24,7 @@ set -x
 # Script start
 echo "xDS interop tests on GKE"
 GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
-ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts/github/grpc-java/xds-k8s"
+ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts/grpc/java/master/branch/xds-k8s"
 RUNNER_SKIP_BUILD="${RUNNER_SKIP_BUILD:-0}"
 
 # Language-specific repo
@@ -38,7 +38,7 @@ RUNNER_REPO="https://github.com/sergiitk/grpc.git"
 RUNNER_REPO_BRANCH="xds_test_driver-wip"
 RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
 RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_test_driver"
-RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/gke"
+RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/docker"
 
 # Checkout driver source
 echo "Downloading test runner source"
@@ -98,15 +98,18 @@ python3 -m grpc_tools.protoc \
 # todo(sergiitk): replace cluster name
 echo "Authenticating on K8S cluster"
 gcloud container clusters get-credentials sergiitk-interop-dev --zone us-central1-a
-kubectl config rename-context "$(kubectl config current-context)" grpc-testing-sergiitk-interop-dev
+#kubectl config rename-context "$(kubectl config current-context)" grpc-testing-sergiitk-interop-dev
 
 # Run the test
-#--project=grpc-testing \
-#--network=default-vpc \
 echo "Running tests"
 mkdir -p "${ARTIFACTS_DIR}"
-mkdir -p "${ARTIFACTS_DIR}/baseline_test"
+mkdir -p "${ARTIFACTS_DIR}/xds-security-test"
 cd "${RUNNER_DIR}"
-python -m tests.baseline_test \
-  -v 0 --logger_levels=infrastructure:DEBUG,__main__:DEBUG \
-  --xml_output_file="${ARTIFACTS_DIR}/baseline_test/sponge_log.xml"
+python -m tests.security_test \
+  --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
+  --kube_context_name="$(kubectl config current-context)" \
+  --namespace=sergii-psm-test \
+  --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
+  --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
+  -v 0 --logger_levels=framework:DEBUG,__main__:DEBUG \
+  --xml_output_file="${ARTIFACTS_DIR}/xds-security-test/sponge_log.xml"
