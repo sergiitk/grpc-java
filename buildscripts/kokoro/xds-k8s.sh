@@ -24,7 +24,8 @@ set -x
 # Script start
 echo "xDS interop tests on GKE"
 GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
-ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts/grpc/java/master/branch/xds-k8s"
+ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts"
+ARTIFACTS_XML_DIR="${ARTIFACTS_DIR}/${KOKORO_JOB_NAME}"
 RUNNER_SKIP_BUILD="${RUNNER_SKIP_BUILD:-1}"
 
 # Language-specific repo
@@ -39,6 +40,17 @@ RUNNER_REPO_BRANCH="xds_test_driver-wip"
 RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
 RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_test_driver"
 RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/docker"
+
+# Create artifacts
+GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
+
+mkdir -p "${ARTIFACTS_DIR}"
+# Add Sponge properties
+cat << EOF > "${ARTIFACTS_DIR}/custom_sponge_config.csv"
+"TESTS_FORMAT_VERSION","0"
+"GIT_ORIGIN_URL","${GIT_ORIGIN_URL}"
+"TESTGRID_EXCLUDE","1"
+EOF
 
 # Checkout driver source
 echo "Downloading test runner source"
@@ -101,9 +113,9 @@ gcloud container clusters get-credentials sergiitk-interop-dev --zone us-central
 
 # Run the test
 echo "Running tests"
-mkdir -p "${ARTIFACTS_DIR}"
-mkdir -p "${ARTIFACTS_DIR}/xds-security-test"
 cd "${RUNNER_DIR}"
+ARTIFACTS_TEST_NAME='xds-security-test'
+mkdir -p "${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}"
 python -m tests.security_test \
   --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
   --kube_context_name="$(kubectl config current-context)" \
@@ -111,4 +123,4 @@ python -m tests.security_test \
   --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
   -v 0 --logger_levels=framework:DEBUG,__main__:DEBUG \
-  --xml_output_file="${ARTIFACTS_DIR}/xds-security-test/sponge_log.xml"
+  --xml_output_file="${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}/sponge_log.xml"
