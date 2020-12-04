@@ -28,6 +28,7 @@ dependencies {
             project(':grpc-testing'),
             project(path: ':grpc-xds', configuration: 'shadow'),
             libraries.google_auth_oauth2_http,
+            libraries.google_cloud_logging,
             libraries.junit,
             libraries.truth
     censusGrpcMetricDependency 'implementation'

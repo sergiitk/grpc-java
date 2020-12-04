@@ -46,11 +46,13 @@ GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
 
 mkdir -p "${ARTIFACTS_DIR}"
 # Add Sponge properties
-cat << EOF > "${ARTIFACTS_DIR}/custom_sponge_config.csv"
+cat > "${ARTIFACTS_DIR}/custom_sponge_config.csv" << EOF
 "TESTS_FORMAT_VERSION","0"
 "GIT_ORIGIN_URL","${GIT_ORIGIN_URL}"
 "TESTGRID_EXCLUDE","1"
 EOF
+echo "Added sponge properties:"
+cat "${ARTIFACTS_DIR}/custom_sponge_config.csv"
 
 # Checkout driver source
 echo "Downloading test runner source"
