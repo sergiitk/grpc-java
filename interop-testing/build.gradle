@@ -28,9 +28,12 @@ dependencies {
             project(':grpc-testing'),
             project(path: ':grpc-xds', configuration: 'shadow'),
             libraries.google_auth_oauth2_http,
-            libraries.google_cloud_logging,
             libraries.junit,
             libraries.truth
+    implementation (libraries.google_cloud_logging) {
+        exclude group: 'io.grpc'
+    }
+
     censusGrpcMetricDependency 'implementation'
     compileOnly libraries.javax_annotation
     runtimeOnly libraries.opencensus_impl,
