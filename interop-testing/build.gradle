@@ -30,9 +30,6 @@ dependencies {
             libraries.google_auth_oauth2_http,
             libraries.junit,
             libraries.truth
-    implementation (libraries.google_cloud_logging) {
-        exclude group: 'io.grpc'
-    }
 
     censusGrpcMetricDependency 'implementation'
     compileOnly libraries.javax_annotation
