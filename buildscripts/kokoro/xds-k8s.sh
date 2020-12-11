@@ -45,6 +45,10 @@ RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
 RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_test_driver"
 RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/docker"
 
+# GCP
+GKE_CLUSTER_NAME="interop-test-psm-sec1-us-central1"
+GKE_CLUSTER_ZONE="us-central1-a"
+
 # Create artifacts
 GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
 
@@ -113,30 +117,42 @@ python3 -m grpc_tools.protoc \
   "${PROTO_SOURCE_DIR}/empty.proto"
 
 # Authenticate on k8s
-# todo(sergiitk): replace cluster name
 echo "Authenticating on K8S cluster"
-gcloud container clusters get-credentials sergiitk-interop-dev --zone us-central1-a
+gcloud container clusters get-credentials "${GKE_CLUSTER_NAME}" --zone "${GKE_CLUSTER_ZONE}"
 KUBE_CONTEXT="$(kubectl config current-context)"
 
 # Run the test
 echo "Running tests"
 cd "${RUNNER_DIR}"
-ARTIFACTS_TEST_NAME='xds-security-test'
-mkdir -p "${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}"
+
+# Test common settings
+TEST_NAMESPACE='interop-psm-security'
+TEST_DEBUG_LOGGERS="framework:DEBUG,__main__:DEBUG"
+
+# Creating artifact dirs
+BASELINE_TEST_OUT_DIR="${ARTIFACTS_XML_DIR}/xds-k8s-test"
+mkdir -p "${BASELINE_TEST_OUT_DIR}"
+SECURITY_TEST_OUT_DIR="${ARTIFACTS_XML_DIR}/xds-security-test"
+mkdir -p "${SECURITY_TEST_OUT_DIR}"
+
+# Run regular tests
 python -m tests.baseline_test \
   --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
   --kube_context="${KUBE_CONTEXT}" \
-  --namespace=sergii-psm-test \
+  --namespace="${TEST_NAMESPACE}" \
   --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
-  -v 0 --logger_levels=framework:DEBUG,__main__:DEBUG \
-  --xml_output_file="${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}/0_sponge_log.xml"
+  --verbosity=0 \
+  --logger_levels="${TEST_DEBUG_LOGGERS}" \
+  --xml_output_file="${BASELINE_TEST_OUT_DIR}/sponge_log.xml"
 
+# Run security tests
 python -m tests.security_test \
   --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
   --kube_context="${KUBE_CONTEXT}" \
-  --namespace=sergii-psm-test \
+  --namespace="${TEST_NAMESPACE}" \
   --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
-  -v 0 --logger_levels=framework:DEBUG,__main__:DEBUG \
-  --xml_output_file="${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}/1_sponge_log.xml"
+  --verbosity=0 \
+  --logger_levels="${TEST_DEBUG_LOGGERS}" \
+  --xml_output_file="${SECURITY_TEST_OUT_DIR}/sponge_log.xml"
