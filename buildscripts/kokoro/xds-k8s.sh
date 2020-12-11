@@ -50,13 +50,13 @@ GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
 
 mkdir -p "${ARTIFACTS_DIR}"
 # Add Sponge properties
-cat > "${ARTIFACTS_DIR}/custom_sponge_config.csv" << EOF
+cat > "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv" << EOF
 "TESTS_FORMAT_VERSION","0"
 "GIT_ORIGIN_URL","${GIT_ORIGIN_URL}"
 "TESTGRID_EXCLUDE","1"
 EOF
 echo "Added sponge properties:"
-cat "${ARTIFACTS_DIR}/custom_sponge_config.csv"
+cat "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
 
 # Checkout driver source
 echo "Downloading test runner source"
@@ -123,7 +123,7 @@ echo "Running tests"
 cd "${RUNNER_DIR}"
 ARTIFACTS_TEST_NAME='xds-security-test'
 mkdir -p "${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}"
-python -m tests.baseline \
+python -m tests.baseline_test \
   --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
   --kube_context="${KUBE_CONTEXT}" \
   --namespace=sergii-psm-test \
