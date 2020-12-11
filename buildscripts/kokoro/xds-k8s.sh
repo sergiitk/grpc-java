@@ -14,6 +14,10 @@ if [[ -f /VERSION ]]; then
 fi
 run_safe lsb_release -a
 
+# Export secrets
+ALPHA_API_KEY=$(cat "${KOKORO_KEYSTORE_DIR}/73836_grpc_xds_interop_tests_gcp_alpha_apis_key")
+export ALPHA_API_KEY
+
 echo "Setup pyenv environment"
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
@@ -112,17 +116,27 @@ python3 -m grpc_tools.protoc \
 # todo(sergiitk): replace cluster name
 echo "Authenticating on K8S cluster"
 gcloud container clusters get-credentials sergiitk-interop-dev --zone us-central1-a
+KUBE_CONTEXT="$(kubectl config current-context)"
 
 # Run the test
 echo "Running tests"
 cd "${RUNNER_DIR}"
 ARTIFACTS_TEST_NAME='xds-security-test'
 mkdir -p "${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}"
-python -m tests.security_test \
+python -m tests.baseline \
   --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
-  --kube_context_name="$(kubectl config current-context)" \
+  --kube_context="${KUBE_CONTEXT}" \
   --namespace=sergii-psm-test \
   --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
   -v 0 --logger_levels=framework:DEBUG,__main__:DEBUG \
-  --xml_output_file="${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}/sponge_log.xml"
+  --xml_output_file="${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}/0_sponge_log.xml"
+
+python -m tests.security_test \
+  --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
+  --kube_context="${KUBE_CONTEXT}" \
+  --namespace=sergii-psm-test \
+  --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
+  --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
+  -v 0 --logger_levels=framework:DEBUG,__main__:DEBUG \
+  --xml_output_file="${ARTIFACTS_XML_DIR}/${ARTIFACTS_TEST_NAME}/1_sponge_log.xml"
