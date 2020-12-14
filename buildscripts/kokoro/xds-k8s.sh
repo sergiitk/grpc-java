@@ -40,7 +40,7 @@ IMAGE_BUILD_SKIP="${IMAGE_BUILD_SKIP:-1}"
 # Runner
 # todo(sergiitk): replace with real values
 RUNNER_REPO="https://github.com/sergiitk/grpc.git"
-RUNNER_REPO_BRANCH="xds_test_driver-wip"
+RUNNER_REPO_BRANCH="xds_test_driver"
 RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
 RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_test_driver"
 
@@ -120,10 +120,8 @@ TEST_NAMESPACE='interop-psm-security'
 TEST_DEBUG_LOGGERS="framework:DEBUG,__main__:DEBUG"
 
 # Creating artifact dirs
-BASELINE_TEST_OUT_DIR="${ARTIFACTS_XML_DIR}/xds-k8s-test"
-mkdir -p "${BASELINE_TEST_OUT_DIR}"
-SECURITY_TEST_OUT_DIR="${ARTIFACTS_XML_DIR}/xds-security-test"
-mkdir -p "${SECURITY_TEST_OUT_DIR}"
+TEST_OUT_DIR="${ARTIFACTS_XML_DIR}/xds-k8s-test"
+mkdir -p "${TEST_OUT_DIR}"
 
 # Run regular tests
 python -m tests.baseline_test \
@@ -134,7 +132,7 @@ python -m tests.baseline_test \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
   --verbosity=0 \
   --logger_levels="${TEST_DEBUG_LOGGERS}" \
-  --xml_output_file="${BASELINE_TEST_OUT_DIR}/sponge_log.xml"
+  --xml_output_file="${TEST_OUT_DIR}/0_sponge_log.xml"
 
 # Run security tests
 python -m tests.security_test \
@@ -145,4 +143,4 @@ python -m tests.security_test \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
   --verbosity=0 \
   --logger_levels="${TEST_DEBUG_LOGGERS}" \
-  --xml_output_file="${SECURITY_TEST_OUT_DIR}/sponge_log.xml"
+  --xml_output_file="${TEST_OUT_DIR}/1_sponge_log.xml"
