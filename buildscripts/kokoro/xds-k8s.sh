@@ -87,7 +87,7 @@ if [ "${IMAGE_BUILD_SKIP}" -eq "0" ]; then
   cd "${IMAGE_BUILD_DIR}"
   gcloud -q components install skaffold
   gcloud -q auth configure-docker
-  cp -rv "${TEST_APP_BUILD_DIR}" "${IMAGE_BUILD_DIR}"
+  cp -rv "${TEST_APP_BUILD_OUT_DIR}" "${IMAGE_BUILD_DIR}"
   skaffold build -v info
 else
   echo "Skipping Java test app build"
