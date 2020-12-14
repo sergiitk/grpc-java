@@ -15,8 +15,8 @@ fi
 run_safe lsb_release -a
 
 # Export secrets
-ALPHA_API_KEY=$(cat "${KOKORO_KEYSTORE_DIR}/73836_grpc_xds_interop_tests_gcp_alpha_apis_key")
-export ALPHA_API_KEY
+PRIVATE_API_KEY=$(cat "${KOKORO_KEYSTORE_DIR}/73836_grpc_xds_interop_tests_gcp_alpha_apis_key")
+export PRIVATE_API_KEY
 
 echo "Setup pyenv environment"
 eval "$(pyenv init -)"
@@ -30,12 +30,12 @@ echo "xDS interop tests on GKE"
 GITHUB_DIR="${KOKORO_ARTIFACTS_DIR}/github"
 ARTIFACTS_DIR="${KOKORO_ARTIFACTS_DIR}/artifacts"
 ARTIFACTS_XML_DIR="${ARTIFACTS_DIR}/${KOKORO_JOB_NAME}"
-RUNNER_SKIP_BUILD="${RUNNER_SKIP_BUILD:-1}"
 
 # Language-specific repo
 SRC_DIR="${GITHUB_DIR}/grpc-java"
-TEST_APP_BUILD_DIR="${SRC_DIR}/interop-testing/build"
-TEST_APP_DIR="${TEST_APP_BUILD_DIR}/install/grpc-interop-testing"
+TEST_APP_BUILD_OUT_DIR="${SRC_DIR}/interop-testing/build/install/grpc-interop-testing"
+IMAGE_BUILD_DIR="${SRC_DIR}/buildscripts/xds-k8s"
+IMAGE_BUILD_SKIP="${IMAGE_BUILD_SKIP:-0}"
 
 # Runner
 # todo(sergiitk): replace with real values
@@ -43,11 +43,6 @@ RUNNER_REPO="https://github.com/sergiitk/grpc.git"
 RUNNER_REPO_BRANCH="xds_test_driver-wip"
 RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
 RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_test_driver"
-RUNNER_SKAFFOLD_DIR="${RUNNER_DIR}/docker"
-
-# GCP
-GKE_CLUSTER_NAME="interop-test-psm-sec1-us-central1"
-GKE_CLUSTER_ZONE="us-central1-a"
 
 # Create artifacts
 GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
@@ -66,18 +61,6 @@ cat "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
 echo "Downloading test runner source"
 git clone -b "${RUNNER_REPO_BRANCH}" --depth=1 "${RUNNER_REPO}" "${RUNNER_REPO_DIR}"
 
-# Building lang-specific interop tests
-if [ "${RUNNER_SKIP_BUILD}" -eq "0" ]; then
-  echo "Building Java test app"
-  cd "${SRC_DIR}"
-  ./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
-  # Test test app binaries
-  run_safe "${TEST_APP_DIR}/bin/xds-test-client" --help
-  run_safe "${TEST_APP_DIR}/bin/xds-test-server" --help
-else
-  echo "Skipping Java test app build"
-fi
-
 # Install test runner requirements
 echo "Installing test runner requirements"
 cd "${RUNNER_DIR}"
@@ -91,18 +74,23 @@ pip list
 echo "Updating gcloud components:"
 gcloud -q components update
 
-# Build image
-if [ "${RUNNER_SKIP_BUILD}" -eq "0" ]; then
-  echo "Building test app Docker image"
-  cd "${RUNNER_SKAFFOLD_DIR}"
+# Building lang-specific interop tests
+if [ "${IMAGE_BUILD_SKIP}" -eq "0" ]; then
+  echo "Building Java test app"
+  cd "${SRC_DIR}"
+  ./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
+  # Test test app binaries
+  run_safe "${TEST_APP_BUILD_OUT_DIR}/bin/xds-test-client" --help
+  run_safe "${TEST_APP_BUILD_OUT_DIR}/bin/xds-test-server" --help
+
+  # Build image
+  cd "${IMAGE_BUILD_DIR}"
   gcloud -q components install skaffold
   gcloud -q auth configure-docker
-  cp -rv "${TEST_APP_BUILD_DIR}" "${RUNNER_SKAFFOLD_DIR}"
+  cp -rv "${TEST_APP_BUILD_DIR}" "${IMAGE_BUILD_DIR}"
   skaffold build -v info
-  echo "Docker images:"
-  docker images list
 else
-  echo "Skipping test app Docker image build"
+  echo "Skipping Java test app build"
 fi
 
 # Prepare generated Python code.
@@ -118,6 +106,8 @@ python3 -m grpc_tools.protoc \
 
 # Authenticate on k8s
 echo "Authenticating on K8S cluster"
+GKE_CLUSTER_NAME="interop-test-psm-sec1-us-central1"
+GKE_CLUSTER_ZONE="us-central1-a"
 gcloud container clusters get-credentials "${GKE_CLUSTER_NAME}" --zone "${GKE_CLUSTER_ZONE}"
 KUBE_CONTEXT="$(kubectl config current-context)"
 
