@@ -50,9 +50,9 @@ GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
 mkdir -p "${ARTIFACTS_DIR}"
 # Add Sponge properties
 cat > "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv" << EOF
-"TESTS_FORMAT_VERSION","1"
+"TESTS_FORMAT_VERSION","0"
 "GIT_ORIGIN_URL","${GIT_ORIGIN_URL}"
-"TESTGRID_EXCLUDE","0"
+"TESTGRID_EXCLUDE","1"
 EOF
 echo "Added sponge properties:"
 cat "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
@@ -115,10 +115,6 @@ KUBE_CONTEXT="$(kubectl config current-context)"
 echo "Running tests"
 cd "${RUNNER_DIR}"
 
-# Test common settings
-TEST_NAMESPACE='interop-psm-security'
-TEST_DEBUG_LOGGERS="framework:DEBUG,__main__:DEBUG"
-
 # Creating artifact dirs
 TEST_OUT_DIR="${ARTIFACTS_XML_DIR}/xds-k8s-test"
 mkdir -p "${TEST_OUT_DIR}"
@@ -127,20 +123,14 @@ mkdir -p "${TEST_OUT_DIR}"
 python -m tests.baseline_test \
   --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
   --kube_context="${KUBE_CONTEXT}" \
-  --namespace="${TEST_NAMESPACE}" \
   --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
-  --verbosity=0 \
-  --logger_levels="${TEST_DEBUG_LOGGERS}" \
   --xml_output_file="${TEST_OUT_DIR}/0_sponge_log.xml"
 
 # Run security tests
 python -m tests.security_test \
   --flagfile="${RUNNER_DIR}/config/grpc-testing.cfg" \
   --kube_context="${KUBE_CONTEXT}" \
-  --namespace="${TEST_NAMESPACE}" \
   --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
-  --verbosity=0 \
-  --logger_levels="${TEST_DEBUG_LOGGERS}" \
   --xml_output_file="${TEST_OUT_DIR}/1_sponge_log.xml"
