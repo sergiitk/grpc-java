@@ -125,7 +125,7 @@ python -m tests.baseline_test \
   --kube_context="${KUBE_CONTEXT}" \
   --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
-  --xml_output_file="${TEST_OUT_DIR}/0_sponge_log.xml"
+  --xml_output_file="${TEST_OUT_DIR}/baseline_test_sponge_log.xml"
 
 # Run security tests
 python -m tests.security_test \
@@ -133,4 +133,4 @@ python -m tests.security_test \
   --kube_context="${KUBE_CONTEXT}" \
   --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
   --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
-  --xml_output_file="${TEST_OUT_DIR}/1_sponge_log.xml"
+  --xml_output_file="${TEST_OUT_DIR}/security_test_sponge_log.xml"
