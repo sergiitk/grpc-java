@@ -50,9 +50,9 @@ GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
 mkdir -p "${ARTIFACTS_DIR}"
 # Add Sponge properties
 cat > "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv" << EOF
-"TESTS_FORMAT_VERSION","0"
+"TESTS_FORMAT_VERSION","1"
 "GIT_ORIGIN_URL","${GIT_ORIGIN_URL}"
-"TESTGRID_EXCLUDE","1"
+"TESTGRID_EXCLUDE","0"
 EOF
 echo "Added sponge properties:"
 cat "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
