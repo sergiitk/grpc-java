@@ -2,7 +2,10 @@
 set -eo pipefail
 
 readonly GITHUB_REPOSITORY="grpc-java"
-source "./xds-k8s-install-test-driver.sh"
+readonly CURRENT_DIR=$(dirname "$0")
+# Intentional: source from the same dir as xds-k8s.sh
+# shellcheck disable=SC1090
+source "${CURRENT_DIR}/xds-k8s-install-test-driver.sh"
 
 # Java test app
 readonly TEST_APP_BUILD_OUT_DIR="${SRC_DIR}/interop-testing/build/install/grpc-interop-testing"
