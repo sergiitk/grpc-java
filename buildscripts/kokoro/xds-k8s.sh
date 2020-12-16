@@ -39,19 +39,21 @@ IMAGE_BUILD_SKIP="${IMAGE_BUILD_SKIP:-1}"
 
 # Runner
 RUNNER_REPO="https://github.com/grpc/grpc.git"
-RUNNER_REPO_BRANCH="xds_test_driver"
+RUNNER_REPO_BRANCH="master"
 RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
 RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_k8s_test_driver"
 
 # Create artifacts
 GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
+GIT_COMMIT_SHORT=$(git -C "${SRC_DIR}" git rev-parse --short HEAD)
 
 mkdir -p "${ARTIFACTS_DIR}"
 # Add Sponge properties
 cat > "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv" <<- EOF
   "TESTS_FORMAT_VERSION","0"
-  "GIT_ORIGIN_URL","${GIT_ORIGIN_URL}"
   "TESTGRID_EXCLUDE","1"
+  "GIT_ORIGIN_URL","${GIT_ORIGIN_URL}"
+  "GIT_COMMIT_SHORT","${GIT_COMMIT_SHORT}"
 EOF
 echo "Added sponge properties:"
 cat "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
