@@ -38,8 +38,7 @@ IMAGE_BUILD_DIR="${SRC_DIR}/buildscripts/xds-k8s"
 IMAGE_BUILD_SKIP="${IMAGE_BUILD_SKIP:-1}"
 
 # Runner
-# todo(sergiitk): replace with real values
-RUNNER_REPO="https://github.com/sergiitk/grpc.git"
+RUNNER_REPO="https://github.com/grpc/grpc.git"
 RUNNER_REPO_BRANCH="xds_test_driver"
 RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
 RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_k8s_test_driver"
