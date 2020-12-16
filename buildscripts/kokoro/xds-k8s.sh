@@ -42,7 +42,7 @@ IMAGE_BUILD_SKIP="${IMAGE_BUILD_SKIP:-1}"
 RUNNER_REPO="https://github.com/sergiitk/grpc.git"
 RUNNER_REPO_BRANCH="xds_test_driver"
 RUNNER_REPO_DIR="${GITHUB_DIR}/grpc"
-RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_test_driver"
+RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_k8s_test_driver"
 
 # Create artifacts
 GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
