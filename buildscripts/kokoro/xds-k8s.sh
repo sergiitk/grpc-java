@@ -45,7 +45,7 @@ RUNNER_DIR="${RUNNER_REPO_DIR}/tools/run_tests/xds_k8s_test_driver"
 
 # Create artifacts
 GIT_ORIGIN_URL=$(git -C "${SRC_DIR}" remote get-url origin)
-GIT_COMMIT_SHORT=$(git -C "${SRC_DIR}" git rev-parse --short HEAD)
+GIT_COMMIT_SHORT=$(git -C "${SRC_DIR}" rev-parse --short HEAD)
 
 mkdir -p "${ARTIFACTS_DIR}"
 # Add Sponge properties
