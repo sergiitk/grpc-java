@@ -35,7 +35,7 @@ ARTIFACTS_XML_DIR="${ARTIFACTS_DIR}/${KOKORO_JOB_NAME}"
 SRC_DIR="${GITHUB_DIR}/grpc-java"
 TEST_APP_BUILD_OUT_DIR="${SRC_DIR}/interop-testing/build/install/grpc-interop-testing"
 IMAGE_BUILD_DIR="${SRC_DIR}/buildscripts/xds-k8s"
-IMAGE_BUILD_SKIP="${IMAGE_BUILD_SKIP:-1}"
+IMAGE_BUILD_SKIP="${IMAGE_BUILD_SKIP:-0}"
 
 # Runner
 RUNNER_REPO="https://github.com/grpc/grpc.git"
