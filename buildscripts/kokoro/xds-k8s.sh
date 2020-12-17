@@ -24,6 +24,7 @@ if [ "${IMAGE_BUILD_SKIP}" -eq "0" ]; then
   gcloud -q components install skaffold
   gcloud -q auth configure-docker
   cp -rv "${TEST_APP_BUILD_OUT_DIR}" "${IMAGE_BUILD_DIR}"
+  export IMAGE_TAG="sergiitk-test"
   skaffold build -v info
 else
   echo "Skipping Java test app build"
@@ -35,13 +36,13 @@ echo "Running tests"
 cd "${TEST_DRIVER_DIR}"
 
 # Run baseline tests
-python -m tests.baseline_test \
-  --flagfile="config/grpc-testing.cfg" \
-  --kube_context="${KUBE_CONTEXT}" \
-  --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
-  --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
-  --xml_output_file="${TEST_XML_OUTPUT_DIR}/baseline_test/sponge_log.xml" \
-  --force_cleanup
+#python -m tests.baseline_test \
+#  --flagfile="config/grpc-testing.cfg" \
+#  --kube_context="${KUBE_CONTEXT}" \
+#  --server_image="gcr.io/grpc-testing/xds-k8s-test-server-java:latest" \
+#  --client_image="gcr.io/grpc-testing/xds-k8s-test-client-java:latest" \
+#  --xml_output_file="${TEST_XML_OUTPUT_DIR}/baseline_test/sponge_log.xml" \
+#  --force_cleanup
 
 # Run security tests
 #python -m tests.security_test \
