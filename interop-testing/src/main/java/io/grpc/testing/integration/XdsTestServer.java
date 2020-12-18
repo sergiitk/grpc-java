@@ -188,7 +188,6 @@ public final class XdsTestServer {
                       new TestServiceImpl(serverId, host), new TestInfoInterceptor(host)))
               .addService(new XdsUpdateHealthServiceImpl(health))
               .addService(health.getHealthService())
-              .addService(ChannelzService.newInstance(100))
               .addService(ProtoReflectionService.newInstance())
               .addService(ChannelzService.newInstance(CHANNELZ_MAX_PAGE_SIZE))
               .build()

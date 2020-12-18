@@ -30,7 +30,6 @@ dependencies {
             libraries.google_auth_oauth2_http,
             libraries.junit,
             libraries.truth
-
     censusGrpcMetricDependency 'implementation'
     compileOnly libraries.javax_annotation
     runtimeOnly group: 'io.github.devatherock', name: 'jul-jsonformatter', version: '1.1.0'
