@@ -113,10 +113,10 @@ kokoro_write_sponge_properties() {
   # Use GIT_ORIGIN_URL to exclude test runs executed against repo forks from
   # testgrid reports.
   cat >"${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv" <<EOF
-  "TESTS_FORMAT_VERSION","2"
-  "TESTGRID_EXCLUDE","1"
-  "GIT_ORIGIN_URL","${GIT_ORIGIN_URL:?GIT_ORIGIN_URL must be set}"
-  "GIT_COMMIT_SHORT","${GIT_COMMIT_SHORT:?GIT_COMMIT_SHORT must be set}"
+TESTS_FORMAT_VERSION,2
+TESTGRID_EXCLUDE,0
+GIT_ORIGIN_URL,${GIT_ORIGIN_URL:?GIT_ORIGIN_URL must be set}
+GIT_COMMIT_SHORT,${GIT_COMMIT_SHORT:?GIT_COMMIT_SHORT must be set}
 EOF
   echo "Sponge properties:"
   cat "${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
