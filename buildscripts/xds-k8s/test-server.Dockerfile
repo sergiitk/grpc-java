@@ -7,7 +7,7 @@ WORKDIR $APP_DIR
 # Install the app
 COPY bin lib $APP_DIR/
 
-# Copy all logging profiles, use the default one
+# Copy all logging profiles, use json logging by default
 COPY logging*.properties $APP_DIR/
 ENV JAVA_OPTS="-Djava.util.logging.config.file=$APP_DIR/logging-json.properties"
 
