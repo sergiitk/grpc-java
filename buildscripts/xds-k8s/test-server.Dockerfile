@@ -5,7 +5,7 @@ ENV APP_DIR=/usr/src/app
 WORKDIR $APP_DIR
 
 # Install the app
-COPY bin lib $APP_DIR/
+COPY grpc-interop-testing/ $APP_DIR/
 
 # Copy all logging profiles, use json logging by default
 COPY logging*.properties $APP_DIR/

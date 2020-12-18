@@ -16,18 +16,19 @@ build_java_test_app() {
   cd "${SRC_DIR}"
   ./gradlew --no-daemon grpc-interop-testing:installDist -x test -PskipCodegen=true -PskipAndroid=true --console=plain
   # Test-run binaries
-  run_safe "${TEST_APP_BUILD_OUT_DIR}/bin/xds-test-client" --help
-  run_safe "${TEST_APP_BUILD_OUT_DIR}/bin/xds-test-server" --help
+  run_safe "${TEST_APP_BUILD_APP_DIR}/bin/xds-test-client" --help
+  run_safe "${TEST_APP_BUILD_APP_DIR}/bin/xds-test-server" --help
 }
 
 build_test_app_docker_images() {
   local docker_dir="${SRC_DIR}/buildscripts/xds-k8s"
   echo "Building Java test app Docker Images"
-  #  gcloud -q auth configure-docker
-  cd "${TEST_APP_BUILD_OUT_DIR}"
-  cp -rv "${docker_dir}/"*.Dockerfile "${TEST_APP_BUILD_OUT_DIR}"
-  cp -rv "${docker_dir}/"*.properties "${TEST_APP_BUILD_OUT_DIR}"
-  gcloud builds submit --config "${docker_dir}/cloudbuild.yaml" "${TEST_APP_BUILD_OUT_DIR}" \
+  # Copy Docker files and log properties to the build dir
+  cp -rv "${docker_dir}/"*.Dockerfile "${TEST_APP_BUILD_INSTALL_DIR}"
+  cp -rv "${docker_dir}/"*.properties "${TEST_APP_BUILD_INSTALL_DIR}"
+  # Run Google Cloud Build
+  gcloud builds submit "${TEST_APP_BUILD_INSTALL_DIR}" \
+    --config "${docker_dir}/cloudbuild.yaml" \
     --substitutions "_IMAGE_NAME=${IMAGE_NAME},_SERVER_IMAGE_TAG=${SERVER_IMAGE_TAG},_CLIENT_IMAGE_TAG=${CLIENT_IMAGE_TAG}"
   # TODO(sergiitk): extra "cosmetic" tags for versioned branches
 }
@@ -41,7 +42,8 @@ build_docker_images_if_needed() {
 
   # Build if one of images is missing or IMAGE_BUILD_SKIP=0
   if [[ "${IMAGE_BUILD_SKIP}" == "0" || -z "${server_tags}" && -z "${client_tags}" ]]; then
-    readonly TEST_APP_BUILD_OUT_DIR="${SRC_DIR}/interop-testing/build/install/grpc-interop-testing"
+    readonly TEST_APP_BUILD_INSTALL_DIR="${SRC_DIR}/interop-testing/build/install"
+    readonly TEST_APP_BUILD_APP_DIR="${TEST_APP_BUILD_OUT_DIR}/grpc-interop-testing"
     build_java_test_app
     build_test_app_docker_images
   else
@@ -80,7 +82,7 @@ main() {
   build_docker_images_if_needed
   # Run tests
   run_test baseline_test
-#  run_test security_test
+  run_test security_test
 }
 
 main "$@"
