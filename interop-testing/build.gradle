@@ -32,6 +32,9 @@ dependencies {
             libraries.truth
     censusGrpcMetricDependency 'implementation'
     compileOnly libraries.javax_annotation
+    // Used instead of com.google.cloud:google-cloud-logging because it's
+    // failing due to a circular dependency on grpc.
+    // TODO(sergiitk): replace with com.google.cloud:google-cloud-logging
     runtimeOnly group: 'io.github.devatherock', name: 'jul-jsonformatter', version: '1.1.0'
     runtimeOnly libraries.opencensus_impl,
             libraries.netty_tcnative,
