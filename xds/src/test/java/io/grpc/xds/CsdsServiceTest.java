@@ -18,7 +18,8 @@ package io.grpc.xds;
 
 import static org.junit.Assert.assertEquals;
 
-import io.envoyproxy.envoy.service.status.v3.ClientConfig;
+import com.google.common.collect.ImmutableList;
+import io.envoyproxy.envoy.config.core.v3.Node;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusResponse;
@@ -29,8 +30,6 @@ import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.internal.ObjectPool;
 import io.grpc.testing.GrpcCleanupRule;
 import io.grpc.xds.Bootstrapper.ServerInfo;
-import io.grpc.xds.EnvoyProtoData.Node;
-import java.util.Collections;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -44,11 +43,13 @@ public class CsdsServiceTest {
   private static final String CONTROL_PLANE_URI = "trafficdirector.googleapis.com";
   private static final String NODE_ID =
       "projects/42/networks/default/nodes/5c85b298-6f5b-4722-b74a-f7d1f0ccf5ad";
+  private static final ClientStatusRequest request = ClientStatusRequest.newBuilder().build();
 
   @Rule public final GrpcCleanupRule cleanupRule = new GrpcCleanupRule();
 
-  private final Node node = Node.newBuilder().setId(NODE_ID).build();
-  private final ServerInfo controlPlane =
+  private final EnvoyProtoData.Node bootstrapNode =
+      EnvoyProtoData.Node.newBuilder().setId(NODE_ID).build();
+  private final ServerInfo bootstrapServer =
       new ServerInfo(CONTROL_PLANE_URI, InsecureChannelCredentials.create(), true);
 
   private ClientStatusDiscoveryServiceGrpc.ClientStatusDiscoveryServiceBlockingStub blockingStub;
@@ -60,7 +61,7 @@ public class CsdsServiceTest {
     // Prepare XdsClient settings.
     Bootstrapper bootstrapper = new Bootstrapper() {
       @Override public BootstrapInfo bootstrap() {
-        return new BootstrapInfo(Collections.singletonList(controlPlane), node, null, null);
+        return new BootstrapInfo(ImmutableList.of(bootstrapServer), bootstrapNode, null, null);
       }
     };
     SharedXdsClientPoolProvider xdsPoolProvider = new SharedXdsClientPoolProvider(bootstrapper);
@@ -88,18 +89,19 @@ public class CsdsServiceTest {
   }
 
   @After
-  public void tearDown() throws Exception {
+  public void tearDown() {
     if (xdsClient != null) {
       xdsClientPool.returnObject(xdsClient);
     }
   }
 
   @Test
-  public void fetchClientStatus() {
-    ClientStatusResponse response =
-        blockingStub.fetchClientStatus(ClientStatusRequest.newBuilder().build());
+  public void nodeInfo() {
+    ClientStatusResponse response = blockingStub.fetchClientStatus(request);
     assertEquals(1, response.getConfigCount());
-    ClientConfig config = response.getConfig(0);
-    assertEquals(NODE_ID, config.getNode().getId());
+
+    Node responseNode = response.getConfig(0).getNode();
+    assertEquals(NODE_ID, responseNode.getId());
+    assertEquals(bootstrapNode.toEnvoyProtoNode(), responseNode);
   }
 }
