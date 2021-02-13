@@ -22,11 +22,15 @@ import io.envoyproxy.envoy.service.status.v3.ClientConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusResponse;
+import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.internal.ObjectPool;
 import io.grpc.testing.GrpcCleanupRule;
+import io.grpc.xds.Bootstrapper.ServerInfo;
+import io.grpc.xds.EnvoyProtoData.Node;
+import java.util.Collections;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -37,7 +41,15 @@ import org.junit.runners.JUnit4;
 /** Unit tests for {@link CsdsService}. */
 @RunWith(JUnit4.class)
 public class CsdsServiceTest {
+  private static final String CONTROL_PLANE_URI = "trafficdirector.googleapis.com";
+  private static final String NODE_ID =
+      "projects/42/networks/default/nodes/5c85b298-6f5b-4722-b74a-f7d1f0ccf5ad";
+
   @Rule public final GrpcCleanupRule cleanupRule = new GrpcCleanupRule();
+
+  private final Node node = Node.newBuilder().setId(NODE_ID).build();
+  private final ServerInfo controlPlane =
+      new ServerInfo(CONTROL_PLANE_URI, InsecureChannelCredentials.create(), true);
 
   private ClientStatusDiscoveryServiceGrpc.ClientStatusDiscoveryServiceBlockingStub blockingStub;
   private ObjectPool<XdsClient> xdsClientPool;
@@ -48,7 +60,7 @@ public class CsdsServiceTest {
     // Prepare XdsClient settings.
     Bootstrapper bootstrapper = new Bootstrapper() {
       @Override public BootstrapInfo bootstrap() {
-        return CommonBootstrapperTestUtils.getTestBootstrapInfo();
+        return new BootstrapInfo(Collections.singletonList(controlPlane), node, null, null);
       }
     };
     SharedXdsClientPoolProvider xdsPoolProvider = new SharedXdsClientPoolProvider(bootstrapper);
@@ -88,6 +100,6 @@ public class CsdsServiceTest {
         blockingStub.fetchClientStatus(ClientStatusRequest.newBuilder().build());
     assertEquals(1, response.getConfigCount());
     ClientConfig config = response.getConfig(0);
-    assertEquals("Hello world", config.getNode().getId());
+    assertEquals(NODE_ID, config.getNode().getId());
   }
 }
