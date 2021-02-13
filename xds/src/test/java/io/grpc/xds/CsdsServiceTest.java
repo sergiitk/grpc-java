@@ -22,11 +22,12 @@ import io.envoyproxy.envoy.service.status.v3.ClientConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusResponse;
-import io.grpc.BindableService;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.internal.ObjectPool;
 import io.grpc.testing.GrpcCleanupRule;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -36,24 +37,37 @@ import org.junit.runners.JUnit4;
 /** Unit tests for {@link CsdsService}. */
 @RunWith(JUnit4.class)
 public class CsdsServiceTest {
+  @Rule public final GrpcCleanupRule cleanupRule = new GrpcCleanupRule();
 
-  @Rule
-  public final GrpcCleanupRule cleanupRule = new GrpcCleanupRule();
-
-  private ManagedChannel channel;
   private ClientStatusDiscoveryServiceGrpc.ClientStatusDiscoveryServiceBlockingStub blockingStub;
+  private ObjectPool<XdsClient> xdsClientPool;
+  private XdsClient xdsClient;
 
   @Before
   public void setUp() throws Exception {
+    // Prepare XdsClient settings.
+    Bootstrapper bootstrapper = new Bootstrapper() {
+      @Override public BootstrapInfo bootstrap() {
+        return CommonBootstrapperTestUtils.getTestBootstrapInfo();
+      }
+    };
+    SharedXdsClientPoolProvider xdsPoolProvider = new SharedXdsClientPoolProvider(bootstrapper);
+
+    // Test server.
     final String serverName = InProcessServerBuilder.generateName();
     cleanupRule.register(
         InProcessServerBuilder
             .forName(serverName)
-            .addService(createCsdsService())
+            .addService(new CsdsService(xdsPoolProvider))
             .directExecutor()
             .build()
             .start());
-    channel = cleanupRule.register(
+
+    xdsClientPool = xdsPoolProvider.getXdsClientPool();
+    xdsClient = xdsClientPool.getObject();
+
+    // Test client.
+    ManagedChannel channel = cleanupRule.register(
         InProcessChannelBuilder
             .forName(serverName)
             .directExecutor()
@@ -61,8 +75,11 @@ public class CsdsServiceTest {
     blockingStub = ClientStatusDiscoveryServiceGrpc.newBlockingStub(channel);
   }
 
-  private BindableService createCsdsService() {
-    return new CsdsService();
+  @After
+  public void tearDown() throws Exception {
+    if (xdsClient != null) {
+      xdsClientPool.returnObject(xdsClient);
+    }
   }
 
   @Test

@@ -16,13 +16,17 @@
 
 package io.grpc.xds;
 
-import io.envoyproxy.envoy.config.core.v3.Node;
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import com.google.common.annotations.VisibleForTesting;
 import io.envoyproxy.envoy.service.status.v3.ClientConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusResponse;
 import io.grpc.ExperimentalApi;
+import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import io.grpc.internal.ObjectPool;
 import io.grpc.stub.StreamObserver;
 
 // TODO(sergiitk): finish description, update since.
@@ -36,23 +40,56 @@ import io.grpc.stub.StreamObserver;
 public final class CsdsService extends
     ClientStatusDiscoveryServiceGrpc.ClientStatusDiscoveryServiceImplBase {
 
+  private final SharedXdsClientPoolProvider xdsClientPoolProvider;
+
+  private CsdsService() {
+    this(SharedXdsClientPoolProvider.getDefaultProvider());
+  }
+
+  @VisibleForTesting
+  CsdsService(SharedXdsClientPoolProvider xdsClientPoolProvider) {
+    this.xdsClientPoolProvider = checkNotNull(xdsClientPoolProvider, "xdsClientPoolProvider");
+  }
+
+  /** Creates an instance. */
+  public static CsdsService newInstance() {
+    return new CsdsService();
+  }
+
   @Override
   public void fetchClientStatus(
       ClientStatusRequest request, StreamObserver<ClientStatusResponse> responseObserver) {
     ClientStatusResponse resp;
-    try {
-      ClientConfig clientConfig = ClientConfig
-          .newBuilder()
-          .setNode(Node.newBuilder().setId("Hello world"))
-          .build();
 
-      resp = ClientStatusResponse
+    ObjectPool<XdsClient> xdsClientPool = null;
+    XdsClient xdsClient = null;
+
+    try {
+      xdsClientPool = xdsClientPoolProvider.getXdsClientPool();
+      xdsClient = xdsClientPool.getObject();
+
+      if (!(xdsClient instanceof AbstractXdsClient)) {
+        throw new StatusRuntimeException(
+            Status.FAILED_PRECONDITION.withDescription("Unexpected XdsClient implementation"));
+      }
+
+      AbstractXdsClient concreteXdsClient = (AbstractXdsClient) xdsClient;
+
+      ClientConfig.Builder configDump = ClientConfig
           .newBuilder()
-          .addConfig(clientConfig)
-          .build();
-    }  catch (StatusRuntimeException e) {
+          .setNode(concreteXdsClient.node.toEnvoyProtoNode());
+      // Node.newBuilder().setId("Hello world")
+
+      // TODO(sergiitk): xDS services to xDS Config
+
+      resp = ClientStatusResponse.newBuilder().addConfig(configDump.build()).build();
+    } catch (StatusRuntimeException | XdsInitializationException e) {
       responseObserver.onError(e);
       return;
+    } finally {
+      if (xdsClient != null) {
+        xdsClientPool.returnObject(xdsClient);
+      }
     }
 
     responseObserver.onNext(resp);
