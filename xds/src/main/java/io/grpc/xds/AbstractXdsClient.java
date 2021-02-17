@@ -317,7 +317,7 @@ abstract class AbstractXdsClient extends XdsClient {
    * Returns the latest accepted version of the given resource type.
    */
   // Must be synchronized.
-  private String getCurrentVersion(ResourceType type) {
+  protected String getCurrentVersion(ResourceType type) {
     String version;
     switch (type) {
       case LDS:
