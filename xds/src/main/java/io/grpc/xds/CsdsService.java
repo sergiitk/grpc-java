@@ -25,7 +25,7 @@ import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusResponse;
 import io.grpc.ExperimentalApi;
 import io.grpc.Status;
-import io.grpc.StatusRuntimeException;
+import io.grpc.StatusException;
 import io.grpc.internal.ObjectPool;
 import io.grpc.stub.StreamObserver;
 
@@ -68,7 +68,7 @@ public final class CsdsService extends
     try {
       responseObserver.onNext(getConfigDumpForRequest(request));
       responseObserver.onCompleted();
-    } catch (StatusRuntimeException e) {
+    } catch (StatusException e) {
       responseObserver.onError(e);
     }
   }
@@ -79,9 +79,12 @@ public final class CsdsService extends
     return new StreamObserver<ClientStatusRequest>() {
       @Override
       public void onNext(ClientStatusRequest request) {
-        // TODO(sergiitk): should xdsClient be managed per instance and returned at the end?
-        // TODO(sergiitk): handling errors same as for the unary call?
-        responseObserver.onNext(getConfigDumpForRequest(request));
+        // TODO(sergiitk): common method to handle errors?
+        try {
+          responseObserver.onNext(getConfigDumpForRequest(request));
+        } catch (StatusException e) {
+          responseObserver.onError(e);
+        }
       }
 
       @Override
@@ -96,18 +99,23 @@ public final class CsdsService extends
     };
   }
 
-  private ClientStatusResponse getConfigDumpForRequest(ClientStatusRequest request) {
+  private ClientStatusResponse getConfigDumpForRequest(ClientStatusRequest request)
+      throws StatusException {
+    if (request.getNodeMatchersCount() > 0) {
+      throw new StatusException(
+          Status.INVALID_ARGUMENT.withDescription("node_matchers not supported"));
+    }
+
     ObjectPool<XdsClient> xdsClientPool = null;
     XdsClient xdsClient = null;
-
     try {
-      xdsClientPool = xdsClientPoolProvider.getXdsClientPool();
+      xdsClientPool = xdsClientPoolProvider.getXdsClientPoolOrNull();
       xdsClient = xdsClientPool.getObject();
 
       // TODO(sergiitk): consider pulling up .node/.getNode() to XdsClient,
       // TODO(sergiitk): or xdsClientPool.getObject() returning AbstractXdsClient
       if (!(xdsClient instanceof AbstractXdsClient)) {
-        throw new StatusRuntimeException(
+        throw new StatusException(
             Status.INTERNAL.withDescription("Unexpected XdsClient implementation"));
       }
 
@@ -116,8 +124,6 @@ public final class CsdsService extends
       return ClientStatusResponse.newBuilder()
           .addConfig(getClientConfigForXdsClient((AbstractXdsClient) xdsClient))
           .build();
-    } catch (XdsInitializationException e) {
-      throw new StatusRuntimeException(Status.INTERNAL.withCause(e));
     } finally {
       if (xdsClient != null) {
         xdsClientPool.returnObject(xdsClient);
