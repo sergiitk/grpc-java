@@ -16,20 +16,25 @@
 
 package io.grpc.xds;
 
-import static org.junit.Assert.assertEquals;
+import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.collect.ImmutableList;
+import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
 import io.envoyproxy.envoy.config.core.v3.Node;
+import io.envoyproxy.envoy.service.status.v3.ClientConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusResponse;
+import io.envoyproxy.envoy.service.status.v3.PerXdsConfig;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.internal.ObjectPool;
 import io.grpc.testing.GrpcCleanupRule;
+import io.grpc.xds.AbstractXdsClient.ResourceType;
 import io.grpc.xds.Bootstrapper.ServerInfo;
+import java.util.EnumMap;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -97,11 +102,52 @@ public class CsdsServiceTest {
 
   @Test
   public void nodeInfo() {
-    ClientStatusResponse response = blockingStub.fetchClientStatus(request);
-    assertEquals(1, response.getConfigCount());
+    Node node = fetchClientConfig().getNode();
+    assertThat(node.getId()).isEqualTo(NODE_ID);
+    assertThat(node).isEqualTo(bootstrapNode.toEnvoyProtoNode());
+  }
 
-    Node responseNode = response.getConfig(0).getNode();
-    assertEquals(NODE_ID, responseNode.getId());
-    assertEquals(bootstrapNode.toEnvoyProtoNode(), responseNode);
+  @Test
+  public void ldsConfig_empty() {
+    ClientConfig config = fetchClientConfig();
+    EnumMap<ResourceType, PerXdsConfig> configDumpMap = mapConfigDumps(config);
+    assertThat(configDumpMap).containsKey(ResourceType.LDS);
+    PerXdsConfig perXdsConfig = configDumpMap.get(ResourceType.LDS);
+    ListenersConfigDump ldsConfig = perXdsConfig.getListenerConfig();
+    assertThat(ldsConfig.getVersionInfo()).isEmpty();
+    assertThat(ldsConfig.getStaticListenersCount()).isEqualTo(0);
+    assertThat(ldsConfig.getDynamicListenersCount()).isEqualTo(0);
+  }
+
+  private EnumMap<ResourceType, PerXdsConfig> mapConfigDumps(ClientConfig config) {
+    EnumMap<ResourceType, PerXdsConfig> xdsConfigMap = new EnumMap<>(ResourceType.class);
+    for (PerXdsConfig perXdsConfig : config.getXdsConfigList()) {
+      ResourceType type = perXdsConfigToResourceType(perXdsConfig);
+      assertThat(type).isNotEqualTo(ResourceType.UNKNOWN);
+      assertThat(xdsConfigMap).doesNotContainKey(type);
+      xdsConfigMap.put(type, perXdsConfig);
+    }
+    return xdsConfigMap;
+  }
+
+  private ResourceType perXdsConfigToResourceType(PerXdsConfig perXdsConfig) {
+    switch (perXdsConfig.getPerXdsConfigCase()) {
+      case LISTENER_CONFIG:
+        return ResourceType.LDS;
+      case CLUSTER_CONFIG:
+        return ResourceType.CDS;
+      case ROUTE_CONFIG:
+        return ResourceType.RDS;
+      case ENDPOINT_CONFIG:
+        return ResourceType.EDS;
+      default:
+        return ResourceType.UNKNOWN;
+    }
+  }
+
+  private ClientConfig fetchClientConfig() {
+    ClientStatusResponse response = blockingStub.fetchClientStatus(request);
+    assertThat(response.getConfigCount()).isEqualTo(1);
+    return response.getConfig(0);
   }
 }

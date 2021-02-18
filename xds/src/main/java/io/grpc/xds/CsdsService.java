@@ -23,6 +23,7 @@ import io.envoyproxy.envoy.service.status.v3.ClientConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusResponse;
+import io.envoyproxy.envoy.service.status.v3.PerXdsConfig;
 import io.grpc.ExperimentalApi;
 import io.grpc.Status;
 import io.grpc.StatusException;
@@ -38,14 +39,6 @@ import io.grpc.stub.StreamObserver;
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/TODO")
 public final class CsdsService extends
     ClientStatusDiscoveryServiceGrpc.ClientStatusDiscoveryServiceImplBase {
-  // private static final ImmutableMap<ResourceType, Class<?>> RESOURCE_TO_CONFIG_DUMP_CLASS =
-  //     new ImmutableMap.Builder<ResourceType, Class<?>>()
-  //         .put(ResourceType.LDS, ListenersConfigDump.class)
-  //         .put(ResourceType.RDS, RoutesConfigDump.class)
-  //         .put(ResourceType.CDS, ClustersConfigDump.class)
-  //         .put(ResourceType.EDS, EndpointsConfigDump.class)
-  //         .build();
-
   private final SharedXdsClientPoolProvider xdsClientPoolProvider;
 
   private CsdsService() {
@@ -125,52 +118,9 @@ public final class CsdsService extends
   }
 
   private ClientConfig getClientConfigForXdsClient(XdsClient xdsClient) {
-    ClientConfig.Builder clientConfig = ClientConfig.newBuilder();
-
-    // Add node info loaded from bootstrap.
-    clientConfig.setNode(xdsClient.getNode().toEnvoyProtoNode());
-
-    // String ldsVersion = xdsClient.getCurrentVersion(ResourceType.LDS);
-    // ListenersConfigDump.Builder ldsConfigDump = ListenersConfigDump.newBuilder()
-    //     .setVersionInfo(ldsVersion);
-    // if (!ldsVersion.equals("")) {
-    //   // ...
-    // }
-
-    return clientConfig.build();
+    return ClientConfig.newBuilder()
+        .setNode(xdsClient.getNode().toEnvoyProtoNode())
+        .addXdsConfig(PerXdsConfig.newBuilder().setListenerConfig(xdsClient.dumpLdsConfig()))
+        .build();
   }
-
-  // private ClientStatusResponse getConfigDumpForRequest(
-  //     ClientStatusRequest request, AbstractXdsClient xdsClient) {
-  //
-  //
-  //   ClientConfig.Builder clientConfig = ClientConfig.newBuilder();
-  //   return ClientStatusResponse.newBuilder().addConfig(clientConfig).build();
-  //
-  //   // Return single clientConfig describing xdsClient.
-  //   // Add node info loaded from bootstrap.
-  //   clientConfig.setNode(xdsClient.node.toEnvoyProtoNode());
-  //
-  //   // for (ResourceType type : RESOURCE_TO_CONFIG_DUMP_CLASS.keySet()) {
-  //   //   addConfigDump(type, clientConfig, xdsClient);
-  //   // }
-  //   // LDS
-  //   String ldsVersion = xdsClient.getCurrentVersion(ResourceType.LDS);
-  //   if (!ldsVersion.equals("")) {
-  //     ListenersConfigDump.Builder ldsConfigDump =
-  //         ListenersConfigDump.newBuilder().setVersionInfo(ldsVersion);
-  //     clientConfig.addXdsConfig(
-  //         PerXdsConfig.newBuilder().setListenerConfig(ldsConfigDump.build()).build());
-  //   }
-  //
-  //   return resp.build();
-  // }
-  //
-  // // private void addConfigDump(
-  // //     ResourceType type, ClientConfig.Builder configDump, AbstractXdsClient xdsClient) {
-  // //     if (type == ResourceType.UNKNOWN) {
-  // //       return;
-  // //     }
-  // //
-  // // }
 }

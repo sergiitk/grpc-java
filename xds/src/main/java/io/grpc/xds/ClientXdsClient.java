@@ -33,6 +33,7 @@ import com.google.protobuf.Message;
 import com.google.protobuf.util.Durations;
 import com.google.re2j.Pattern;
 import com.google.re2j.PatternSyntaxException;
+import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
 import io.envoyproxy.envoy.config.cluster.v3.CircuitBreakers.Thresholds;
 import io.envoyproxy.envoy.config.cluster.v3.Cluster;
 import io.envoyproxy.envoy.config.cluster.v3.Cluster.CustomClusterType;
@@ -372,6 +373,14 @@ final class ClientXdsClient extends AbstractXdsClient {
     } catch (IllegalArgumentException e) {
       return StructOrError.fromError(e.getMessage());
     }
+  }
+
+  @Override
+  ListenersConfigDump dumpLdsConfig() {
+    ListenersConfigDump.Builder ldsConfig = ListenersConfigDump.newBuilder()
+        .setVersionInfo(getCurrentVersion(ResourceType.LDS));
+
+    return ldsConfig.build();
   }
 
   private static StructOrError<VirtualHost> parseVirtualHost(

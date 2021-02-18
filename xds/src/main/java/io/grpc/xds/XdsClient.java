@@ -22,6 +22,7 @@ import com.google.auto.value.AutoValue;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.ImmutableList;
+import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
 import io.grpc.Status;
 import io.grpc.xds.Endpoints.DropOverload;
 import io.grpc.xds.Endpoints.LocalityLbEndpoints;
@@ -421,6 +422,11 @@ abstract class XdsClient {
    * Unregisters the given LDS resource watcher.
    */
   void cancelLdsResourceWatch(String resourceName, LdsResourceWatcher watcher) {
+    throw new UnsupportedOperationException();
+  }
+
+  ListenersConfigDump dumpLdsConfig() {
+    // TODO(sergiitk): docs.
     throw new UnsupportedOperationException();
   }
 
