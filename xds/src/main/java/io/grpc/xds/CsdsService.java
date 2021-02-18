@@ -106,23 +106,16 @@ public final class CsdsService extends
           Status.INVALID_ARGUMENT.withDescription("node_matchers not supported"));
     }
 
-    ObjectPool<XdsClient> xdsClientPool = null;
+    ObjectPool<XdsClient> xdsClientPool = xdsClientPoolProvider.getXdsClientPoolOrNull();
+    if (xdsClientPool == null) {
+      return ClientStatusResponse.getDefaultInstance();
+    }
+
     XdsClient xdsClient = null;
     try {
-      xdsClientPool = xdsClientPoolProvider.getXdsClientPoolOrNull();
       xdsClient = xdsClientPool.getObject();
-
-      // TODO(sergiitk): consider pulling up .node/.getNode() to XdsClient,
-      // TODO(sergiitk): or xdsClientPool.getObject() returning AbstractXdsClient
-      if (!(xdsClient instanceof AbstractXdsClient)) {
-        throw new StatusException(
-            Status.INTERNAL.withDescription("Unexpected XdsClient implementation"));
-      }
-
-      // TODO(sergiitk): handle request.getNodeMatchers()?
-      // Return single clientConfig describing {@link XdsClient} singleton.
       return ClientStatusResponse.newBuilder()
-          .addConfig(getClientConfigForXdsClient((AbstractXdsClient) xdsClient))
+          .addConfig(getClientConfigForXdsClient(xdsClient))
           .build();
     } finally {
       if (xdsClient != null) {
@@ -131,11 +124,11 @@ public final class CsdsService extends
     }
   }
 
-  private ClientConfig getClientConfigForXdsClient(AbstractXdsClient xdsClient) {
+  private ClientConfig getClientConfigForXdsClient(XdsClient xdsClient) {
     ClientConfig.Builder clientConfig = ClientConfig.newBuilder();
 
     // Add node info loaded from bootstrap.
-    clientConfig.setNode(xdsClient.node.toEnvoyProtoNode());
+    clientConfig.setNode(xdsClient.getNode().toEnvoyProtoNode());
 
     // String ldsVersion = xdsClient.getCurrentVersion(ResourceType.LDS);
     // ListenersConfigDump.Builder ldsConfigDump = ListenersConfigDump.newBuilder()
@@ -146,7 +139,7 @@ public final class CsdsService extends
 
     return clientConfig.build();
   }
-  //
+
   // private ClientStatusResponse getConfigDumpForRequest(
   //     ClientStatusRequest request, AbstractXdsClient xdsClient) {
   //

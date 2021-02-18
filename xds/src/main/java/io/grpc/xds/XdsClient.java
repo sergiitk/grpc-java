@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableList;
 import io.grpc.Status;
 import io.grpc.xds.Endpoints.DropOverload;
 import io.grpc.xds.Endpoints.LocalityLbEndpoints;
+import io.grpc.xds.EnvoyProtoData.Node;
 import io.grpc.xds.EnvoyServerProtoData.Listener;
 import io.grpc.xds.EnvoyServerProtoData.UpstreamTlsContext;
 import io.grpc.xds.Filter.NamedFilterConfig;
@@ -399,6 +400,13 @@ abstract class XdsClient {
    * Returns {@code true} if {@link #shutdown()} has been called.
    */
   boolean isShutDown() {
+    throw new UnsupportedOperationException();
+  }
+
+  /**
+   * Returns gRPC representation of {@link io.envoyproxy.envoy.config.core.v3.Node}.
+   */
+  Node getNode() {
     throw new UnsupportedOperationException();
   }
 

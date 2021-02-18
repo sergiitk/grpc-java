@@ -49,7 +49,6 @@ import javax.annotation.Nullable;
  * the xDS RPC stream.
  */
 abstract class AbstractXdsClient extends XdsClient {
-
   private static final String ADS_TYPE_URL_LDS_V2 = "type.googleapis.com/envoy.api.v2.Listener";
   private static final String ADS_TYPE_URL_LDS =
       "type.googleapis.com/envoy.config.listener.v3.Listener";
@@ -193,6 +192,11 @@ abstract class AbstractXdsClient extends XdsClient {
   @Override
   boolean isShutDown() {
     return shutdown;
+  }
+
+  @Override
+  Node getNode() {
+    return node;
   }
 
   @Override
