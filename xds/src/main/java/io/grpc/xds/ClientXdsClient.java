@@ -1133,14 +1133,9 @@ final class ClientXdsClient extends AbstractXdsClient {
     return resources.keySet();
   }
 
-  @Nullable
   Map<String, ResourceMetadata> getSubscribedResourcesMetadata(ResourceType type) {
-    Map<String, ResourceSubscriber> resources = getSubscribedResourcesMap(type);
-    if (resources.isEmpty()) {
-      return null;
-    }
     Map<String, ResourceMetadata> metadataMap = new HashMap<>();
-    for (Map.Entry<String, ResourceSubscriber> entry : resources.entrySet()) {
+    for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
       metadataMap.put(entry.getKey(), entry.getValue().metadata);
     }
     return metadataMap;
