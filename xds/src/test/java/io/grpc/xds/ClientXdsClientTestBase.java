@@ -101,7 +101,7 @@ public abstract class ClientXdsClientTestBase {
   private static final String EDS_RESOURCE = "cluster-load-assignment.googleapis.com";
   private static final String VERSION_1 = "42";
   private static final String VERSION_2 = "43";
-  private static final long ONE_SECOND_NANOS = TimeUnit.SECONDS.toNanos(1);
+  private static final long TIME_INCREMENT = TimeUnit.SECONDS.toNanos(1);
   private static final Node NODE = Node.newBuilder().build();
 
   private static final FakeClock.TaskFilter RPC_RETRY_TASK_FILTER =
@@ -153,8 +153,10 @@ public abstract class ClientXdsClientTestBase {
   protected final AtomicBoolean adsEnded = new AtomicBoolean(true);
   protected final AtomicBoolean lrsEnded = new AtomicBoolean(true);
   private final MessageFactory mf = createMessageFactory();
+
+  private static final int LISTENER_VHOSTS_SIZE = 2;
   private final Any listenerVhosts = Any.pack(mf.buildListener(LDS_RESOURCE,
-      mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(2))));
+      mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(LISTENER_VHOSTS_SIZE))));
   private final Any listenerRds = Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE));
 
   @Captor
@@ -196,12 +198,12 @@ public abstract class ClientXdsClientTestBase {
     when(backoffPolicyProvider.get()).thenReturn(backoffPolicy1, backoffPolicy2);
     when(backoffPolicy1.nextBackoffNanos()).thenReturn(10L, 100L);
     when(backoffPolicy2.nextBackoffNanos()).thenReturn(20L, 200L);
-    // Increment time 1 second each call.
+    // Increment time TIME_INCREMENT each call.
     when(timeProvider.currentTimeNanos()).thenAnswer(new Answer<Long>() {
-      private long seconds = 0;
+      private long count;
       @Override
       public Long answer(InvocationOnMock invocation) {
-        return TimeUnit.SECONDS.toNanos(++seconds);
+        return ++count * TIME_INCREMENT;
       }
     });
 
@@ -291,8 +293,8 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
-    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
     verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
   }
 
   @Test
@@ -304,10 +306,10 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, listenerVhosts, VERSION_1, "0000");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, TIME_INCREMENT);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
-    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, ONE_SECOND_NANOS);
   }
 
   @Test
@@ -320,8 +322,8 @@ public abstract class ClientXdsClientTestBase {
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerRds, VERSION_1, TIME_INCREMENT);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
-    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerRds, VERSION_1, ONE_SECOND_NANOS);
   }
 
   @Test
@@ -339,8 +341,8 @@ public abstract class ClientXdsClientTestBase {
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
     call.verifyNoMoreRequest();
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerRds, VERSION_1, TIME_INCREMENT);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
-    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerRds, VERSION_1, ONE_SECOND_NANOS);
   }
 
   @Test
@@ -354,25 +356,29 @@ public abstract class ClientXdsClientTestBase {
     verify(watcher).onResourceDoesNotExist(LDS_RESOURCE);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     call.verifyNoMoreRequest();
-    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
     verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
   }
 
   @Test
   public void ldsResourceUpdated() {
     DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
 
     // Initial LDS response.
     call.sendResponse(LDS, listenerVhosts, VERSION_1, "0000");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, TIME_INCREMENT);
 
     // Updated LDS response.
     call.sendResponse(LDS, listenerRds, VERSION_2, "0001");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(ldsResourceWatcher, times(2)).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerRds, VERSION_2, TIME_INCREMENT * 2);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
   }
 
   @Test
