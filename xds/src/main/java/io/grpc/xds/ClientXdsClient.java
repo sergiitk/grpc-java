@@ -119,10 +119,14 @@ final class ClientXdsClient extends AbstractXdsClient {
   private static final String TYPE_URL_CLUSTER_CONFIG =
       "type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig";
 
-  private final Map<String, ResourceSubscriber> ldsResourceSubscribers = new HashMap<>();
-  private final Map<String, ResourceSubscriber> rdsResourceSubscribers = new HashMap<>();
-  private final Map<String, ResourceSubscriber> cdsResourceSubscribers = new HashMap<>();
-  private final Map<String, ResourceSubscriber> edsResourceSubscribers = new HashMap<>();
+  @VisibleForTesting
+  final Map<String, ResourceSubscriber> ldsResourceSubscribers = new HashMap<>();
+  @VisibleForTesting
+  final Map<String, ResourceSubscriber> rdsResourceSubscribers = new HashMap<>();
+  @VisibleForTesting
+  final Map<String, ResourceSubscriber> cdsResourceSubscribers = new HashMap<>();
+  @VisibleForTesting
+  final Map<String, ResourceSubscriber> edsResourceSubscribers = new HashMap<>();
   private final LoadStatsManager2 loadStatsManager;
   private final LoadReportClient lrsClient;
   private final TimeProvider timeProvider;
@@ -1122,7 +1126,7 @@ final class ClientXdsClient extends AbstractXdsClient {
       default:
         throw new AssertionError("Unknown resource type");
     }
-  }
+ }
 
   @Override
   void watchLdsResource(final String resourceName, final LdsResourceWatcher watcher) {
@@ -1313,18 +1317,19 @@ final class ClientXdsClient extends AbstractXdsClient {
   /**
    * Captures ResourceSubscriber metadata, used by the xDS config dump.
    */
-  private static final class ResourceMetadata {
-    private enum ResourceMetadataStatus {
+  static final class ResourceMetadata {
+    enum ResourceMetadataStatus {
       UNKNOWN, REQUESTED, DOES_NOT_EXIST, ACKED, NACKED;
     }
-
-    private String version = "";
-    private ResourceMetadataStatus status = ResourceMetadataStatus.REQUESTED;
-    private long updateTime;
-    @Nullable private Any rawResource;
-
-    ResourceMetadata() {
-    }
+    @VisibleForTesting
+    String version = "";
+    @VisibleForTesting
+    ResourceMetadataStatus status = ResourceMetadataStatus.REQUESTED;
+    @VisibleForTesting
+    long updateTime;
+    @Nullable
+    @VisibleForTesting
+    Any rawResource;
 
     public void setResourceAcked(Any resource, String version, long updateTime) {
       checkNotNull(resource, "resource");
@@ -1339,14 +1344,16 @@ final class ClientXdsClient extends AbstractXdsClient {
   /**
    * Tracks a single subscribed resource.
    */
-  private final class ResourceSubscriber {
+  @VisibleForTesting
+  final class ResourceSubscriber {
     private final ResourceType type;
     private final String resource;
     private final Set<ResourceWatcher> watchers = new HashSet<>();
     private ResourceUpdate data;
     private boolean absent;
     private ScheduledHandle respTimer;
-    private ResourceMetadata metadata;
+    @VisibleForTesting
+    ResourceMetadata metadata;
 
     ResourceSubscriber(ResourceType type, String resource) {
       this.type = type;

@@ -43,6 +43,8 @@ import io.grpc.internal.FakeClock.ScheduledTask;
 import io.grpc.internal.FakeClock.TaskFilter;
 import io.grpc.testing.GrpcCleanupRule;
 import io.grpc.xds.AbstractXdsClient.ResourceType;
+import io.grpc.xds.ClientXdsClient.ResourceMetadata;
+import io.grpc.xds.ClientXdsClient.ResourceMetadata.ResourceMetadataStatus;
 import io.grpc.xds.Endpoints.DropOverload;
 import io.grpc.xds.Endpoints.LbEndpoint;
 import io.grpc.xds.Endpoints.LocalityLbEndpoints;
@@ -244,6 +246,10 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    ResourceMetadata metadata = xdsClient.ldsResourceSubscribers.get(LDS_RESOURCE).metadata;
+    assertThat(metadata.status).isEqualTo(ResourceMetadataStatus.REQUESTED);
+    assertThat(metadata.version).isEmpty();
+    assertThat(metadata.rawResource).isNull();
   }
 
   @Test
