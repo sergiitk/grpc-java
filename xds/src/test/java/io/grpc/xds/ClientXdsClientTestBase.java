@@ -415,7 +415,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, listener, VERSION_1, "0000");
 
     // Client sends an ACK LDS request.
-    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_1, "0000", NODE);
+    call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listener, VERSION_1, TIME_INCREMENT);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
@@ -444,23 +444,21 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void ldsResourceDeleted() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
-    List<Any> listeners = ImmutableList.of(
-        Any.pack(mf.buildListener(LDS_RESOURCE,
-            mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(2)))));
-    call.sendResponse(LDS, listeners, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
+    call.sendResponse(LDS, listenerVhosts, VERSION_1, "0000");
 
-    // Client sends an ACK LDS request.
-    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_1, "0000", NODE);
+    // Initial LDS response.
+    call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
 
+    // Empty LDS response deletes the listener.
     call.sendResponse(LDS, Collections.<Any>emptyList(), VERSION_2, "0001");
-
-    // Client sends an ACK LDS request.
-    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_2, "0001", NODE);
+    call.verifyRequest(LDS, LDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
+    // TODO(sergiitk): verify deleted metadata.
   }
 
   @Test
