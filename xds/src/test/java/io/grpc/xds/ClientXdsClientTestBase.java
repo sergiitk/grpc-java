@@ -201,7 +201,8 @@ public abstract class ClientXdsClientTestBase {
             EnvoyProtoData.Node.newBuilder().build(),
             fakeClock.getScheduledExecutorService(),
             backoffPolicyProvider,
-            fakeClock.getStopwatchSupplier());
+            fakeClock.getStopwatchSupplier(),
+            fakeClock.getTimeProvider());
 
     assertThat(resourceDiscoveryCalls).isEmpty();
     assertThat(loadReportCalls).isEmpty();
