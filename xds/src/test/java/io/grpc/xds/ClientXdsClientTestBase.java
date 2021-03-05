@@ -384,10 +384,9 @@ public abstract class ClientXdsClientTestBase {
   @Test
   public void ldsResourceUpdate_withFaultInjection() {
     Assume.assumeTrue(useProtocolV3());
-    DiscoveryRpcCall call =
-        startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
-    List<Any> listeners = ImmutableList.of(
-        Any.pack(mf.buildListener(
+    DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
+    Any listener = Any.pack(
+        mf.buildListener(
             LDS_RESOURCE,
             mf.buildRouteConfiguration(
                 "do not care",
@@ -412,13 +411,15 @@ public abstract class ClientXdsClientTestBase {
             ImmutableList.of(
                 mf.buildHttpFilter("irrelevant", null),
                 mf.buildHttpFilter("envoy.fault", null)
-            ))));
-    call.sendResponse(LDS, listeners, VERSION_1, "0000");
+            )));
+    call.sendResponse(LDS, listener, VERSION_1, "0000");
 
     // Client sends an ACK LDS request.
-    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_1, "0000", NODE
-    );
+    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listener, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
+
     LdsUpdate ldsUpdate = ldsUpdateCaptor.getValue();
     assertThat(ldsUpdate.virtualHosts).hasSize(2);
     assertThat(ldsUpdate.hasFaultInjection).isTrue();
@@ -451,16 +452,14 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, listeners, VERSION_1, "0000");
 
     // Client sends an ACK LDS request.
-    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_1, "0000", NODE
-    );
+    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(2);
 
     call.sendResponse(LDS, Collections.<Any>emptyList(), VERSION_2, "0001");
 
     // Client sends an ACK LDS request.
-    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_2, "0001", NODE
-    );
+    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), VERSION_2, "0001", NODE);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
   }
 
@@ -505,8 +504,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK RDS request.
     call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
 
     verifyNoInteractions(rdsResourceWatcher);
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
@@ -524,8 +522,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK RDS request.
     call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(2);
     assertThat(fakeClock.getPendingTasks(RDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
@@ -541,8 +538,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK RDS request.
     call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
 
     RdsResourceWatcher watcher = mock(RdsResourceWatcher.class);
     xdsClient.watchRdsResource(RDS_RESOURCE, watcher);
@@ -573,8 +569,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK RDS request.
     call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(2);
 
@@ -584,8 +579,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK RDS request.
     call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_2, "0001",
-        NODE
-    );
+        NODE);
     verify(rdsResourceWatcher, times(2)).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(4);
   }
@@ -665,8 +659,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verifyNoInteractions(cdsResourceWatcher);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
@@ -684,8 +677,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -710,8 +702,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -739,8 +730,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -760,8 +750,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -794,8 +783,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher, times(1)).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     SdsSecretConfig validationContextSdsSecretConfig =
@@ -822,8 +810,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
 
     CdsResourceWatcher watcher = mock(CdsResourceWatcher.class);
     xdsClient.watchCdsResource(CDS_RESOURCE, watcher);
@@ -861,8 +848,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -880,8 +866,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_2, "0001",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher, times(2)).onChanged(cdsUpdateCaptor.capture());
     cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -903,8 +888,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -919,8 +903,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK CDS request.
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_2, "0001",
-        NODE
-    );
+        NODE);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
   }
 
@@ -992,8 +975,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK EDS request.
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verifyNoInteractions(edsResourceWatcher);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
@@ -1028,8 +1010,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK EDS request.
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
     EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
     assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
@@ -1075,8 +1056,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK EDS request.
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
 
     EdsResourceWatcher watcher = mock(EdsResourceWatcher.class);
     xdsClient.watchEdsResource(EDS_RESOURCE, watcher);
@@ -1138,8 +1118,7 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sent an ACK EDS request.
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), VERSION_1, "0000",
-        NODE
-    );
+        NODE);
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
     EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
     assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
@@ -1394,14 +1373,12 @@ public abstract class ClientXdsClientTestBase {
         Any.pack(mf.buildListener(LDS_RESOURCE,
             mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(2)))));
     call.sendResponse(LDS, listeners, "63", "3242");
-    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "63", "3242", NODE
-    );
+    call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "63", "3242", NODE);
 
     List<Any> routeConfigs = ImmutableList.of(
         Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
     call.sendResponse(ResourceType.RDS, routeConfigs, "5", "6764");
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), "5", "6764", NODE
-    );
+    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), "5", "6764", NODE);
 
     call.sendError(Status.DEADLINE_EXCEEDED.asException());
     verify(ldsResourceWatcher, times(3)).onError(errorCaptor.capture());
