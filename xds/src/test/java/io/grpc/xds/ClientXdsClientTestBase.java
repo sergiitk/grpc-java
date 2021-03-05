@@ -18,6 +18,7 @@ package io.grpc.xds;
 
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
+import static io.grpc.xds.AbstractXdsClient.ResourceType.CDS;
 import static io.grpc.xds.AbstractXdsClient.ResourceType.LDS;
 import static io.grpc.xds.AbstractXdsClient.ResourceType.RDS;
 import static org.mockito.Mockito.mock;
@@ -134,7 +135,7 @@ public abstract class ClientXdsClientTestBase {
       new TaskFilter() {
         @Override
         public boolean shouldAccept(Runnable command) {
-          return command.toString().contains(ResourceType.CDS.toString());
+          return command.toString().contains(CDS.toString());
         }
       };
 
@@ -162,6 +163,8 @@ public abstract class ClientXdsClientTestBase {
   private final Any listenerRds = Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE));
   private final Any routeConfig = Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE,
       mf.buildOpaqueVirtualHosts(VHOST_SIZE)));
+  private final Any clusterRoundRobin =
+      Any.pack(mf.buildEdsCluster(CDS_RESOURCE, null, "round_robin", null, false, null, null));
 
   @Captor
   private ArgumentCaptor<LdsUpdate> ldsUpdateCaptor;
@@ -258,7 +261,7 @@ public abstract class ClientXdsClientTestBase {
   private void verifySubscribedResourcesMetadataSizes(
       int ldsSize, int cdsSize, int rdsSize, int edsSize) {
     assertThat(xdsClient.getSubscribedResourcesMetadata(LDS)).hasSize(ldsSize);
-    assertThat(xdsClient.getSubscribedResourcesMetadata(ResourceType.CDS)).hasSize(cdsSize);
+    assertThat(xdsClient.getSubscribedResourcesMetadata(CDS)).hasSize(cdsSize);
     assertThat(xdsClient.getSubscribedResourcesMetadata(RDS)).hasSize(rdsSize);
     assertThat(xdsClient.getSubscribedResourcesMetadata(ResourceType.EDS)).hasSize(edsSize);
   }
@@ -671,19 +674,17 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cdsResourceNotFound() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
 
     List<Any> clusters = ImmutableList.of(
         Any.pack(mf.buildEdsCluster("cluster-bar.googleapis.com", null, "round_robin", null,
             false, null, null)),
         Any.pack(mf.buildEdsCluster("cluster-baz.googleapis.com", null, "round_robin", null,
             false, null, null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    call.sendResponse(CDS, clusters, VERSION_1, "0000");
 
     // Client sent an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verifyNoInteractions(cdsResourceWatcher);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
@@ -693,15 +694,11 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cdsResourceFound() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
-    List<Any> clusters = ImmutableList.of(
-        Any.pack(mf.buildEdsCluster(CDS_RESOURCE, null, "round_robin", null, false, null, null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
+    call.sendResponse(CDS, clusterRoundRobin, VERSION_1, "0000");
 
     // Client sent an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -716,17 +713,14 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cdsResourceFound_ringHashLbPolicy() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
     Message ringHashConfig = mf.buildRingHashLbConfig("xx_hash", 10L, 100L);
-    List<Any> clusters = ImmutableList.of(
-        Any.pack(mf.buildEdsCluster(CDS_RESOURCE, null, "ring_hash", ringHashConfig, false, null,
-            null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    Any clusterRingHash = Any.pack(
+        mf.buildEdsCluster(CDS_RESOURCE, null, "ring_hash", ringHashConfig, false, null, null));
+    call.sendResponse(ResourceType.CDS, clusterRingHash, VERSION_1, "0000");
 
     // Client sent an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -744,17 +738,15 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cdsResponseWithAggregateCluster() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
     List<String> candidates = Arrays.asList(
         "cluster1.googleapis.com", "cluster2.googleapis.com", "cluster3.googleapis.com");
-    List<Any> clusters = ImmutableList.of(
-        Any.pack(mf.buildAggregateCluster(CDS_RESOURCE, "round_robin", null, candidates)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    Any clusterAggregate =
+        Any.pack(mf.buildAggregateCluster(CDS_RESOURCE, "round_robin", null, candidates));
+    call.sendResponse(CDS, clusterAggregate, VERSION_1, "0000");
 
     // Client sent an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -765,16 +757,14 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cdsResponseWithCircuitBreakers() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
-    List<Any> clusters = ImmutableList.of(
-        Any.pack(mf.buildEdsCluster(CDS_RESOURCE, null, "round_robin", null, false, null,
-            mf.buildCircuitBreakers(50, 200))));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
+    Any clusterCircuitBreakers = Any.pack(
+        mf.buildEdsCluster(CDS_RESOURCE, null, "round_robin", null, false, null,
+            mf.buildCircuitBreakers(50, 200)));
+    call.sendResponse(CDS, clusterCircuitBreakers, VERSION_1, "0000");
 
     // Client sent an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -791,8 +781,7 @@ public abstract class ClientXdsClientTestBase {
    */
   @Test
   public void cdsResponseWithUpstreamTlsContext() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
 
     // Management server sends back CDS response with UpstreamTlsContext.
     List<Any> clusters = ImmutableList.of(
@@ -803,11 +792,10 @@ public abstract class ClientXdsClientTestBase {
             mf.buildUpstreamTlsContext("secret1", "unix:/var/uds2"), null)),
         Any.pack(mf.buildEdsCluster("cluster-baz.googleapis.com", null, "round_robin", null, false,
             null, null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    call.sendResponse(CDS, clusters, VERSION_1, "0000");
 
     // Client sent an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher, times(1)).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     SdsSecretConfig validationContextSdsSecretConfig =
@@ -826,15 +814,11 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cachedCdsResource_data() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
-    List<Any> clusters = ImmutableList.of(
-        Any.pack(mf.buildEdsCluster(CDS_RESOURCE, null, "round_robin", null, false, null, null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
+    call.sendResponse(CDS, clusterRoundRobin, VERSION_1, "0000");
 
     // Client sends an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
 
     CdsResourceWatcher watcher = mock(CdsResourceWatcher.class);
     xdsClient.watchCdsResource(CDS_RESOURCE, watcher);
@@ -852,8 +836,7 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cachedCdsResource_absent() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
     CdsResourceWatcher watcher = mock(CdsResourceWatcher.class);
@@ -864,15 +847,13 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cdsResourceUpdated() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
-    List<Any> clusters = ImmutableList.of(
-        Any.pack(mf.buildLogicalDnsCluster(CDS_RESOURCE, "round_robin", null, false, null, null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
+    Any clusterDns =
+        Any.pack(mf.buildLogicalDnsCluster(CDS_RESOURCE, "round_robin", null, false, null, null));
+    call.sendResponse(CDS, clusterDns, VERSION_1, "0000");
 
     // Client sends an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -883,14 +864,12 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
 
     String edsService = "eds-service-bar.googleapis.com";
-    clusters = ImmutableList.of(
-        Any.pack(mf.buildEdsCluster(CDS_RESOURCE, edsService, "round_robin", null, true, null,
-            null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_2, "0001");
+    Any clusterEds = Any.pack(
+        mf.buildEdsCluster(CDS_RESOURCE, edsService, "round_robin", null, true, null, null));
+    call.sendResponse(CDS, clusterEds, VERSION_2, "0001");
 
     // Client sends an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_2, "0001",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(cdsResourceWatcher, times(2)).onChanged(cdsUpdateCaptor.capture());
     cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -904,15 +883,11 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cdsResourceDeleted() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.CDS, CDS_RESOURCE, cdsResourceWatcher);
-    List<Any> clusters = ImmutableList.of(
-        Any.pack(mf.buildEdsCluster(CDS_RESOURCE, null, "round_robin", null, false, null, null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
+    call.sendResponse(CDS, clusterRoundRobin, VERSION_1, "0000");
 
     // Client sends an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -923,11 +898,10 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.maxConcurrentRequests()).isNull();
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
 
-    call.sendResponse(ResourceType.CDS, Collections.<Any>emptyList(), VERSION_2, "0001");
+    call.sendResponse(CDS, Collections.<Any>emptyList(), VERSION_2, "0001");
 
     // Client sends an ACK CDS request.
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), VERSION_2, "0001",
-        NODE);
+    call.verifyRequest(CDS, CDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
   }
 
@@ -940,7 +914,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchCdsResource(cdsResource, watcher1);
     xdsClient.watchCdsResource(cdsResource, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
-    call.verifyRequest(ResourceType.CDS, Arrays.asList(CDS_RESOURCE, cdsResource), "", "", NODE);
+    call.verifyRequest(CDS, Arrays.asList(CDS_RESOURCE, cdsResource), "", "", NODE);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
@@ -952,7 +926,7 @@ public abstract class ClientXdsClientTestBase {
         Any.pack(mf.buildLogicalDnsCluster(CDS_RESOURCE, "round_robin", null, false, null, null)),
         Any.pack(mf.buildEdsCluster(cdsResource, edsService, "round_robin", null, true, null,
             null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    call.sendResponse(CDS, clusters, VERSION_1, "0000");
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.clusterName()).isEqualTo(CDS_RESOURCE);
@@ -1197,7 +1171,7 @@ public abstract class ClientXdsClientTestBase {
         Any.pack(mf.buildEdsCluster(resource, null, "round_robin", null, true, null, null)),
         Any.pack(mf.buildEdsCluster(CDS_RESOURCE, EDS_RESOURCE, "round_robin", null, false, null,
             null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_1, "0000");
+    call.sendResponse(CDS, clusters, VERSION_1, "0000");
     verify(cdsWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
     assertThat(cdsUpdate.edsServiceName()).isEqualTo(null);
@@ -1238,7 +1212,7 @@ public abstract class ClientXdsClientTestBase {
         Any.pack(mf.buildEdsCluster(resource, null, "round_robin", null, true, null,
             null)),  // no change
         Any.pack(mf.buildEdsCluster(CDS_RESOURCE, null, "round_robin", null, false, null, null)));
-    call.sendResponse(ResourceType.CDS, clusters, VERSION_2, "0001");
+    call.sendResponse(CDS, clusters, VERSION_2, "0001");
     verify(cdsResourceWatcher, times(2)).onChanged(cdsUpdateCaptor.capture());
     assertThat(cdsUpdateCaptor.getValue().edsServiceName()).isNull();
     verify(edsResourceWatcher).onResourceDoesNotExist(EDS_RESOURCE);
@@ -1343,7 +1317,7 @@ public abstract class ClientXdsClientTestBase {
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     // Management server closes the RPC stream with an error.
@@ -1367,7 +1341,7 @@ public abstract class ClientXdsClientTestBase {
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     // Management server becomes unreachable.
@@ -1390,7 +1364,7 @@ public abstract class ClientXdsClientTestBase {
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     List<Any> listeners = ImmutableList.of(
@@ -1420,7 +1394,7 @@ public abstract class ClientXdsClientTestBase {
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "63", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "5", "", NODE);
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     // Management server becomes unreachable again.
@@ -1443,7 +1417,7 @@ public abstract class ClientXdsClientTestBase {
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "63", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "5", "", NODE);
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     inOrder.verifyNoMoreInteractions();
@@ -1469,7 +1443,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchEdsResource(EDS_RESOURCE, edsResourceWatcher);
     fakeClock.forwardNanos(10L);
     call = resourceDiscoveryCalls.poll();
-    call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
     call.verifyNoMoreRequest();
 
