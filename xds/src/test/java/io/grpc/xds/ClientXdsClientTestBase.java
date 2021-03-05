@@ -102,6 +102,7 @@ public abstract class ClientXdsClientTestBase {
   private static final String VERSION_2 = "43";
   private static final long ONE_SECOND_NANOS = TimeUnit.SECONDS.toNanos(1);
   private static final Node NODE = Node.newBuilder().build();
+
   private static final FakeClock.TaskFilter RPC_RETRY_TASK_FILTER =
       new FakeClock.TaskFilter() {
         @Override
@@ -151,6 +152,9 @@ public abstract class ClientXdsClientTestBase {
   protected final AtomicBoolean adsEnded = new AtomicBoolean(true);
   protected final AtomicBoolean lrsEnded = new AtomicBoolean(true);
   private final MessageFactory mf = createMessageFactory();
+  private final Any listenerVhosts = Any.pack(mf.buildListener(LDS_RESOURCE,
+      mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(2))));
+  private final Any listenerRds = Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE));
 
   @Captor
   private ArgumentCaptor<LdsUpdate> ldsUpdateCaptor;
@@ -283,9 +287,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(VERSION_1, listeners, ResourceType.LDS, "0000");
 
     // Client sends an ACK LDS request.
-    call.verifyRequest(NODE, VERSION_1, Collections.singletonList(LDS_RESOURCE), ResourceType.LDS,
-        "0000");
-
+    call.verifyRequest(NODE, VERSION_1, LDS_RESOURCE, ResourceType.LDS, "0000");
     verifyNoInteractions(ldsResourceWatcher);
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
@@ -298,54 +300,43 @@ public abstract class ClientXdsClientTestBase {
   public void ldsResourceFound_containsVirtualHosts() {
     DiscoveryRpcCall call =
         startResourceWatcher(ResourceType.LDS, LDS_RESOURCE, ldsResourceWatcher);
-    List<Any> listeners = ImmutableList.of(
-        Any.pack(mf.buildListener(LDS_RESOURCE,
-            mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(2)))));
-
     fakeClock.forwardTime(10, TimeUnit.SECONDS);
-    call.sendResponse(VERSION_1, listeners, ResourceType.LDS, "0000");
+    call.sendResponse(VERSION_1, listenerVhosts, ResourceType.LDS, "0000");
 
     // Client sends an ACK LDS request.
-    call.verifyRequest(NODE, VERSION_1, Collections.singletonList(LDS_RESOURCE), ResourceType.LDS,
-        "0000");
+    call.verifyRequest(NODE, VERSION_1, LDS_RESOURCE, ResourceType.LDS, "0000");
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(2);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
     verifyResourceMetadataAcked(
-        ResourceType.LDS, LDS_RESOURCE, listeners.get(0), VERSION_1, ONE_SECOND_NANOS);
+        ResourceType.LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, ONE_SECOND_NANOS);
   }
 
   @Test
   public void ldsResourceFound_containsRdsName() {
     DiscoveryRpcCall call =
         startResourceWatcher(ResourceType.LDS, LDS_RESOURCE, ldsResourceWatcher);
-    List<Any> listeners = ImmutableList.of(
-        Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE)));
-    call.sendResponse(VERSION_1, listeners, ResourceType.LDS, "0000");
+    call.sendResponse(VERSION_1, listenerRds, ResourceType.LDS, "0000");
 
     // Client sends an ACK LDS request.
-    call.verifyRequest(NODE, VERSION_1, Collections.singletonList(LDS_RESOURCE), ResourceType.LDS,
-        "0000");
+    call.verifyRequest(NODE, VERSION_1, LDS_RESOURCE, ResourceType.LDS, "0000");
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
     verifyResourceMetadataAcked(
-        ResourceType.LDS, LDS_RESOURCE, listeners.get(0), VERSION_1, ONE_SECOND_NANOS);
+        ResourceType.LDS, LDS_RESOURCE, listenerRds, VERSION_1, ONE_SECOND_NANOS);
   }
 
   @Test
   public void cachedLdsResource_data() {
     DiscoveryRpcCall call =
         startResourceWatcher(ResourceType.LDS, LDS_RESOURCE, ldsResourceWatcher);
-    List<Any> listeners = ImmutableList.of(
-        Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE)));
-    call.sendResponse(VERSION_1, listeners, ResourceType.LDS, "0000");
+    call.sendResponse(VERSION_1, listenerRds, ResourceType.LDS, "0000");
 
     // Client sends an ACK LDS request.
-    call.verifyRequest(NODE, VERSION_1, Collections.singletonList(LDS_RESOURCE), ResourceType.LDS,
-        "0000");
+    call.verifyRequest(NODE, VERSION_1, LDS_RESOURCE, ResourceType.LDS, "0000");
     LdsResourceWatcher watcher = mock(LdsResourceWatcher.class);
     xdsClient.watchLdsResource(LDS_RESOURCE, watcher);
     // Verify both watchers were called.
@@ -355,7 +346,7 @@ public abstract class ClientXdsClientTestBase {
     call.verifyNoMoreRequest();
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
     verifyResourceMetadataAcked(
-        ResourceType.LDS, LDS_RESOURCE, listeners.get(0), VERSION_1, ONE_SECOND_NANOS);
+        ResourceType.LDS, LDS_RESOURCE, listenerRds, VERSION_1, ONE_SECOND_NANOS);
   }
 
   @Test
@@ -378,24 +369,16 @@ public abstract class ClientXdsClientTestBase {
   public void ldsResourceUpdated() {
     DiscoveryRpcCall call =
         startResourceWatcher(ResourceType.LDS, LDS_RESOURCE, ldsResourceWatcher);
-    List<Any> listeners = ImmutableList.of(
-        Any.pack(mf.buildListener(LDS_RESOURCE,
-            mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(2)))));
-    call.sendResponse(VERSION_1, listeners, ResourceType.LDS, "0000");
 
-    // Client sends an ACK LDS request.
-    call.verifyRequest(NODE, VERSION_1, Collections.singletonList(LDS_RESOURCE), ResourceType.LDS,
-        "0000");
+    // Initial LDS response.
+    call.sendResponse(VERSION_1, listenerVhosts, ResourceType.LDS, "0000");
+    call.verifyRequest(NODE, VERSION_1, LDS_RESOURCE, ResourceType.LDS, "0000");
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(2);
 
-    listeners = ImmutableList.of(
-        Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE)));
-    call.sendResponse(VERSION_2, listeners, ResourceType.LDS, "0001");
-
-    // Client sends an ACK LDS request.
-    call.verifyRequest(NODE, VERSION_2, Collections.singletonList(LDS_RESOURCE), ResourceType.LDS,
-        "0001");
+    // Updated LDS response.
+    call.sendResponse(VERSION_2, listenerRds, ResourceType.LDS, "0001");
+    call.verifyRequest(NODE, VERSION_2, LDS_RESOURCE, ResourceType.LDS, "0001");
     verify(ldsResourceWatcher, times(2)).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
   }
@@ -1582,10 +1565,19 @@ public abstract class ClientXdsClientTestBase {
     protected abstract void verifyRequest(Node node, String versionInfo, List<String> resources,
         ResourceType type, String nonce);
 
+    protected void verifyRequest(
+        Node node, String versionInfo, String resource, ResourceType type, String nonce) {
+      verifyRequest(node, versionInfo, ImmutableList.of(resource), type, nonce);
+    }
+
     protected abstract void verifyNoMoreRequest();
 
     protected abstract void sendResponse(String versionInfo, List<Any> resources,
         ResourceType type, String nonce);
+
+    protected void sendResponse(String versionInfo, Any resource, ResourceType type, String nonce) {
+      sendResponse(versionInfo, ImmutableList.of(resource), type, nonce);
+    }
 
     protected abstract void sendError(Throwable t);
 
