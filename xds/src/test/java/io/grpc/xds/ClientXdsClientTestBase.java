@@ -690,6 +690,8 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(CDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   @Test
@@ -709,6 +711,8 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.maxConcurrentRequests()).isNull();
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
     assertThat(fakeClock.getPendingTasks(CDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterRoundRobin, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   @Test
@@ -734,6 +738,8 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.maxConcurrentRequests()).isNull();
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
     assertThat(fakeClock.getPendingTasks(CDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterRingHash, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   @Test
@@ -753,6 +759,8 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.clusterType()).isEqualTo(ClusterType.AGGREGATE);
     assertThat(cdsUpdate.lbPolicy()).isEqualTo("round_robin");
     assertThat(cdsUpdate.prioritizedClusterNames()).containsExactlyElementsIn(candidates).inOrder();
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterAggregate, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   @Test
@@ -774,6 +782,9 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.lrsServerName()).isNull();
     assertThat(cdsUpdate.maxConcurrentRequests()).isEqualTo(200L);
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterCircuitBreakers, VERSION_1,
+        TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   /**
@@ -784,12 +795,14 @@ public abstract class ClientXdsClientTestBase {
     DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
 
     // Management server sends back CDS response with UpstreamTlsContext.
+    Any clusterEds =
+        Any.pack(mf.buildEdsCluster(CDS_RESOURCE, "eds-cluster-foo.googleapis.com", "round_robin",
+            null, true,
+            mf.buildUpstreamTlsContext("secret1", "unix:/var/uds2"), null));
     List<Any> clusters = ImmutableList.of(
         Any.pack(mf.buildLogicalDnsCluster("cluster-bar.googleapis.com", "round_robin", null,
             false, null, null)),
-        Any.pack(mf.buildEdsCluster(CDS_RESOURCE, "eds-cluster-foo.googleapis.com", "round_robin",
-            null, true,
-            mf.buildUpstreamTlsContext("secret1", "unix:/var/uds2"), null)),
+        clusterEds,
         Any.pack(mf.buildEdsCluster("cluster-baz.googleapis.com", null, "round_robin", null, false,
             null, null)));
     call.sendResponse(CDS, clusters, VERSION_1, "0000");
@@ -810,6 +823,8 @@ public abstract class ClientXdsClientTestBase {
             .getGoogleGrpc()
             .getTargetUri())
         .isEqualTo("unix:/var/uds2");
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterEds, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   @Test
@@ -832,6 +847,9 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.maxConcurrentRequests()).isNull();
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
     call.verifyNoMoreRequest();
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterRoundRobin, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
+
   }
 
   @Test
@@ -843,16 +861,19 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchCdsResource(CDS_RESOURCE, watcher);
     verify(watcher).onResourceDoesNotExist(CDS_RESOURCE);
     call.verifyNoMoreRequest();
+    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   @Test
   public void cdsResourceUpdated() {
     DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
+    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
+
+    // Initial CDS response.
     Any clusterDns =
         Any.pack(mf.buildLogicalDnsCluster(CDS_RESOURCE, "round_robin", null, false, null, null));
     call.sendResponse(CDS, clusterDns, VERSION_1, "0000");
-
-    // Client sends an ACK CDS request.
     call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
@@ -862,13 +883,13 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.lrsServerName()).isNull();
     assertThat(cdsUpdate.maxConcurrentRequests()).isNull();
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterDns, VERSION_1, TIME_INCREMENT);
 
+    // Updated CDS response.
     String edsService = "eds-service-bar.googleapis.com";
     Any clusterEds = Any.pack(
         mf.buildEdsCluster(CDS_RESOURCE, edsService, "round_robin", null, true, null, null));
     call.sendResponse(CDS, clusterEds, VERSION_2, "0001");
-
-    // Client sends an ACK CDS request.
     call.verifyRequest(CDS, CDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(cdsResourceWatcher, times(2)).onChanged(cdsUpdateCaptor.capture());
     cdsUpdate = cdsUpdateCaptor.getValue();
@@ -879,14 +900,17 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.lrsServerName()).isEqualTo("");
     assertThat(cdsUpdate.maxConcurrentRequests()).isNull();
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterEds, VERSION_2, TIME_INCREMENT * 2);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   @Test
   public void cdsResourceDeleted() {
     DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
-    call.sendResponse(CDS, clusterRoundRobin, VERSION_1, "0000");
+    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
 
-    // Client sends an ACK CDS request.
+    // Initial CDS response.
+    call.sendResponse(CDS, clusterRoundRobin, VERSION_1, "0000");
     call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
     CdsUpdate cdsUpdate = cdsUpdateCaptor.getValue();
@@ -897,34 +921,39 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.lrsServerName()).isNull();
     assertThat(cdsUpdate.maxConcurrentRequests()).isNull();
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusterRoundRobin, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
 
+    // Empty CDS response deletes the cluster.
     call.sendResponse(CDS, Collections.<Any>emptyList(), VERSION_2, "0001");
-
-    // Client sends an ACK CDS request.
     call.verifyRequest(CDS, CDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
+    // TODO(sergiitk): verify deleted metadata.
   }
 
   @Test
   public void multipleCdsWatchers() {
-    String cdsResource = "cluster-bar.googleapis.com";
+    String cdsResourceTwo = "cluster-bar.googleapis.com";
     CdsResourceWatcher watcher1 = mock(CdsResourceWatcher.class);
     CdsResourceWatcher watcher2 = mock(CdsResourceWatcher.class);
     xdsClient.watchCdsResource(CDS_RESOURCE, cdsResourceWatcher);
-    xdsClient.watchCdsResource(cdsResource, watcher1);
-    xdsClient.watchCdsResource(cdsResource, watcher2);
+    xdsClient.watchCdsResource(cdsResourceTwo, watcher1);
+    xdsClient.watchCdsResource(cdsResourceTwo, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
-    call.verifyRequest(CDS, Arrays.asList(CDS_RESOURCE, cdsResource), "", "", NODE);
+    call.verifyRequest(CDS, Arrays.asList(CDS_RESOURCE, cdsResourceTwo), "", "", NODE);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
-    verify(watcher1).onResourceDoesNotExist(cdsResource);
-    verify(watcher2).onResourceDoesNotExist(cdsResource);
+    verify(watcher1).onResourceDoesNotExist(cdsResourceTwo);
+    verify(watcher2).onResourceDoesNotExist(cdsResourceTwo);
+    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
+    verifyResourceMetadataRequested(CDS, cdsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(0, 2, 0, 0);
 
     String edsService = "eds-service-bar.googleapis.com";
     List<Any> clusters = ImmutableList.of(
         Any.pack(mf.buildLogicalDnsCluster(CDS_RESOURCE, "round_robin", null, false, null, null)),
-        Any.pack(mf.buildEdsCluster(cdsResource, edsService, "round_robin", null, true, null,
+        Any.pack(mf.buildEdsCluster(cdsResourceTwo, edsService, "round_robin", null, true, null,
             null)));
     call.sendResponse(CDS, clusters, VERSION_1, "0000");
     verify(cdsResourceWatcher).onChanged(cdsUpdateCaptor.capture());
@@ -937,7 +966,7 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
     verify(watcher1).onChanged(cdsUpdateCaptor.capture());
     cdsUpdate = cdsUpdateCaptor.getValue();
-    assertThat(cdsUpdate.clusterName()).isEqualTo(cdsResource);
+    assertThat(cdsUpdate.clusterName()).isEqualTo(cdsResourceTwo);
     assertThat(cdsUpdate.clusterType()).isEqualTo(ClusterType.EDS);
     assertThat(cdsUpdate.edsServiceName()).isEqualTo(edsService);
     assertThat(cdsUpdate.lbPolicy()).isEqualTo("round_robin");
@@ -946,13 +975,17 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
     verify(watcher2).onChanged(cdsUpdateCaptor.capture());
     cdsUpdate = cdsUpdateCaptor.getValue();
-    assertThat(cdsUpdate.clusterName()).isEqualTo(cdsResource);
+    assertThat(cdsUpdate.clusterName()).isEqualTo(cdsResourceTwo);
     assertThat(cdsUpdate.clusterType()).isEqualTo(ClusterType.EDS);
     assertThat(cdsUpdate.edsServiceName()).isEqualTo(edsService);
     assertThat(cdsUpdate.lbPolicy()).isEqualTo("round_robin");
     assertThat(cdsUpdate.lrsServerName()).isEqualTo("");
     assertThat(cdsUpdate.maxConcurrentRequests()).isNull();
     assertThat(cdsUpdate.upstreamTlsContext()).isNull();
+    // Metadata of both clusters is stored.
+    verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusters.get(0), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(CDS, cdsResourceTwo, clusters.get(1), VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 2, 0, 0);
   }
 
   @Test
