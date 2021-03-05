@@ -445,9 +445,10 @@ public abstract class ClientXdsClientTestBase {
   @Test
   public void ldsResourceDeleted() {
     DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
-    call.sendResponse(LDS, listenerVhosts, VERSION_1, "0000");
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
 
     // Initial LDS response.
+    call.sendResponse(LDS, listenerVhosts, VERSION_1, "0000");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
@@ -463,32 +464,42 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void multipleLdsWatchers() {
-    String ldsResource = "bar.googleapis.com";
+    String ldsResourceTwo = "bar.googleapis.com";
     LdsResourceWatcher watcher1 = mock(LdsResourceWatcher.class);
     LdsResourceWatcher watcher2 = mock(LdsResourceWatcher.class);
     xdsClient.watchLdsResource(LDS_RESOURCE, ldsResourceWatcher);
-    xdsClient.watchLdsResource(ldsResource, watcher1);
-    xdsClient.watchLdsResource(ldsResource, watcher2);
+    xdsClient.watchLdsResource(ldsResourceTwo, watcher1);
+    xdsClient.watchLdsResource(ldsResourceTwo, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
-    call.verifyRequest(LDS, Arrays.asList(LDS_RESOURCE, ldsResource), "", "", NODE);
+    call.verifyRequest(LDS, ImmutableList.of(LDS_RESOURCE, ldsResourceTwo), "", "", NODE);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
-    verify(watcher1).onResourceDoesNotExist(ldsResource);
-    verify(watcher2).onResourceDoesNotExist(ldsResource);
+    verify(watcher1).onResourceDoesNotExist(ldsResourceTwo);
+    verify(watcher2).onResourceDoesNotExist(ldsResourceTwo);
+    // Both listeners are requested.
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifyResourceMetadataRequested(LDS, ldsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(2, 0, 0, 0);
 
-    List<Any> listeners = ImmutableList.of(
-        Any.pack(mf.buildListener(LDS_RESOURCE,
-            mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(2)))),
-        Any.pack(mf.buildListener(ldsResource,
-            mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(4)))));
-    call.sendResponse(LDS, listeners, VERSION_1, "0000");
+    // Ensures listenerTwo has different number of vhost to differentiate
+    Any listenerTwo = Any.pack(mf.buildListenerForRds(ldsResourceTwo, RDS_RESOURCE));
+    call.sendResponse(LDS, ImmutableList.of(listenerVhosts, listenerTwo), VERSION_1, "0000");
+    // ldsResourceWatcher called with listenerVhosts.
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
+    // watcher1 called with listenerTwo.
     verify(watcher1).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(4);
+    assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).isNull();
+    // watcher2 called with listenerTwo.
     verify(watcher2).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(4);
+    assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).isNull();
+    // Metadata of both listeners is stored.
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(LDS, ldsResourceTwo, listenerTwo, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(2, 0, 0, 0);
   }
 
   @Test
