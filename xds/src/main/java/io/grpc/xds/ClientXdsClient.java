@@ -119,14 +119,10 @@ final class ClientXdsClient extends AbstractXdsClient {
   private static final String TYPE_URL_CLUSTER_CONFIG =
       "type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig";
 
-  @VisibleForTesting
-  final Map<String, ResourceSubscriber> ldsResourceSubscribers = new HashMap<>();
-  @VisibleForTesting
-  final Map<String, ResourceSubscriber> rdsResourceSubscribers = new HashMap<>();
-  @VisibleForTesting
-  final Map<String, ResourceSubscriber> cdsResourceSubscribers = new HashMap<>();
-  @VisibleForTesting
-  final Map<String, ResourceSubscriber> edsResourceSubscribers = new HashMap<>();
+  private final Map<String, ResourceSubscriber> ldsResourceSubscribers = new HashMap<>();
+  private final Map<String, ResourceSubscriber> rdsResourceSubscribers = new HashMap<>();
+  private final Map<String, ResourceSubscriber> cdsResourceSubscribers = new HashMap<>();
+  private final Map<String, ResourceSubscriber> edsResourceSubscribers = new HashMap<>();
   private final LoadStatsManager2 loadStatsManager;
   private final LoadReportClient lrsClient;
   private final TimeProvider timeProvider;
@@ -149,6 +145,7 @@ final class ClientXdsClient extends AbstractXdsClient {
     List<Listener> listeners = new ArrayList<>(resources.size());
     List<String> listenerNames = new ArrayList<>(resources.size());
     Map<String, Any> rawResources = new HashMap<>();
+
     try {
       for (Any res : resources) {
         Listener listener = unpackCompatibleType(res, Listener.class, ResourceType.LDS.typeUrl(),
@@ -1110,23 +1107,54 @@ final class ClientXdsClient extends AbstractXdsClient {
     cleanUpResourceTimers();
   }
 
-  @Nullable
-  @Override
-  Collection<String> getSubscribedResources(ResourceType type) {
+  private Map<String, ResourceSubscriber> getSubscribedResourcesMap(ResourceType type) {
     switch (type) {
       case LDS:
-        return ldsResourceSubscribers.isEmpty() ? null : ldsResourceSubscribers.keySet();
+        return ldsResourceSubscribers;
       case RDS:
-        return rdsResourceSubscribers.isEmpty() ? null : rdsResourceSubscribers.keySet();
+        return rdsResourceSubscribers;
       case CDS:
-        return cdsResourceSubscribers.isEmpty() ? null : cdsResourceSubscribers.keySet();
+        return cdsResourceSubscribers;
       case EDS:
-        return edsResourceSubscribers.isEmpty() ? null : edsResourceSubscribers.keySet();
+        return edsResourceSubscribers;
       case UNKNOWN:
       default:
         throw new AssertionError("Unknown resource type");
     }
- }
+  }
+
+  @Nullable
+  @Override
+  Collection<String> getSubscribedResources(ResourceType type) {
+    Map<String, ResourceSubscriber> resources = getSubscribedResourcesMap(type);
+    if (resources.isEmpty()) {
+      return null;
+    }
+    return resources.keySet();
+  }
+
+  @Nullable
+  Map<String, ResourceMetadata> getSubscribedResourcesMetadata(ResourceType type) {
+    Map<String, ResourceSubscriber> resources = getSubscribedResourcesMap(type);
+    if (resources.isEmpty()) {
+      return null;
+    }
+    Map<String, ResourceMetadata> metadataMap = new HashMap<>();
+    for (Map.Entry<String, ResourceSubscriber> entry : resources.entrySet()) {
+      metadataMap.put(entry.getKey(), entry.getValue().metadata);
+    }
+    return metadataMap;
+  }
+
+  @Nullable
+  ResourceMetadata getSubscribedResourceMetadata(
+      ResourceType type, String resourceName) {
+    Map<String, ResourceSubscriber> resources = getSubscribedResourcesMap(type);
+    if (resources.isEmpty() || !resources.containsKey(resourceName)) {
+      return null;
+    }
+    return resources.get(resourceName).metadata;
+  }
 
   @Override
   void watchLdsResource(final String resourceName, final LdsResourceWatcher watcher) {
@@ -1312,53 +1340,73 @@ final class ClientXdsClient extends AbstractXdsClient {
     }
   }
 
-
-
   /**
    * Captures ResourceSubscriber metadata, used by the xDS config dump.
    */
   static final class ResourceMetadata {
-    enum ResourceMetadataStatus {
+    public enum ResourceMetadataStatus {
       UNKNOWN, REQUESTED, DOES_NOT_EXIST, ACKED, NACKED;
     }
-    @VisibleForTesting
-    String version = "";
-    @VisibleForTesting
-    ResourceMetadataStatus status = ResourceMetadataStatus.REQUESTED;
-    @VisibleForTesting
-    long updateTime;
-    @Nullable
-    @VisibleForTesting
-    Any rawResource;
 
-    public void setResourceAcked(Any resource, String version, long updateTime) {
+    private final String version;
+    private final ResourceMetadataStatus status;
+    private final long updateTime;
+    @Nullable private final Any rawResource;
+
+    ResourceMetadata(
+        ResourceMetadataStatus status, String version, long updateTime,
+        @Nullable Any rawResource) {
+      this.version = version;
+      this.status = status;
+      this.updateTime = updateTime;
+      this.rawResource = rawResource;
+    }
+
+    public static ResourceMetadata newResourceMetadataRequested() {
+      return new ResourceMetadata(ResourceMetadataStatus.REQUESTED, "", 0, null);
+    }
+
+    public static ResourceMetadata newResourceMetadataAcked(
+        Any resource, String version, long updateTime) {
       checkNotNull(resource, "resource");
       checkNotNull(version, "version");
-      this.status = ResourceMetadataStatus.ACKED;
-      this.updateTime = updateTime;
-      this.version = version;
-      this.rawResource = resource;
+      return new ResourceMetadata(ResourceMetadataStatus.ACKED, version, updateTime, resource);
+    }
+
+    public String getVersion() {
+      return version;
+    }
+
+    public ResourceMetadataStatus getStatus() {
+      return status;
+    }
+
+    public long getUpdateTime() {
+      return updateTime;
+    }
+
+    @Nullable
+    public Any getRawResource() {
+      return rawResource;
     }
   }
 
   /**
    * Tracks a single subscribed resource.
    */
-  @VisibleForTesting
-  final class ResourceSubscriber {
+  private final class ResourceSubscriber {
     private final ResourceType type;
     private final String resource;
     private final Set<ResourceWatcher> watchers = new HashSet<>();
     private ResourceUpdate data;
     private boolean absent;
     private ScheduledHandle respTimer;
-    @VisibleForTesting
-    ResourceMetadata metadata;
+    private ResourceMetadata metadata;
 
     ResourceSubscriber(ResourceType type, String resource) {
       this.type = type;
       this.resource = resource;
-      this.metadata = new ResourceMetadata();
+      this.metadata = ResourceMetadata.newResourceMetadataRequested();
       if (isInBackoff()) {
         return;
       }
@@ -1420,7 +1468,7 @@ final class ClientXdsClient extends AbstractXdsClient {
         respTimer.cancel();
         respTimer = null;
       }
-      this.metadata.setResourceAcked(resource, version, updateTime);
+      this.metadata = ResourceMetadata.newResourceMetadataAcked(resource, version, updateTime);
       ResourceUpdate oldData = this.data;
       this.data = data;
       absent = false;

@@ -246,10 +246,17 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
-    ResourceMetadata metadata = xdsClient.ldsResourceSubscribers.get(LDS_RESOURCE).metadata;
-    assertThat(metadata.status).isEqualTo(ResourceMetadataStatus.REQUESTED);
-    assertThat(metadata.version).isEmpty();
-    assertThat(metadata.rawResource).isNull();
+    Map<String, ResourceMetadata> ldsResourcesMetadata =
+        xdsClient.getSubscribedResourcesMetadata(ResourceType.LDS);
+    assertThat(ldsResourcesMetadata).isNotNull();
+    assertThat(ldsResourcesMetadata).hasSize(1);
+    assertThat(ldsResourcesMetadata).containsKey(LDS_RESOURCE);
+    // Resource requested, but not updated.
+    ResourceMetadata listenerMetadata = ldsResourcesMetadata.get(LDS_RESOURCE);
+    assertThat(listenerMetadata.getStatus()).isEqualTo(ResourceMetadataStatus.REQUESTED);
+    assertThat(listenerMetadata.getVersion()).isEmpty();
+    assertThat(listenerMetadata.getUpdateTime()).isEqualTo(0);
+    assertThat(listenerMetadata.getRawResource()).isNull();
   }
 
   @Test
