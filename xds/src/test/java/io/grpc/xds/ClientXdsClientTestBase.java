@@ -19,6 +19,7 @@ package io.grpc.xds;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 import static io.grpc.xds.AbstractXdsClient.ResourceType.CDS;
+import static io.grpc.xds.AbstractXdsClient.ResourceType.EDS;
 import static io.grpc.xds.AbstractXdsClient.ResourceType.LDS;
 import static io.grpc.xds.AbstractXdsClient.ResourceType.RDS;
 import static org.mockito.Mockito.mock;
@@ -143,7 +144,7 @@ public abstract class ClientXdsClientTestBase {
       new FakeClock.TaskFilter() {
         @Override
         public boolean shouldAccept(Runnable command) {
-          return command.toString().contains(ResourceType.EDS.toString());
+          return command.toString().contains(EDS.toString());
         }
       };
 
@@ -263,7 +264,7 @@ public abstract class ClientXdsClientTestBase {
     assertThat(xdsClient.getSubscribedResourcesMetadata(LDS)).hasSize(ldsSize);
     assertThat(xdsClient.getSubscribedResourcesMetadata(CDS)).hasSize(cdsSize);
     assertThat(xdsClient.getSubscribedResourcesMetadata(RDS)).hasSize(rdsSize);
-    assertThat(xdsClient.getSubscribedResourcesMetadata(ResourceType.EDS)).hasSize(edsSize);
+    assertThat(xdsClient.getSubscribedResourcesMetadata(EDS)).hasSize(edsSize);
   }
 
   /** Verify the resource requested, but not updated. */
@@ -990,8 +991,7 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void edsResourceNotFound() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.EDS, EDS_RESOURCE, edsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
     List<Any> clusterLoadAssignments =
         ImmutableList.of(
             Any.pack(
@@ -1002,11 +1002,10 @@ public abstract class ClientXdsClientTestBase {
                                 mf.buildLbEndpoint("192.168.0.1", 8080, "healthy", 2)),
                             1, 0)),
                     ImmutableList.<Message>of())));
-    call.sendResponse(ResourceType.EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
 
     // Client sent an ACK EDS request.
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
     verifyNoInteractions(edsResourceWatcher);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
@@ -1016,8 +1015,7 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void edsResourceFound() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.EDS, EDS_RESOURCE, edsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
     List<Any> clusterLoadAssignments =
         ImmutableList.of(
             Any.pack(
@@ -1037,11 +1035,10 @@ public abstract class ClientXdsClientTestBase {
                     ImmutableList.of(
                         mf.buildDropOverload("lb", 200),
                         mf.buildDropOverload("throttle", 1000)))));
-    call.sendResponse(ResourceType.EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
 
     // Client sent an ACK EDS request.
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
     EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
     assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
@@ -1062,8 +1059,7 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cachedEdsResource_data() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.EDS, EDS_RESOURCE, edsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
     List<Any> clusterLoadAssignments =
         ImmutableList.of(
             Any.pack(
@@ -1083,11 +1079,10 @@ public abstract class ClientXdsClientTestBase {
                     ImmutableList.of(
                         mf.buildDropOverload("lb", 200),
                         mf.buildDropOverload("throttle", 1000)))));
-    call.sendResponse(ResourceType.EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
 
     // Client sent an ACK EDS request.
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
 
     EdsResourceWatcher watcher = mock(EdsResourceWatcher.class);
     xdsClient.watchEdsResource(EDS_RESOURCE, watcher);
@@ -1112,8 +1107,7 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void cachedEdsResource_absent() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.EDS, EDS_RESOURCE, edsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(edsResourceWatcher).onResourceDoesNotExist(EDS_RESOURCE);
     EdsResourceWatcher watcher = mock(EdsResourceWatcher.class);
@@ -1124,8 +1118,7 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void edsResourceUpdated() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.EDS, EDS_RESOURCE, edsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
     List<Any> clusterLoadAssignments =
         ImmutableList.of(
             Any.pack(
@@ -1145,11 +1138,10 @@ public abstract class ClientXdsClientTestBase {
                     ImmutableList.of(
                         mf.buildDropOverload("lb", 200),
                         mf.buildDropOverload("throttle", 1000)))));
-    call.sendResponse(ResourceType.EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
 
     // Client sent an ACK EDS request.
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
     EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
     assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
@@ -1176,7 +1168,7 @@ public abstract class ClientXdsClientTestBase {
                                 mf.buildLbEndpoint("172.44.2.2", 8000, "unknown", 3)),
                             2, 0)),
                     ImmutableList.<Message>of())));
-    call.sendResponse(ResourceType.EDS, clusterLoadAssignments, VERSION_2, "0001");
+    call.sendResponse(EDS, clusterLoadAssignments, VERSION_2, "0001");
 
     verify(edsResourceWatcher, times(2)).onChanged(edsUpdateCaptor.capture());
     edsUpdate = edsUpdateCaptor.getValue();
@@ -1235,7 +1227,7 @@ public abstract class ClientXdsClientTestBase {
                             1, 0)),
                     ImmutableList.of(
                         mf.buildDropOverload("lb", 100)))));
-    call.sendResponse(ResourceType.EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
     verify(edsWatcher).onChanged(edsUpdateCaptor.capture());
     assertThat(edsUpdateCaptor.getValue().clusterName).isEqualTo(resource);
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
@@ -1261,7 +1253,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchEdsResource(edsResource, watcher1);
     xdsClient.watchEdsResource(edsResource, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
-    call.verifyRequest(ResourceType.EDS, Arrays.asList(EDS_RESOURCE, edsResource), "", "", NODE);
+    call.verifyRequest(EDS, Arrays.asList(EDS_RESOURCE, edsResource), "", "", NODE);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(edsResourceWatcher).onResourceDoesNotExist(EDS_RESOURCE);
@@ -1287,7 +1279,7 @@ public abstract class ClientXdsClientTestBase {
                     ImmutableList.of(
                         mf.buildDropOverload("lb", 200),
                         mf.buildDropOverload("throttle", 1000)))));
-    call.sendResponse(ResourceType.EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
     EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
     assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
@@ -1315,7 +1307,7 @@ public abstract class ClientXdsClientTestBase {
                                 mf.buildLbEndpoint("172.44.2.2", 8000, "healthy", 3)),
                             2, 0)),
                     ImmutableList.<Message>of())));
-    call.sendResponse(ResourceType.EDS, clusterLoadAssignments, VERSION_2, "0001");
+    call.sendResponse(EDS, clusterLoadAssignments, VERSION_2, "0001");
 
     verify(watcher1).onChanged(edsUpdateCaptor.capture());
     edsUpdate = edsUpdateCaptor.getValue();
@@ -1351,7 +1343,7 @@ public abstract class ClientXdsClientTestBase {
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
     call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     // Management server closes the RPC stream with an error.
     call.sendError(Status.UNKNOWN.asException());
@@ -1375,7 +1367,7 @@ public abstract class ClientXdsClientTestBase {
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
     call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     // Management server becomes unreachable.
     call.sendError(Status.UNAVAILABLE.asException());
@@ -1398,7 +1390,7 @@ public abstract class ClientXdsClientTestBase {
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
     call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     List<Any> listeners = ImmutableList.of(
         Any.pack(mf.buildListener(LDS_RESOURCE,
@@ -1428,7 +1420,7 @@ public abstract class ClientXdsClientTestBase {
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "63", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "5", "", NODE);
     call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     // Management server becomes unreachable again.
     call.sendError(Status.UNAVAILABLE.asException());
@@ -1451,7 +1443,7 @@ public abstract class ClientXdsClientTestBase {
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "63", "", NODE);
     call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "5", "", NODE);
     call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
     inOrder.verifyNoMoreInteractions();
   }
@@ -1477,7 +1469,7 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardNanos(10L);
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
     call.verifyNoMoreRequest();
 
     List<Any> listeners = ImmutableList.of(
