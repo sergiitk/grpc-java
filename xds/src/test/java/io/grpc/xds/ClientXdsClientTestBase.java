@@ -329,6 +329,9 @@ public abstract class ClientXdsClientTestBase {
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
+    verifyResourceMetadataAcked(
+        ResourceType.LDS, LDS_RESOURCE, listeners.get(0), VERSION, ONE_SECOND_NANOS);
   }
 
   @Test
@@ -344,9 +347,14 @@ public abstract class ClientXdsClientTestBase {
         "0000");
     LdsResourceWatcher watcher = mock(LdsResourceWatcher.class);
     xdsClient.watchLdsResource(LDS_RESOURCE, watcher);
+    // Verify both watchers were called.
     verify(watcher).onChanged(ldsUpdateCaptor.capture());
+    verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
     call.verifyNoMoreRequest();
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
+    verifyResourceMetadataAcked(
+        ResourceType.LDS, LDS_RESOURCE, listeners.get(0), VERSION, ONE_SECOND_NANOS);
   }
 
   @Test
@@ -357,8 +365,12 @@ public abstract class ClientXdsClientTestBase {
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     LdsResourceWatcher watcher = mock(LdsResourceWatcher.class);
     xdsClient.watchLdsResource(LDS_RESOURCE, watcher);
+    // Verify neither watcher was called.
     verify(watcher).onResourceDoesNotExist(LDS_RESOURCE);
+    verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     call.verifyNoMoreRequest();
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
+    verifyResourceMetadataRequested(ResourceType.LDS, LDS_RESOURCE);
   }
 
   @Test
@@ -1530,8 +1542,6 @@ public abstract class ClientXdsClientTestBase {
 
     // See more test on LoadReportClientTest.java
   }
-
-
 
   private DiscoveryRpcCall startResourceWatcher(
       ResourceType type, String name, ResourceWatcher watcher) {

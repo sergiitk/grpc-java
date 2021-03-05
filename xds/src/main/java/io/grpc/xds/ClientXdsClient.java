@@ -1127,10 +1127,7 @@ final class ClientXdsClient extends AbstractXdsClient {
   @Override
   Collection<String> getSubscribedResources(ResourceType type) {
     Map<String, ResourceSubscriber> resources = getSubscribedResourcesMap(type);
-    if (resources.isEmpty()) {
-      return null;
-    }
-    return resources.keySet();
+    return resources.isEmpty() ? null : resources.keySet();
   }
 
   Map<String, ResourceMetadata> getSubscribedResourcesMetadata(ResourceType type) {
