@@ -18,6 +18,7 @@ package io.grpc.xds;
 
 import static com.google.common.truth.Truth.assertThat;
 import static io.grpc.xds.AbstractXdsClient.ResourceType.LDS;
+import static io.grpc.xds.AbstractXdsClient.ResourceType.RDS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -124,7 +125,7 @@ public abstract class ClientXdsClientTestBase {
       new TaskFilter() {
         @Override
         public boolean shouldAccept(Runnable command) {
-          return command.toString().contains(ResourceType.RDS.toString());
+          return command.toString().contains(RDS.toString());
         }
       };
 
@@ -154,10 +155,12 @@ public abstract class ClientXdsClientTestBase {
   protected final AtomicBoolean lrsEnded = new AtomicBoolean(true);
   private final MessageFactory mf = createMessageFactory();
 
-  private static final int LISTENER_VHOSTS_SIZE = 2;
+  private static final int VHOST_SIZE = 2;
   private final Any listenerVhosts = Any.pack(mf.buildListener(LDS_RESOURCE,
-      mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(LISTENER_VHOSTS_SIZE))));
+      mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(VHOST_SIZE))));
   private final Any listenerRds = Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE));
+  private final Any routeConfig = Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE,
+      mf.buildOpaqueVirtualHosts(VHOST_SIZE)));
 
   @Captor
   private ArgumentCaptor<LdsUpdate> ldsUpdateCaptor;
@@ -255,7 +258,7 @@ public abstract class ClientXdsClientTestBase {
       int ldsSize, int cdsSize, int rdsSize, int edsSize) {
     assertThat(xdsClient.getSubscribedResourcesMetadata(LDS)).hasSize(ldsSize);
     assertThat(xdsClient.getSubscribedResourcesMetadata(ResourceType.CDS)).hasSize(cdsSize);
-    assertThat(xdsClient.getSubscribedResourcesMetadata(ResourceType.RDS)).hasSize(rdsSize);
+    assertThat(xdsClient.getSubscribedResourcesMetadata(RDS)).hasSize(rdsSize);
     assertThat(xdsClient.getSubscribedResourcesMetadata(ResourceType.EDS)).hasSize(edsSize);
   }
 
@@ -306,7 +309,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, listenerVhosts, VERSION_1, "0000");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
     verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, TIME_INCREMENT);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
@@ -369,7 +372,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, listenerVhosts, VERSION_1, "0000");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, TIME_INCREMENT);
 
     // Updated LDS response.
@@ -451,7 +454,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, listenerVhosts, VERSION_1, "0000");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_1, TIME_INCREMENT);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
 
@@ -487,7 +490,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, ImmutableList.of(listenerVhosts, listenerTwo), VERSION_1, "0000");
     // ldsResourceWatcher called with listenerVhosts.
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(LISTENER_VHOSTS_SIZE);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     // watcher1 called with listenerTwo.
     verify(watcher1).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
@@ -504,17 +507,14 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void rdsResourceNotFound() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.RDS, RDS_RESOURCE, rdsResourceWatcher);
-    List<Any> routeConfigs = ImmutableList.of(
-        Any.pack(mf.buildRouteConfiguration("route-bar.googleapis.com",
-            mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
+    Any routeConfig = Any.pack(mf.buildRouteConfiguration("route-bar.googleapis.com",
+            mf.buildOpaqueVirtualHosts(2)));
+    call.sendResponse(ResourceType.RDS, routeConfig, VERSION_1, "0000");
 
     // Client sends an ACK RDS request.
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_1, "0000",
-        NODE);
-
+    call.verifyRequest(RDS, RDS_RESOURCE, VERSION_1, "0000", NODE);
+    // Unknown RDS resource.
     verifyNoInteractions(rdsResourceWatcher);
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
@@ -523,43 +523,34 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void rdsResourceFound() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.RDS, RDS_RESOURCE, rdsResourceWatcher);
-    List<Any> routeConfigs = ImmutableList.of(
-        Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
+    call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
 
     // Client sends an ACK RDS request.
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(RDS, RDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
-    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     assertThat(fakeClock.getPendingTasks(RDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
   }
 
   @Test
   public void cachedRdsResource_data() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.RDS, RDS_RESOURCE, rdsResourceWatcher);
-    List<Any> routeConfigs = ImmutableList.of(
-        Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
+    call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
 
     // Client sends an ACK RDS request.
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(RDS, RDS_RESOURCE, VERSION_1, "0000", NODE);
 
     RdsResourceWatcher watcher = mock(RdsResourceWatcher.class);
     xdsClient.watchRdsResource(RDS_RESOURCE, watcher);
     verify(watcher).onChanged(rdsUpdateCaptor.capture());
-    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     call.verifyNoMoreRequest();
   }
 
   @Test
   public void cachedRdsResource_absent() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.RDS, RDS_RESOURCE, rdsResourceWatcher);
+    DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
     RdsResourceWatcher watcher = mock(RdsResourceWatcher.class);
@@ -570,25 +561,20 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void rdsResourceUpdated() {
-    DiscoveryRpcCall call =
-        startResourceWatcher(ResourceType.RDS, RDS_RESOURCE, rdsResourceWatcher);
-    List<Any> routeConfigs = ImmutableList.of(
-        Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_1, "0000");
+    DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
+    call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
 
     // Client sends an ACK RDS request.
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_1, "0000",
-        NODE);
+    call.verifyRequest(RDS, RDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
-    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
 
-    routeConfigs = ImmutableList.of(
-        Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(4))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_2, "0001");
+    Any routeConfigUpdated =
+        Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(4)));
+    call.sendResponse(RDS, routeConfigUpdated, VERSION_2, "0001");
 
     // Client sends an ACK RDS request.
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), VERSION_2, "0001",
-        NODE);
+    call.verifyRequest(RDS, RDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(rdsResourceWatcher, times(2)).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(4);
   }
@@ -598,24 +584,17 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchLdsResource(LDS_RESOURCE, ldsResourceWatcher);
     xdsClient.watchRdsResource(RDS_RESOURCE, rdsResourceWatcher);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
-    List<Any> listeners = ImmutableList.of(
-        Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE)));
-    call.sendResponse(LDS, listeners, VERSION_1, "0000");
+    call.sendResponse(LDS, listenerRds, VERSION_1, "0000");
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
 
-    List<Any> routeConfigs = ImmutableList.of(
-        Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_1, "0000");
+    call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
-    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
 
-    listeners = ImmutableList.of(
-        Any.pack(mf.buildListener(LDS_RESOURCE,
-            mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(5)))));
-    call.sendResponse(LDS, listeners, VERSION_2, "0001");
+    call.sendResponse(LDS, listenerVhosts, VERSION_2, "0001");
     verify(ldsResourceWatcher, times(2)).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(5);
+    assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
   }
 
@@ -628,25 +607,22 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchRdsResource(rdsResource, watcher1);
     xdsClient.watchRdsResource(rdsResource, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
-    call.verifyRequest(ResourceType.RDS, Arrays.asList(RDS_RESOURCE, rdsResource), "", "", NODE);
+    call.verifyRequest(RDS, Arrays.asList(RDS_RESOURCE, rdsResource), "", "", NODE);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
     verify(watcher1).onResourceDoesNotExist(rdsResource);
     verify(watcher2).onResourceDoesNotExist(rdsResource);
 
-    List<Any> routeConfigs = ImmutableList.of(
-        Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_1, "0000");
+    call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
 
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
-    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(2);
+    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     verifyNoMoreInteractions(watcher1, watcher2);
 
-    routeConfigs = ImmutableList.of(Any.pack(
-        mf.buildRouteConfiguration(rdsResource, mf.buildOpaqueVirtualHosts(4))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, "2", "0002");
-
+    Any routeConfigTwo =
+        Any.pack(mf.buildRouteConfiguration(rdsResource, mf.buildOpaqueVirtualHosts(4)));
+    call.sendResponse(RDS, routeConfigTwo, VERSION_2, "0002");
     verify(watcher1).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(4);
     verify(watcher2).onChanged(rdsUpdateCaptor.capture());
@@ -1327,7 +1303,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchEdsResource(EDS_RESOURCE, edsResourceWatcher);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
@@ -1351,7 +1327,7 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardNanos(10L);
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
@@ -1374,7 +1350,7 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardNanos(100L);
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "", "", NODE);
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
+    call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
@@ -1386,8 +1362,8 @@ public abstract class ClientXdsClientTestBase {
 
     List<Any> routeConfigs = ImmutableList.of(
         Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, "5", "6764");
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), "5", "6764", NODE);
+    call.sendResponse(RDS, routeConfigs, "5", "6764");
+    call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "5", "6764", NODE);
 
     call.sendError(Status.DEADLINE_EXCEEDED.asException());
     verify(ldsResourceWatcher, times(3)).onError(errorCaptor.capture());
@@ -1404,7 +1380,7 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.runDueTasks();
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "63", "", NODE);
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), "5", "", NODE);
+    call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "5", "", NODE);
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
@@ -1427,7 +1403,7 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardNanos(20L);
     call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, Collections.singletonList(LDS_RESOURCE), "63", "", NODE);
-    call.verifyRequest(ResourceType.RDS, Collections.singletonList(RDS_RESOURCE), "5", "", NODE);
+    call.verifyRequest(RDS, Collections.singletonList(RDS_RESOURCE), "5", "", NODE);
     call.verifyRequest(ResourceType.CDS, Collections.singletonList(CDS_RESOURCE), "", "", NODE);
     call.verifyRequest(ResourceType.EDS, Collections.singletonList(EDS_RESOURCE), "", "", NODE);
 
@@ -1464,7 +1440,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, listeners, VERSION_1, "0000");
     List<Any> routeConfigs = ImmutableList.of(
         Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_1, "0000");
+    call.sendResponse(RDS, routeConfigs, VERSION_1, "0000");
 
     verifyNoMoreInteractions(ldsResourceWatcher, rdsResourceWatcher);
   }
@@ -1492,7 +1468,7 @@ public abstract class ClientXdsClientTestBase {
 
     List<Any> routeConfigs = ImmutableList.of(
         Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(2))));
-    call.sendResponse(ResourceType.RDS, routeConfigs, VERSION_1, "0000");
+    call.sendResponse(RDS, routeConfigs, VERSION_1, "0000");
     assertThat(rdsResourceTimeout.isCancelled()).isTrue();
 
     call.sendError(Status.UNAVAILABLE.asException());
