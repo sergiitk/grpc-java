@@ -159,13 +159,35 @@ public abstract class ClientXdsClientTestBase {
   private final MessageFactory mf = createMessageFactory();
 
   private static final int VHOST_SIZE = 2;
+  // LDS test resources.
   private final Any listenerVhosts = Any.pack(mf.buildListener(LDS_RESOURCE,
       mf.buildRouteConfiguration("do not care", mf.buildOpaqueVirtualHosts(VHOST_SIZE))));
   private final Any listenerRds = Any.pack(mf.buildListenerForRds(LDS_RESOURCE, RDS_RESOURCE));
-  private final Any routeConfig = Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE,
-      mf.buildOpaqueVirtualHosts(VHOST_SIZE)));
+
+  // RDS test resources.
+  private final Any routeConfig =
+      Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(VHOST_SIZE)));
+
+  // CDS test resources.
   private final Any clusterRoundRobin =
       Any.pack(mf.buildEdsCluster(CDS_RESOURCE, null, "round_robin", null, false, null, null));
+
+  // EDS test resources.
+  // Locality with a healthy endpoint
+  private final Message localityLbEndpointHealthy =
+      mf.buildLocalityLbEndpoints("region1", "zone1", "subzone1",
+          mf.buildLbEndpoint("192.168.0.1", 8080, "healthy", 2), 1, 0);
+  // Locality with 0 endpoints
+  private final Message localityLbEndpointEmpty =
+      mf.buildLocalityLbEndpoints("region3", "zone3", "subzone3",
+          ImmutableList.<Message>of(), 2, 1);
+  // Locality with 0-weight endpoint
+  private final Message localityLbEndpointZeroWeight =
+      mf.buildLocalityLbEndpoints("region4", "zone4", "subzone4",
+          mf.buildLbEndpoint("192.168.142.5", 80, "unknown", 5), 0, 2);
+  private final Any testClusterLoadAssignment = Any.pack(mf.buildClusterLoadAssignment(EDS_RESOURCE,
+      ImmutableList.of(localityLbEndpointHealthy, localityLbEndpointEmpty, localityLbEndpointZeroWeight),
+      ImmutableList.of(mf.buildDropOverload("lb", 200), mf.buildDropOverload("throttle", 1000))));
 
   @Captor
   private ArgumentCaptor<LdsUpdate> ldsUpdateCaptor;
@@ -288,6 +310,25 @@ public abstract class ClientXdsClientTestBase {
     assertWithMessage("updateTime").that(resourceMetadata.getUpdateTime()).isEqualTo(updateTime);
   }
 
+  /**
+   * Helper method to validate {@link XdsClient.EdsUpdate} created for the test CDS resource
+   * {@link ClientXdsClientTestBase#testClusterLoadAssignment}.
+   */
+  private void validateTestClusterLoadAssigment(EdsUpdate edsUpdate) {
+    assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
+    assertThat(edsUpdate.dropPolicies)
+        .containsExactly(
+            DropOverload.create("lb", 200),
+            DropOverload.create("throttle", 1000));
+    assertThat(edsUpdate.localityLbEndpointsMap)
+        .containsExactly(
+            Locality.create("region1", "zone1", "subzone1"),
+            LocalityLbEndpoints.create(
+                ImmutableList.of(LbEndpoint.create("192.168.0.1", 8080, 2, true)), 1, 0),
+            Locality.create("region3", "zone3", "subzone3"),
+            LocalityLbEndpoints.create(ImmutableList.<LbEndpoint>of(), 2, 1));
+  }
+
   @Test
   public void ldsResourceNotFound() {
     DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
@@ -342,13 +383,10 @@ public abstract class ClientXdsClientTestBase {
     // Client sends an ACK LDS request.
     call.sendResponse(LDS, listenerRds, VERSION_1, "0000");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
-    // Add another watcher.
+
     LdsResourceWatcher watcher = mock(LdsResourceWatcher.class);
     xdsClient.watchLdsResource(LDS_RESOURCE, watcher);
-    // Verify both watchers were called.
     verify(watcher).onChanged(ldsUpdateCaptor.capture());
-    assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
-    verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
     call.verifyNoMoreRequest();
     verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerRds, VERSION_1, TIME_INCREMENT);
@@ -549,13 +587,10 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK RDS request.
     call.verifyRequest(RDS, RDS_RESOURCE, VERSION_1, "0000", NODE);
-    // Add another watcher.
+
     RdsResourceWatcher watcher = mock(RdsResourceWatcher.class);
     xdsClient.watchRdsResource(RDS_RESOURCE, watcher);
-    // Verify both watchers were called.
     verify(watcher).onChanged(rdsUpdateCaptor.capture());
-    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
-    verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     call.verifyNoMoreRequest();
     verifyResourceMetadataAcked(RDS, RDS_RESOURCE, routeConfig, VERSION_1, TIME_INCREMENT);
@@ -992,17 +1027,11 @@ public abstract class ClientXdsClientTestBase {
   @Test
   public void edsResourceNotFound() {
     DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
-    List<Any> clusterLoadAssignments =
-        ImmutableList.of(
-            Any.pack(
-                mf.buildClusterLoadAssignment("cluster-bar.googleapis.com",
-                    ImmutableList.of(
-                        mf.buildLocalityLbEndpoints("region1", "zone1", "subzone1",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.0.1", 8080, "healthy", 2)),
-                            1, 0)),
-                    ImmutableList.<Message>of())));
-    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
+    Any clusterLoadAssignment = Any.pack(mf.buildClusterLoadAssignment(
+        "cluster-bar.googleapis.com",
+        ImmutableList.of(localityLbEndpointHealthy),
+        ImmutableList.<Message>of()));
+    call.sendResponse(EDS, clusterLoadAssignment, VERSION_1, "0000");
 
     // Client sent an ACK EDS request.
     call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
@@ -1016,92 +1045,26 @@ public abstract class ClientXdsClientTestBase {
   @Test
   public void edsResourceFound() {
     DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
-    List<Any> clusterLoadAssignments =
-        ImmutableList.of(
-            Any.pack(
-                mf.buildClusterLoadAssignment(EDS_RESOURCE,
-                    ImmutableList.of(
-                        mf.buildLocalityLbEndpoints("region1", "zone1", "subzone1",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.0.1", 8080, "healthy", 2)),
-                            1, 0),
-                        mf.buildLocalityLbEndpoints("region3", "zone3", "subzone3",
-                            ImmutableList.<Message>of(),
-                            2, 1), /* locality with 0 endpoint */
-                        mf.buildLocalityLbEndpoints("region4", "zone4", "subzone4",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.142.5", 80, "unknown", 5)),
-                            0, 2) /* locality with 0 weight */),
-                    ImmutableList.of(
-                        mf.buildDropOverload("lb", 200),
-                        mf.buildDropOverload("throttle", 1000)))));
-    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, testClusterLoadAssignment, VERSION_1, "0000");
 
     // Client sent an ACK EDS request.
     call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
-    EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
-    assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
-    assertThat(edsUpdate.dropPolicies)
-        .containsExactly(
-            DropOverload.create("lb", 200),
-            DropOverload.create("throttle", 1000));
-    assertThat(edsUpdate.localityLbEndpointsMap)
-        .containsExactly(
-            Locality.create("region1", "zone1", "subzone1"),
-            LocalityLbEndpoints.create(
-                ImmutableList.of(
-                    LbEndpoint.create("192.168.0.1", 8080,
-                        2, true)), 1, 0),
-            Locality.create("region3", "zone3", "subzone3"),
-            LocalityLbEndpoints.create(ImmutableList.<LbEndpoint>of(), 2, 1));
+    validateTestClusterLoadAssigment(edsUpdateCaptor.getValue());
   }
 
   @Test
   public void cachedEdsResource_data() {
     DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
-    List<Any> clusterLoadAssignments =
-        ImmutableList.of(
-            Any.pack(
-                mf.buildClusterLoadAssignment(EDS_RESOURCE,
-                    ImmutableList.of(
-                        mf.buildLocalityLbEndpoints("region1", "zone1", "subzone1",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.0.1", 8080, "healthy", 2)),
-                            1, 0),
-                        mf.buildLocalityLbEndpoints("region3", "zone3", "subzone3",
-                            ImmutableList.<Message>of(),
-                            2, 1), /* locality with 0 endpoint */
-                        mf.buildLocalityLbEndpoints("region4", "zone4", "subzone4",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.142.5", 80, "unknown", 5)),
-                            0, 2) /* locality with 0 weight */),
-                    ImmutableList.of(
-                        mf.buildDropOverload("lb", 200),
-                        mf.buildDropOverload("throttle", 1000)))));
-    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, testClusterLoadAssignment, VERSION_1, "0000");
 
     // Client sent an ACK EDS request.
     call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
-
+    // Add another watcher.
     EdsResourceWatcher watcher = mock(EdsResourceWatcher.class);
     xdsClient.watchEdsResource(EDS_RESOURCE, watcher);
     verify(watcher).onChanged(edsUpdateCaptor.capture());
-    EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
-    assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
-    assertThat(edsUpdate.dropPolicies)
-        .containsExactly(
-            DropOverload.create("lb", 200),
-            DropOverload.create("throttle", 1000));
-    assertThat(edsUpdate.localityLbEndpointsMap)
-        .containsExactly(
-            Locality.create("region1", "zone1", "subzone1"),
-            LocalityLbEndpoints.create(
-                ImmutableList.of(
-                    LbEndpoint.create("192.168.0.1", 8080,
-                        2, true)), 1, 0),
-            Locality.create("region3", "zone3", "subzone3"),
-            LocalityLbEndpoints.create(ImmutableList.<LbEndpoint>of(), 2, 1));
+    validateTestClusterLoadAssigment(edsUpdateCaptor.getValue());
     call.verifyNoMoreRequest();
   }
 
@@ -1119,56 +1082,20 @@ public abstract class ClientXdsClientTestBase {
   @Test
   public void edsResourceUpdated() {
     DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
-    List<Any> clusterLoadAssignments =
-        ImmutableList.of(
-            Any.pack(
-                mf.buildClusterLoadAssignment(EDS_RESOURCE,
-                    ImmutableList.of(
-                        mf.buildLocalityLbEndpoints("region1", "zone1", "subzone1",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.0.1", 8080, "healthy", 2)),
-                            1, 0),
-                        mf.buildLocalityLbEndpoints("region3", "zone3", "subzone3",
-                            ImmutableList.<Message>of(),
-                            2, 1), /* locality with 0 endpoint */
-                        mf.buildLocalityLbEndpoints("region4", "zone4", "subzone4",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.142.5", 80, "unknown", 5)),
-                            0, 2) /* locality with 0 weight */),
-                    ImmutableList.of(
-                        mf.buildDropOverload("lb", 200),
-                        mf.buildDropOverload("throttle", 1000)))));
-    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
 
-    // Client sent an ACK EDS request.
+    // Initial EDS response.
+    call.sendResponse(EDS, testClusterLoadAssignment, VERSION_1, "0000");
     call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
     EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
-    assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
-    assertThat(edsUpdate.dropPolicies)
-        .containsExactly(
-            DropOverload.create("lb", 200),
-            DropOverload.create("throttle", 1000));
-    assertThat(edsUpdate.localityLbEndpointsMap)
-        .containsExactly(
-            Locality.create("region1", "zone1", "subzone1"),
-            LocalityLbEndpoints.create(
-                ImmutableList.of(
-                    LbEndpoint.create("192.168.0.1", 8080, 2, true)), 1, 0),
-            Locality.create("region3", "zone3", "subzone3"),
-            LocalityLbEndpoints.create(ImmutableList.<LbEndpoint>of(), 2, 1));
+    validateTestClusterLoadAssigment(edsUpdate);
 
-    clusterLoadAssignments =
-        ImmutableList.of(
-            Any.pack(
-                mf.buildClusterLoadAssignment(EDS_RESOURCE,
-                    ImmutableList.of(
-                        mf.buildLocalityLbEndpoints("region2", "zone2", "subzone2",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("172.44.2.2", 8000, "unknown", 3)),
-                            2, 0)),
-                    ImmutableList.<Message>of())));
-    call.sendResponse(EDS, clusterLoadAssignments, VERSION_2, "0001");
+    // Updated EDS response.
+    Any updatedClusterLoadAssignment = Any.pack(mf.buildClusterLoadAssignment(EDS_RESOURCE,
+        ImmutableList.of(mf.buildLocalityLbEndpoints("region2", "zone2", "subzone2",
+            mf.buildLbEndpoint("172.44.2.2", 8000, "unknown", 3), 2, 0)),
+        ImmutableList.<Message>of()));
+    call.sendResponse(EDS, updatedClusterLoadAssignment, VERSION_2, "0001");
 
     verify(edsResourceWatcher, times(2)).onChanged(edsUpdateCaptor.capture());
     edsUpdate = edsUpdateCaptor.getValue();
@@ -1210,11 +1137,7 @@ public abstract class ClientXdsClientTestBase {
         ImmutableList.of(
             Any.pack(
                 mf.buildClusterLoadAssignment(EDS_RESOURCE,
-                    ImmutableList.of(
-                        mf.buildLocalityLbEndpoints("region1", "zone1", "subzone1",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.0.1", 8080, "healthy", 2)),
-                            1, 0)),
+                    ImmutableList.of(localityLbEndpointHealthy),
                     ImmutableList.of(
                         mf.buildDropOverload("lb", 200),
                         mf.buildDropOverload("throttle", 1000)))),
@@ -1222,11 +1145,8 @@ public abstract class ClientXdsClientTestBase {
                 mf.buildClusterLoadAssignment(resource,
                     ImmutableList.of(
                         mf.buildLocalityLbEndpoints("region2", "zone2", "subzone2",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.0.2", 9090, "healthy", 3)),
-                            1, 0)),
-                    ImmutableList.of(
-                        mf.buildDropOverload("lb", 100)))));
+                            mf.buildLbEndpoint("192.168.0.2", 9090, "healthy", 3), 1, 0)),
+                    ImmutableList.of(mf.buildDropOverload("lb", 100)))));
     call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
     verify(edsWatcher).onChanged(edsUpdateCaptor.capture());
     assertThat(edsUpdateCaptor.getValue().clusterName).isEqualTo(resource);
@@ -1246,72 +1166,37 @@ public abstract class ClientXdsClientTestBase {
 
   @Test
   public void multipleEdsWatchers() {
-    String edsResource = "cluster-load-assignment-bar.googleapis.com";
+    String edsResourceTwo = "cluster-load-assignment-bar.googleapis.com";
     EdsResourceWatcher watcher1 = mock(EdsResourceWatcher.class);
     EdsResourceWatcher watcher2 = mock(EdsResourceWatcher.class);
     xdsClient.watchEdsResource(EDS_RESOURCE, edsResourceWatcher);
-    xdsClient.watchEdsResource(edsResource, watcher1);
-    xdsClient.watchEdsResource(edsResource, watcher2);
+    xdsClient.watchEdsResource(edsResourceTwo, watcher1);
+    xdsClient.watchEdsResource(edsResourceTwo, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
-    call.verifyRequest(EDS, Arrays.asList(EDS_RESOURCE, edsResource), "", "", NODE);
+    call.verifyRequest(EDS, Arrays.asList(EDS_RESOURCE, edsResourceTwo), "", "", NODE);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(edsResourceWatcher).onResourceDoesNotExist(EDS_RESOURCE);
-    verify(watcher1).onResourceDoesNotExist(edsResource);
-    verify(watcher2).onResourceDoesNotExist(edsResource);
+    verify(watcher1).onResourceDoesNotExist(edsResourceTwo);
+    verify(watcher2).onResourceDoesNotExist(edsResourceTwo);
 
-    List<Any> clusterLoadAssignments =
-        ImmutableList.of(
-            Any.pack(
-                mf.buildClusterLoadAssignment(EDS_RESOURCE,
-                    ImmutableList.of(
-                        mf.buildLocalityLbEndpoints("region1", "zone1", "subzone1",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.0.1", 8080, "healthy", 2)),
-                            1, 0),
-                        mf.buildLocalityLbEndpoints("region3", "zone3", "subzone3",
-                            ImmutableList.<Message>of(),
-                            2, 1), /* locality with 0 endpoint */
-                        mf.buildLocalityLbEndpoints("region4", "zone4", "subzone4",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("192.168.142.5", 80, "unknown", 5)),
-                            0, 2) /* locality with 0 weight */),
-                    ImmutableList.of(
-                        mf.buildDropOverload("lb", 200),
-                        mf.buildDropOverload("throttle", 1000)))));
-    call.sendResponse(EDS, clusterLoadAssignments, VERSION_1, "0000");
+    call.sendResponse(EDS, testClusterLoadAssignment, VERSION_1, "0000");
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
     EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
-    assertThat(edsUpdate.clusterName).isEqualTo(EDS_RESOURCE);
-    assertThat(edsUpdate.dropPolicies)
-        .containsExactly(
-            DropOverload.create("lb", 200),
-            DropOverload.create("throttle", 1000));
-    assertThat(edsUpdate.localityLbEndpointsMap)
-        .containsExactly(
-            Locality.create("region1", "zone1", "subzone1"),
-            LocalityLbEndpoints.create(
-                ImmutableList.of(
-                    LbEndpoint.create("192.168.0.1", 8080, 2, true)), 1, 0),
-            Locality.create("region3", "zone3", "subzone3"),
-            LocalityLbEndpoints.create(ImmutableList.<LbEndpoint>of(), 2, 1));
+    validateTestClusterLoadAssigment(edsUpdate);
     verifyNoMoreInteractions(watcher1, watcher2);
 
-    clusterLoadAssignments =
-        ImmutableList.of(
-            Any.pack(
-                mf.buildClusterLoadAssignment(edsResource,
-                    ImmutableList.of(
-                        mf.buildLocalityLbEndpoints("region2", "zone2", "subzone2",
-                            ImmutableList.of(
-                                mf.buildLbEndpoint("172.44.2.2", 8000, "healthy", 3)),
-                            2, 0)),
-                    ImmutableList.<Message>of())));
-    call.sendResponse(EDS, clusterLoadAssignments, VERSION_2, "0001");
+    Any clusterLoadAssignmentTwo = Any.pack(
+        mf.buildClusterLoadAssignment(edsResourceTwo,
+            ImmutableList.of(
+                mf.buildLocalityLbEndpoints("region2", "zone2", "subzone2",
+                    mf.buildLbEndpoint("172.44.2.2", 8000, "healthy", 3), 2, 0)),
+            ImmutableList.<Message>of()));
+    call.sendResponse(EDS, clusterLoadAssignmentTwo, VERSION_2, "0001");
 
     verify(watcher1).onChanged(edsUpdateCaptor.capture());
     edsUpdate = edsUpdateCaptor.getValue();
-    assertThat(edsUpdate.clusterName).isEqualTo(edsResource);
+    assertThat(edsUpdate.clusterName).isEqualTo(edsResourceTwo);
     assertThat(edsUpdate.dropPolicies).isEmpty();
     assertThat(edsUpdate.localityLbEndpointsMap)
         .containsExactly(
@@ -1321,7 +1206,7 @@ public abstract class ClientXdsClientTestBase {
                     LbEndpoint.create("172.44.2.2", 8000, 3, true)), 2, 0));
     verify(watcher2).onChanged(edsUpdateCaptor.capture());
     edsUpdate = edsUpdateCaptor.getValue();
-    assertThat(edsUpdate.clusterName).isEqualTo(edsResource);
+    assertThat(edsUpdate.clusterName).isEqualTo(edsResourceTwo);
     assertThat(edsUpdate.dropPolicies).isEmpty();
     assertThat(edsUpdate.localityLbEndpointsMap)
         .containsExactly(
@@ -1665,6 +1550,12 @@ public abstract class ClientXdsClientTestBase {
 
     protected abstract Message buildLocalityLbEndpoints(String region, String zone, String subZone,
         List<Message> lbEndpointList, int loadBalancingWeight, int priority);
+
+    protected Message buildLocalityLbEndpoints(String region, String zone, String subZone,
+        Message lbEndpoint, int loadBalancingWeight, int priority) {
+      return buildLocalityLbEndpoints(region, zone, subZone, ImmutableList.of(lbEndpoint),
+          loadBalancingWeight, priority);
+    }
 
     protected abstract Message buildLbEndpoint(String address, int port, String healthStatus,
         int lbWeight);
