@@ -17,6 +17,7 @@
 package io.grpc.xds;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static io.grpc.xds.AbstractXdsClient.ResourceType.LDS;
 import static io.grpc.xds.AbstractXdsClient.ResourceType.RDS;
 import static org.mockito.Mockito.mock;
@@ -274,12 +275,13 @@ public abstract class ClientXdsClientTestBase {
 
   /** Verify the resource was acked. */
   private void verifyResourceMetadataAcked(
-      ResourceType type, String resourceName, Any listener, String versionInfo, long updateTime) {
+      ResourceType type, String resourceName, Any rawResource, String versionInfo,
+      long updateTime) {
     ResourceMetadata resourceMetadata = xdsClient.getSubscribedResourceMetadata(type, resourceName);
     assertThat(resourceMetadata).isNotNull();
-    assertThat(resourceMetadata.getVersion()).isEqualTo(versionInfo);
-    assertThat(resourceMetadata.getRawResource()).isEqualTo(listener);
-    assertThat(resourceMetadata.getUpdateTime()).isEqualTo(updateTime);
+    assertWithMessage("version").that(resourceMetadata.getVersion()).isEqualTo(versionInfo);
+    assertWithMessage("rawResource").that(resourceMetadata.getRawResource()).isEqualTo(rawResource);
+    assertWithMessage("updateTime").that(resourceMetadata.getUpdateTime()).isEqualTo(updateTime);
   }
 
   @Test
@@ -341,6 +343,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchLdsResource(LDS_RESOURCE, watcher);
     // Verify both watchers were called.
     verify(watcher).onChanged(ldsUpdateCaptor.capture());
+    assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
     call.verifyNoMoreRequest();
@@ -353,11 +356,10 @@ public abstract class ClientXdsClientTestBase {
     DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
+    // Add another watcher.
     LdsResourceWatcher watcher = mock(LdsResourceWatcher.class);
     xdsClient.watchLdsResource(LDS_RESOURCE, watcher);
-    // Verify neither watcher was called.
     verify(watcher).onResourceDoesNotExist(LDS_RESOURCE);
-    verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     call.verifyNoMoreRequest();
     verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
@@ -480,12 +482,11 @@ public abstract class ClientXdsClientTestBase {
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     verify(watcher1).onResourceDoesNotExist(ldsResourceTwo);
     verify(watcher2).onResourceDoesNotExist(ldsResourceTwo);
-    // Both listeners are requested.
+    // Both LDS resources were requested.
     verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
     verifyResourceMetadataRequested(LDS, ldsResourceTwo);
     verifySubscribedResourcesMetadataSizes(2, 0, 0, 0);
 
-    // Ensures listenerTwo has different number of vhost to differentiate
     Any listenerTwo = Any.pack(mf.buildListenerForRds(ldsResourceTwo, RDS_RESOURCE));
     call.sendResponse(LDS, ImmutableList.of(listenerVhosts, listenerTwo), VERSION_1, "0000");
     // ldsResourceWatcher called with listenerVhosts.
@@ -519,6 +520,8 @@ public abstract class ClientXdsClientTestBase {
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(RDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
   @Test
@@ -531,6 +534,8 @@ public abstract class ClientXdsClientTestBase {
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     assertThat(fakeClock.getPendingTasks(RDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
+    verifyResourceMetadataAcked(RDS, RDS_RESOURCE, routeConfig, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
   @Test
@@ -540,12 +545,17 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK RDS request.
     call.verifyRequest(RDS, RDS_RESOURCE, VERSION_1, "0000", NODE);
-
+    // Add another watcher.
     RdsResourceWatcher watcher = mock(RdsResourceWatcher.class);
     xdsClient.watchRdsResource(RDS_RESOURCE, watcher);
+    // Verify both watchers were called.
     verify(watcher).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
+    verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
+    assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     call.verifyNoMoreRequest();
+    verifyResourceMetadataAcked(RDS, RDS_RESOURCE, routeConfig, VERSION_1, TIME_INCREMENT);
+    verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
   @Test
@@ -553,22 +563,28 @@ public abstract class ClientXdsClientTestBase {
     DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
+    // Add another watcher.
     RdsResourceWatcher watcher = mock(RdsResourceWatcher.class);
     xdsClient.watchRdsResource(RDS_RESOURCE, watcher);
     verify(watcher).onResourceDoesNotExist(RDS_RESOURCE);
     call.verifyNoMoreRequest();
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
   @Test
   public void rdsResourceUpdated() {
     DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
-    call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
 
-    // Client sends an ACK RDS request.
+    // Initial RDS response.
+    call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
     call.verifyRequest(RDS, RDS_RESOURCE, VERSION_1, "0000", NODE);
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
+    verifyResourceMetadataAcked(RDS, RDS_RESOURCE, routeConfig, VERSION_1, TIME_INCREMENT);
 
+    // Updated RDS response.
     Any routeConfigUpdated =
         Any.pack(mf.buildRouteConfiguration(RDS_RESOURCE, mf.buildOpaqueVirtualHosts(4)));
     call.sendResponse(RDS, routeConfigUpdated, VERSION_2, "0001");
@@ -577,57 +593,80 @@ public abstract class ClientXdsClientTestBase {
     call.verifyRequest(RDS, RDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(rdsResourceWatcher, times(2)).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(4);
+    verifyResourceMetadataAcked(RDS, RDS_RESOURCE, routeConfigUpdated, VERSION_2,
+        TIME_INCREMENT * 2);
+    verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
   @Test
   public void rdsResourceDeletedByLds() {
     xdsClient.watchLdsResource(LDS_RESOURCE, ldsResourceWatcher);
     xdsClient.watchRdsResource(RDS_RESOURCE, rdsResourceWatcher);
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(1, 0, 1, 0);
+
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
     call.sendResponse(LDS, listenerRds, VERSION_1, "0000");
     verify(ldsResourceWatcher).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().rdsName).isEqualTo(RDS_RESOURCE);
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerRds, VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(1, 0, 1, 0);
 
     call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerRds, VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(RDS, RDS_RESOURCE, routeConfig, VERSION_1, TIME_INCREMENT * 2);
+    verifySubscribedResourcesMetadataSizes(1, 0, 1, 0);
 
     call.sendResponse(LDS, listenerVhosts, VERSION_2, "0001");
     verify(ldsResourceWatcher, times(2)).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
+    // TODO(sergiitk): verify deleted metadata.
+    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, listenerVhosts, VERSION_2, TIME_INCREMENT * 3);
   }
 
   @Test
   public void multipleRdsWatchers() {
-    String rdsResource = "route-bar.googleapis.com";
+    String rdsResourceTwo = "route-bar.googleapis.com";
     RdsResourceWatcher watcher1 = mock(RdsResourceWatcher.class);
     RdsResourceWatcher watcher2 = mock(RdsResourceWatcher.class);
     xdsClient.watchRdsResource(RDS_RESOURCE, rdsResourceWatcher);
-    xdsClient.watchRdsResource(rdsResource, watcher1);
-    xdsClient.watchRdsResource(rdsResource, watcher2);
+    xdsClient.watchRdsResource(rdsResourceTwo, watcher1);
+    xdsClient.watchRdsResource(rdsResourceTwo, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
-    call.verifyRequest(RDS, Arrays.asList(RDS_RESOURCE, rdsResource), "", "", NODE);
+    call.verifyRequest(RDS, Arrays.asList(RDS_RESOURCE, rdsResourceTwo), "", "", NODE);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
-    verify(watcher1).onResourceDoesNotExist(rdsResource);
-    verify(watcher2).onResourceDoesNotExist(rdsResource);
+    verify(watcher1).onResourceDoesNotExist(rdsResourceTwo);
+    verify(watcher2).onResourceDoesNotExist(rdsResourceTwo);
+    // Both RDS resources were requested.
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifyResourceMetadataRequested(RDS, rdsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(0, 0, 2, 0);
 
     call.sendResponse(RDS, routeConfig, VERSION_1, "0000");
-
     verify(rdsResourceWatcher).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     verifyNoMoreInteractions(watcher1, watcher2);
+    verifyResourceMetadataAcked(RDS, RDS_RESOURCE, routeConfig, VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataRequested(RDS, rdsResourceTwo);
 
     Any routeConfigTwo =
-        Any.pack(mf.buildRouteConfiguration(rdsResource, mf.buildOpaqueVirtualHosts(4)));
+        Any.pack(mf.buildRouteConfiguration(rdsResourceTwo, mf.buildOpaqueVirtualHosts(4)));
     call.sendResponse(RDS, routeConfigTwo, VERSION_2, "0002");
     verify(watcher1).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(4);
     verify(watcher2).onChanged(rdsUpdateCaptor.capture());
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(4);
     verifyNoMoreInteractions(rdsResourceWatcher);
+    verifyResourceMetadataAcked(RDS, RDS_RESOURCE, routeConfig, VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(RDS, rdsResourceTwo, routeConfigTwo, VERSION_2, TIME_INCREMENT * 2);
+    verifySubscribedResourcesMetadataSizes(0, 0, 2, 0);
   }
 
   @Test
