@@ -52,6 +52,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.Status;
 import io.grpc.SynchronizationContext.ScheduledHandle;
 import io.grpc.internal.BackoffPolicy;
+import io.grpc.internal.TimeProvider;
 import io.grpc.xds.Endpoints.DropOverload;
 import io.grpc.xds.Endpoints.LbEndpoint;
 import io.grpc.xds.Endpoints.LocalityLbEndpoints;
@@ -127,13 +128,16 @@ final class ClientXdsClient extends AbstractXdsClient {
   private final Map<String, ResourceSubscriber> edsResourceSubscribers = new HashMap<>();
   private final LoadStatsManager2 loadStatsManager;
   private final LoadReportClient lrsClient;
+  private final TimeProvider timeProvider;
   private boolean reportingLoad;
 
-  ClientXdsClient(ManagedChannel channel, boolean useProtocolV3, Node node,
+  ClientXdsClient(
+      ManagedChannel channel, boolean useProtocolV3, Node node,
       ScheduledExecutorService timeService, BackoffPolicy.Provider backoffPolicyProvider,
-      Supplier<Stopwatch> stopwatchSupplier) {
+      Supplier<Stopwatch> stopwatchSupplier, TimeProvider timeProvider) {
     super(channel, useProtocolV3, node, timeService, backoffPolicyProvider, stopwatchSupplier);
     loadStatsManager = new LoadStatsManager2(stopwatchSupplier);
+    this.timeProvider = timeProvider;
     lrsClient = new LoadReportClient(loadStatsManager, channel, useProtocolV3, node,
         getSyncContext(), timeService, backoffPolicyProvider, stopwatchSupplier);
   }
@@ -143,6 +147,8 @@ final class ClientXdsClient extends AbstractXdsClient {
     // Unpack Listener messages.
     List<Listener> listeners = new ArrayList<>(resources.size());
     List<String> listenerNames = new ArrayList<>(resources.size());
+    Map<String, Any> rawResources = new HashMap<>();
+
     boolean isResourceV3 = false;
     try {
       for (Any res : resources) {
@@ -153,6 +159,7 @@ final class ClientXdsClient extends AbstractXdsClient {
             ResourceType.LDS.typeUrlV2());
         listeners.add(listener);
         listenerNames.add(listener.getName());
+        rawResources.put(listener.getName(), res);
       }
     } catch (InvalidProtocolBufferException e) {
       getLogger().log(XdsLogLevel.WARNING, "Failed to unpack Listeners in LDS response {0}", e);
@@ -267,10 +274,12 @@ final class ClientXdsClient extends AbstractXdsClient {
     }
     ackResponse(ResourceType.LDS, versionInfo, nonce);
 
+    long updateTime = timeProvider.currentTimeNanos();
     for (String resource : ldsResourceSubscribers.keySet()) {
       ResourceSubscriber subscriber = ldsResourceSubscribers.get(resource);
       if (ldsUpdates.containsKey(resource)) {
-        subscriber.onData(ldsUpdates.get(resource));
+        subscriber
+            .onData(ldsUpdates.get(resource), rawResources.get(resource), versionInfo, updateTime);
       } else {
         subscriber.onAbsent();
       }
@@ -687,6 +696,7 @@ final class ClientXdsClient extends AbstractXdsClient {
   protected void handleRdsResponse(String versionInfo, List<Any> resources, String nonce) {
     // Unpack RouteConfiguration messages.
     Map<String, RouteConfiguration> routeConfigs = new HashMap<>(resources.size());
+    Map<String, Any> rawResources = new HashMap<>();
     boolean isResourceV3 = false;
     try {
       for (Any res : resources) {
@@ -696,6 +706,7 @@ final class ClientXdsClient extends AbstractXdsClient {
         RouteConfiguration rc =
             unpackCompatibleType(res, RouteConfiguration.class, ResourceType.RDS.typeUrl(),
                 ResourceType.RDS.typeUrlV2());
+        rawResources.put(rc.getName(), res);
         routeConfigs.put(rc.getName(), rc);
       }
     } catch (InvalidProtocolBufferException e) {
@@ -728,10 +739,12 @@ final class ClientXdsClient extends AbstractXdsClient {
     }
     ackResponse(ResourceType.RDS, versionInfo, nonce);
 
+    long updateTime = timeProvider.currentTimeNanos();
     for (String resource : rdsResourceSubscribers.keySet()) {
       if (rdsUpdates.containsKey(resource)) {
         ResourceSubscriber subscriber = rdsResourceSubscribers.get(resource);
-        subscriber.onData(rdsUpdates.get(resource));
+        subscriber
+            .onData(rdsUpdates.get(resource), rawResources.get(resource), versionInfo, updateTime);
       }
     }
   }
@@ -741,12 +754,14 @@ final class ClientXdsClient extends AbstractXdsClient {
     // Unpack Cluster messages.
     List<Cluster> clusters = new ArrayList<>(resources.size());
     List<String> clusterNames = new ArrayList<>(resources.size());
+    Map<String, Any> rawResources = new HashMap<>();
     try {
       for (Any res : resources) {
         Cluster cluster = unpackCompatibleType(res, Cluster.class, ResourceType.CDS.typeUrl(),
             ResourceType.CDS.typeUrlV2());
         clusters.add(cluster);
         clusterNames.add(cluster.getName());
+        rawResources.put(cluster.getName(), res);
       }
     } catch (InvalidProtocolBufferException e) {
       getLogger().log(XdsLogLevel.WARNING, "Failed to unpack Clusters in CDS response {0}", e);
@@ -808,10 +823,12 @@ final class ClientXdsClient extends AbstractXdsClient {
     }
     ackResponse(ResourceType.CDS, versionInfo, nonce);
 
+    long updateTime = timeProvider.currentTimeNanos();
     for (String resource : cdsResourceSubscribers.keySet()) {
       ResourceSubscriber subscriber = cdsResourceSubscribers.get(resource);
       if (cdsUpdates.containsKey(resource)) {
-        subscriber.onData(cdsUpdates.get(resource));
+        subscriber
+            .onData(cdsUpdates.get(resource), rawResources.get(resource), versionInfo, updateTime);
       } else {
         subscriber.onAbsent();
       }
@@ -912,6 +929,7 @@ final class ClientXdsClient extends AbstractXdsClient {
     // Unpack ClusterLoadAssignment messages.
     List<ClusterLoadAssignment> clusterLoadAssignments = new ArrayList<>(resources.size());
     List<String> claNames = new ArrayList<>(resources.size());
+    Map<String, Any> rawResources = new HashMap<>();
     try {
       for (Any res : resources) {
         ClusterLoadAssignment assignment =
@@ -919,6 +937,7 @@ final class ClientXdsClient extends AbstractXdsClient {
                 ResourceType.EDS.typeUrlV2());
         clusterLoadAssignments.add(assignment);
         claNames.add(assignment.getClusterName());
+        rawResources.put(assignment.getClusterName(), res);
       }
     } catch (InvalidProtocolBufferException e) {
       getLogger().log(
@@ -977,10 +996,12 @@ final class ClientXdsClient extends AbstractXdsClient {
     }
     ackResponse(ResourceType.EDS, versionInfo, nonce);
 
+    long updateTime = timeProvider.currentTimeNanos();
     for (String resource : edsResourceSubscribers.keySet()) {
       ResourceSubscriber subscriber = edsResourceSubscribers.get(resource);
       if (edsUpdates.containsKey(resource)) {
-        subscriber.onData(edsUpdates.get(resource));
+        subscriber
+            .onData(edsUpdates.get(resource), rawResources.get(resource), versionInfo, updateTime);
       }
     }
   }
@@ -1113,22 +1134,45 @@ final class ClientXdsClient extends AbstractXdsClient {
     cleanUpResourceTimers();
   }
 
-  @Nullable
-  @Override
-  Collection<String> getSubscribedResources(ResourceType type) {
+  private Map<String, ResourceSubscriber> getSubscribedResourcesMap(ResourceType type) {
     switch (type) {
       case LDS:
-        return ldsResourceSubscribers.isEmpty() ? null : ldsResourceSubscribers.keySet();
+        return ldsResourceSubscribers;
       case RDS:
-        return rdsResourceSubscribers.isEmpty() ? null : rdsResourceSubscribers.keySet();
+        return rdsResourceSubscribers;
       case CDS:
-        return cdsResourceSubscribers.isEmpty() ? null : cdsResourceSubscribers.keySet();
+        return cdsResourceSubscribers;
       case EDS:
-        return edsResourceSubscribers.isEmpty() ? null : edsResourceSubscribers.keySet();
+        return edsResourceSubscribers;
       case UNKNOWN:
       default:
         throw new AssertionError("Unknown resource type");
     }
+  }
+
+  @Nullable
+  @Override
+  Collection<String> getSubscribedResources(ResourceType type) {
+    Map<String, ResourceSubscriber> resources = getSubscribedResourcesMap(type);
+    return resources.isEmpty() ? null : resources.keySet();
+  }
+
+  Map<String, ResourceMetadata> getSubscribedResourcesMetadata(ResourceType type) {
+    Map<String, ResourceMetadata> metadataMap = new HashMap<>();
+    for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
+      metadataMap.put(entry.getKey(), entry.getValue().metadata);
+    }
+    return metadataMap;
+  }
+
+  @Nullable
+  ResourceMetadata getSubscribedResourceMetadata(
+      ResourceType type, String resourceName) {
+    Map<String, ResourceSubscriber> resources = getSubscribedResourcesMap(type);
+    if (resources.isEmpty() || !resources.containsKey(resourceName)) {
+      return null;
+    }
+    return resources.get(resourceName).metadata;
   }
 
   @Override
@@ -1316,6 +1360,57 @@ final class ClientXdsClient extends AbstractXdsClient {
   }
 
   /**
+   * Captures ResourceSubscriber metadata, used by the xDS config dump.
+   */
+  static final class ResourceMetadata {
+    public enum ResourceMetadataStatus {
+      UNKNOWN, REQUESTED, DOES_NOT_EXIST, ACKED, NACKED;
+    }
+
+    private final String version;
+    private final ResourceMetadataStatus status;
+    private final long updateTime;
+    @Nullable private final Any rawResource;
+
+    ResourceMetadata(
+        ResourceMetadataStatus status, String version, long updateTime,
+        @Nullable Any rawResource) {
+      this.version = version;
+      this.status = status;
+      this.updateTime = updateTime;
+      this.rawResource = rawResource;
+    }
+
+    public static ResourceMetadata newResourceMetadataRequested() {
+      return new ResourceMetadata(ResourceMetadataStatus.REQUESTED, "", 0, null);
+    }
+
+    public static ResourceMetadata newResourceMetadataAcked(
+        Any resource, String version, long updateTime) {
+      checkNotNull(resource, "resource");
+      checkNotNull(version, "version");
+      return new ResourceMetadata(ResourceMetadataStatus.ACKED, version, updateTime, resource);
+    }
+
+    public String getVersion() {
+      return version;
+    }
+
+    public ResourceMetadataStatus getStatus() {
+      return status;
+    }
+
+    public long getUpdateTime() {
+      return updateTime;
+    }
+
+    @Nullable
+    public Any getRawResource() {
+      return rawResource;
+    }
+  }
+
+  /**
    * Tracks a single subscribed resource.
    */
   private final class ResourceSubscriber {
@@ -1325,10 +1420,12 @@ final class ClientXdsClient extends AbstractXdsClient {
     private ResourceUpdate data;
     private boolean absent;
     private ScheduledHandle respTimer;
+    private ResourceMetadata metadata;
 
     ResourceSubscriber(ResourceType type, String resource) {
       this.type = type;
       this.resource = resource;
+      this.metadata = ResourceMetadata.newResourceMetadataRequested();
       if (isInBackoff()) {
         return;
       }
@@ -1385,11 +1482,12 @@ final class ClientXdsClient extends AbstractXdsClient {
       return !watchers.isEmpty();
     }
 
-    void onData(ResourceUpdate data) {
+    void onData(ResourceUpdate data, Any resource, String version, long updateTime) {
       if (respTimer != null && respTimer.isPending()) {
         respTimer.cancel();
         respTimer = null;
       }
+      this.metadata = ResourceMetadata.newResourceMetadataAcked(resource, version, updateTime);
       ResourceUpdate oldData = this.data;
       this.data = data;
       absent = false;
