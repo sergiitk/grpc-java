@@ -188,8 +188,7 @@ public class ClientXdsClientV2Test extends ClientXdsClientTestBase {
 
     @Override
     protected void sendResponse(
-        ResourceType type, List<Any> resources, String versionInfo,
-        String nonce) {
+        ResourceType type, List<Any> resources, String versionInfo, String nonce) {
       DiscoveryResponse response =
           DiscoveryResponse.newBuilder()
               .setVersionInfo(versionInfo)
