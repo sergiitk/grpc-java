@@ -89,6 +89,7 @@ import io.envoyproxy.envoy.service.discovery.v3.DiscoveryResponse;
 import io.envoyproxy.envoy.service.load_stats.v3.LoadReportingServiceGrpc.LoadReportingServiceImplBase;
 import io.envoyproxy.envoy.service.load_stats.v3.LoadStatsRequest;
 import io.envoyproxy.envoy.service.load_stats.v3.LoadStatsResponse;
+import io.envoyproxy.envoy.type.matcher.v3.RegexMatcher;
 import io.envoyproxy.envoy.type.v3.FractionalPercent;
 import io.envoyproxy.envoy.type.v3.FractionalPercent.DenominatorType;
 import io.grpc.BindableService;
@@ -363,6 +364,22 @@ public class ClientXdsClientV3Test extends ClientXdsClientTestBase {
         builder.addVirtualHosts((VirtualHost) virtualHost);
       }
       return builder.build();
+    }
+
+    @Override
+    protected Message buildRouteConfigurationInvalid(String name) {
+      return RouteConfiguration.newBuilder()
+          .setName(name)
+          .addVirtualHosts(
+              VirtualHost.newBuilder()
+                  .setName("do not care")
+                  .addDomains("do not care")
+                  .addRoutes(
+                      Route.newBuilder()
+                          .setRoute(RouteAction.newBuilder().setCluster("do not care"))
+                          .setMatch(RouteMatch.newBuilder()
+                              .setSafeRegex(RegexMatcher.newBuilder().setRegex("[z-a]")))))
+          .build();
     }
 
     @Override

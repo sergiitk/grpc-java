@@ -728,6 +728,112 @@ public abstract class ClientXdsClientTestBase {
     verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
+  /** Error unpacking unknown route configs. */
+  @Test
+  public void rdsResponse_metadataUnknownListenersIgnored() {
+    DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE, "");
+
+    // Error unpacking RouteConfiguration resources.
+    call.sendResponse(RDS, ImmutableList.of(FAILING_ANY, FAILING_ANY), VERSION_1, "0000");
+
+    // Resulting metadata unchanged.
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE, "");
+    verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
+    // The response NACKed with errors indicating indices of the failed resources.
+    call.verifyRequestNack(RDS, RDS_RESOURCE, "", "0000", NODE, ImmutableList.of(
+        "RDS response Resource index 0 - can't decode RouteConfiguration: ",
+        "RDS response Resource index 1 - can't decode RouteConfiguration: "));
+    verifyNoInteractions(rdsResourceWatcher);
+  }
+
+  /** Error unpacking unknown route configs, success processing a known route config. */
+  @Test
+  public void rdsResponse_metadataKnownListenersNacked() {
+    DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE, "");
+
+    // Correct resource is in the middle of the response to ensure processing continues on errors.
+    call.sendResponse(
+        RDS, ImmutableList.of(FAILING_ANY, testRouteConfig, FAILING_ANY), VERSION_1, "0000");
+
+    // Errors unpacking unknown resources recorded in the metadata of the known LDS_RESOURCE.
+    List<String> errors = ImmutableList.of(
+        "RDS response Resource index 0 - can't decode RouteConfiguration: ",
+        "RDS response Resource index 2 - can't decode RouteConfiguration: ");
+    verifyResourceMetadataNacked(RDS, RDS_RESOURCE, null, "", 0, VERSION_1, TIME_INCREMENT, errors);
+    verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
+    // The response is NACKed with the same error messages.
+    call.verifyRequestNack(RDS, RDS_RESOURCE, "", "0000", NODE, errors);
+    verifyNoInteractions(rdsResourceWatcher);
+  }
+
+  /**
+   * RDS metadata workflow.
+   *
+   * <p>ADS Parsing Logic Update as described in
+   * <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
+   * A40-csds-support.md</a>.
+   */
+  @Test
+  public void rdsResponse_metadataParsingLogic() {
+    List<String> subscribedResources = ImmutableList.of("A", "B", "C");
+    xdsClient.watchRdsResource("A", rdsResourceWatcher);
+    xdsClient.watchRdsResource("B", rdsResourceWatcher);
+    xdsClient.watchRdsResource("C", rdsResourceWatcher);
+    DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
+    assertThat(call).isNotNull();
+    verifyResourceMetadataRequested(RDS, "A", "");
+    verifyResourceMetadataRequested(RDS, "B", "");
+    verifyResourceMetadataRequested(RDS, "C", "");
+    verifySubscribedResourcesMetadataSizes(0, 0, 3, 0);
+
+    // RDS -> {A, B, C}, version 1
+    List<Message> vhostsV1 = mf.buildOpaqueVirtualHosts(1);
+    ImmutableMap<String, Any> routeConfigsV1 = ImmutableMap.of(
+        "A", Any.pack(mf.buildRouteConfiguration("A", vhostsV1)),
+        "B", Any.pack(mf.buildRouteConfiguration("B", vhostsV1)),
+        "C", Any.pack(mf.buildRouteConfiguration("C", vhostsV1)));
+    call.sendResponse(RDS, routeConfigsV1.values().asList(), VERSION_1, "0000");
+    // {A, B, C} -> ACK, version 1
+    verifyResourceMetadataAcked(RDS, "A", routeConfigsV1.get("A"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(RDS, "B", routeConfigsV1.get("B"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(RDS, "C", routeConfigsV1.get("C"), VERSION_1, TIME_INCREMENT);
+    call.verifyRequest(RDS, subscribedResources, VERSION_1, "0000", NODE);
+
+    // RDS -> {A, B}, version 2
+    // Failed to parse endpoint B
+    ImmutableMap<String, Any> routeConfigsV2 = ImmutableMap.of(
+        "A", Any.pack(mf.buildRouteConfiguration("A", mf.buildOpaqueVirtualHosts(2))),
+        "B", Any.pack(mf.buildRouteConfigurationInvalid("B")));
+    call.sendResponse(RDS, routeConfigsV2.values().asList(), VERSION_2, "0001");
+    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    // {C} -> ACK, version 1
+    List<String> errorsV2 = ImmutableList.of(
+        "RDS response RouteConfiguration 'B' validation error: ");
+    verifyResourceMetadataNacked(RDS, "A", routeConfigsV1.get("A"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataNacked(RDS, "B", routeConfigsV1.get("B"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataAcked(RDS, "C", routeConfigsV1.get("C"), VERSION_1, TIME_INCREMENT);
+    call.verifyRequestNack(RDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
+
+    // RDS -> {B, C} version 3
+    List<Message> vhostsV3 = mf.buildOpaqueVirtualHosts(3);
+    ImmutableMap<String, Any> routeConfigsV3 = ImmutableMap.of(
+        "B", Any.pack(mf.buildRouteConfiguration("B", vhostsV3)),
+        "C", Any.pack(mf.buildRouteConfiguration("C", vhostsV3)));
+    call.sendResponse(RDS, routeConfigsV3.values().asList(), VERSION_3, "0003");
+    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    // {B, C} -> ACK, version 3
+    verifyResourceMetadataNacked(RDS, "A", routeConfigsV1.get("A"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataAcked(RDS, "B", routeConfigsV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(RDS, "C", routeConfigsV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
+    call.verifyRequest(RDS, subscribedResources, VERSION_3, "0003", NODE);
+    verifySubscribedResourcesMetadataSizes(0, 0, 3, 0);
+  }
+
   @Test
   public void rdsResourceFound() {
     DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
@@ -1802,6 +1908,8 @@ public abstract class ClientXdsClientTestBase {
 
     protected abstract Message buildRouteConfiguration(String name,
         List<Message> virtualHostList);
+
+    protected abstract Message buildRouteConfigurationInvalid(String name);
 
     protected abstract List<Message> buildOpaqueVirtualHosts(int num);
 

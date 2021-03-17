@@ -873,8 +873,8 @@ final class ClientXdsClient extends AbstractXdsClient {
         proto.getName(), proto.getWeight().getValue(), overrideConfigs.struct));
   }
 
-  @Override
-  protected void handleRdsResponse(String versionInfo, List<Any> resources, String nonce) {
+  // Original method - temporary renamed.
+  private void handleRdsResponse2(String versionInfo, List<Any> resources, String nonce) {
     // Unpack RouteConfiguration messages.
     Map<String, RouteConfiguration> routeConfigs = new HashMap<>(resources.size());
     Map<String, Any> rawResources = new HashMap<>();
@@ -928,6 +928,85 @@ final class ClientXdsClient extends AbstractXdsClient {
             .onData(rdsUpdates.get(resource), rawResources.get(resource), versionInfo, updateTime);
       }
     }
+  }
+
+  @Override
+  protected void handleRdsResponse(String versionInfo, List<Any> resources, String nonce) {
+    Map<String, RdsUpdate> rdsUpdates = new HashMap<>(resources.size());
+    Map<String, Any> resourceProtos = new HashMap<>(resources.size());
+    Set<String> routeConfigNames = new HashSet<>(resources.size());
+    List<String> errors = new ArrayList<>();
+    long updateTime = timeProvider.currentTimeNanos();
+
+    for (int i = 0; i < resources.size(); i++) {
+      // Unpack the RouteConfiguration.
+      Any resource = resources.get(i);
+      RouteConfiguration routeConfig;
+      try {
+        routeConfig = unpackCompatibleType(resource, RouteConfiguration.class,
+            ResourceType.RDS.typeUrl(), ResourceType.RDS.typeUrlV2());
+      } catch (InvalidProtocolBufferException e) {
+        errors.add("RDS response Resource index " + i + " - can't decode RouteConfiguration: " + e);
+        continue;
+      }
+      String routeConfigName = routeConfig.getName();
+      routeConfigNames.add(routeConfigName);
+
+      // Process RouteConfiguration into RdsUpdate.
+      RdsUpdate rdsUpdate;
+      boolean isResourceV3 = resource.getTypeUrl().equals(ResourceType.RDS.typeUrl());
+      try {
+        rdsUpdate = processRouteConfiguration(routeConfig, enableFaultInjection && isResourceV3);
+      } catch (ResourceInvalidException e) {
+        errors.add(
+            "RDS response RouteConfiguration '" + routeConfigName + "' validation error: " + e);
+        continue;
+      }
+
+      // LdsUpdate parsed successfully.
+      rdsUpdates.put(routeConfigName, rdsUpdate);
+      resourceProtos.put(routeConfigName, resource);
+    }
+    getLogger().log(XdsLogLevel.INFO,
+        "Received RDS Response version {0} nonce {1}. Parsed resources: {2}",
+        versionInfo, nonce, routeConfigNames);
+
+    // NACK on errors.
+    if (!errors.isEmpty()) {
+      String errorDetail = combineErrors(errors);
+      getLogger().log(XdsLogLevel.WARNING,
+          "Failed processing RDS Response version {0} nonce {1}. Errors:\n{2}",
+          versionInfo, nonce, errorDetail);
+      attachErrorStateToMetadata(
+          ResourceType.RDS, routeConfigNames, versionInfo, updateTime, errorDetail);
+      nackResponse(ResourceType.RDS, nonce, errorDetail);
+      return;
+    }
+
+    // ACK on success.
+    ackResponse(ResourceType.RDS, versionInfo, nonce);
+    for (String resource : rdsResourceSubscribers.keySet()) {
+      if (rdsUpdates.containsKey(resource)) {
+        ResourceSubscriber subscriber = rdsResourceSubscribers.get(resource);
+        subscriber.onData(
+            rdsUpdates.get(resource), resourceProtos.get(resource), versionInfo, updateTime);
+      }
+    }
+  }
+
+  private static RdsUpdate processRouteConfiguration(
+      RouteConfiguration routeConfig, boolean parseFilter) throws ResourceInvalidException {
+    List<VirtualHost> virtualHosts = new ArrayList<>(routeConfig.getVirtualHostsCount());
+    for (io.envoyproxy.envoy.config.route.v3.VirtualHost virtualHostProto
+        : routeConfig.getVirtualHostsList()) {
+      StructOrError<VirtualHost> virtualHost = parseVirtualHost(virtualHostProto, parseFilter);
+      if (virtualHost.getErrorDetail() != null) {
+        throw new ResourceInvalidException(
+            "RouteConfiguration contains invalid virtual host: " + virtualHost.getErrorDetail());
+      }
+      virtualHosts.add(virtualHost.getStruct());
+    }
+    return new RdsUpdate(virtualHosts);
   }
 
   @Override
