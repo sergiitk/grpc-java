@@ -143,21 +143,6 @@ final class ClientXdsClient extends AbstractXdsClient {
         getSyncContext(), timeService, backoffPolicyProvider, stopwatchSupplier);
   }
 
-  private void attachErrorStateToMetadata(
-      ResourceType type, Set<String> failedResourceNames, String failedVersion,
-      long failedUpdateTime, String errorDetail) {
-    for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
-      // Attach error details to the subscribed resources that included in the ADS update.
-      if (failedResourceNames.contains(entry.getKey())) {
-        entry.getValue().updateMetadataErrorState(failedVersion, failedUpdateTime, errorDetail);
-      }
-    }
-  }
-
-  private static String combineErrors(List<String> errors) {
-    return Joiner.on('\n').join(errors);
-  }
-
   // Original method - temporary renamed.
   private void handleLdsResponse2(String versionInfo, List<Any> resources, String nonce) {
     // Unpack Listener messages.
@@ -306,20 +291,18 @@ final class ClientXdsClient extends AbstractXdsClient {
 
   @Override
   protected void handleLdsResponse(String versionInfo, List<Any> resources, String nonce) {
-    Map<String, LdsUpdate> ldsUpdates = new HashMap<>(resources.size());
-    Map<String, Any> listenerProtos = new HashMap<>(resources.size());
+    Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
     Set<String> listenerNames = new HashSet<>(resources.size());
     List<String> errors = new ArrayList<>();
     Set<String> rdsNames = new HashSet<>();
-    long updateTime = timeProvider.currentTimeNanos();
 
     for (int i = 0; i < resources.size(); i++) {
       // Unpack the Listener.
-      Any rawListener = resources.get(i);
-      boolean isResourceV3 = rawListener.getTypeUrl().equals(ResourceType.LDS.typeUrl());
+      Any resource = resources.get(i);
+      boolean isResourceV3 = resource.getTypeUrl().equals(ResourceType.LDS.typeUrl());
       Listener listener;
       try {
-        listener = unpackCompatibleType(rawListener, Listener.class, ResourceType.LDS.typeUrl(),
+        listener = unpackCompatibleType(resource, Listener.class, ResourceType.LDS.typeUrl(),
             ResourceType.LDS.typeUrlV2());
       } catch (InvalidProtocolBufferException e) {
         errors.add("LDS response Resource index " + i + " - can't decode Listener: " + e);
@@ -342,8 +325,7 @@ final class ClientXdsClient extends AbstractXdsClient {
       }
 
       // LdsUpdate parsed successfully.
-      ldsUpdates.put(listenerName, ldsUpdate);
-      listenerProtos.put(listenerName, rawListener);
+      parsedResources.put(listenerName, new ParsedResource(ldsUpdate, resource));
       if (ldsUpdate.rdsName != null) {
         rdsNames.add(ldsUpdate.rdsName);
       }
@@ -352,29 +334,12 @@ final class ClientXdsClient extends AbstractXdsClient {
         "Received LDS Response version {0} nonce {1}. Parsed resources: {2}",
         versionInfo, nonce, listenerNames);
 
-    // NACK on errors.
     if (!errors.isEmpty()) {
-      String errorDetail = combineErrors(errors);
-      getLogger().log(XdsLogLevel.WARNING,
-          "Failed processing LDS Response version {0} nonce {1}. Errors:\n{2}",
-          versionInfo, nonce, errorDetail);
-      attachErrorStateToMetadata(
-          ResourceType.LDS, listenerNames, versionInfo, updateTime, errorDetail);
-      nackResponse(ResourceType.LDS, nonce, errorDetail);
+      handleResourcesNacked(ResourceType.LDS, listenerNames, versionInfo, nonce, errors);
       return;
     }
 
-    // ACK on success.
-    ackResponse(ResourceType.LDS, versionInfo, nonce);
-    for (String resource : ldsResourceSubscribers.keySet()) {
-      ResourceSubscriber subscriber = ldsResourceSubscribers.get(resource);
-      if (ldsUpdates.containsKey(resource)) {
-        subscriber.onData(ldsUpdates.get(resource), listenerProtos.get(resource), versionInfo,
-            updateTime);
-      } else {
-        subscriber.onAbsent();
-      }
-    }
+    handleResourcesAcked(ResourceType.LDS, parsedResources, versionInfo, nonce, true);
     for (String resource : rdsResourceSubscribers.keySet()) {
       if (!rdsNames.contains(resource)) {
         ResourceSubscriber subscriber = rdsResourceSubscribers.get(resource);
@@ -1619,39 +1584,49 @@ final class ClientXdsClient extends AbstractXdsClient {
     }
   }
 
+  private void handleResourcesAcked(
+      ResourceType type, Map<String, ParsedResource> parsedResources, String version,
+      String nonce, boolean callOnAbsent) {
+    ackResponse(type, version, nonce);
+
+    long updateTime = timeProvider.currentTimeNanos();
+    for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
+      String resourceName = entry.getKey();
+      ResourceSubscriber subscriber = entry.getValue();
+      if (parsedResources.containsKey(resourceName)) {
+        subscriber.onData(parsedResources.get(resourceName), version, updateTime);
+      } else if (callOnAbsent) {
+        subscriber.onAbsent();
+      }
+    }
+  }
+
+  private void handleResourcesNacked(
+      ResourceType type, Set<String> failedResourceNames, String version,
+      String nonce, List<String> errors) {
+    String errorDetail = combineErrors(errors);
+    getLogger().log(XdsLogLevel.WARNING,
+        "Failed processing {0} Response version {1} nonce {2}. Errors:\n{3}",
+        type, version, nonce, errorDetail);
+    nackResponse(type, nonce, errorDetail);
+
+    long updateTime = timeProvider.currentTimeNanos();
+    for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
+      // Attach error details to the subscribed resources that included in the ADS update.
+      if (failedResourceNames.contains(entry.getKey())) {
+        entry.getValue().onRejected(version, updateTime, errorDetail);
+      }
+    }
+  }
+
+  private static String combineErrors(List<String> errors) {
+    return Joiner.on('\n').join(errors);
+  }
+
   /**
    * Captures ResourceSubscriber metadata, used by the xDS config dump.
    */
   static final class ResourceMetadata {
-    public enum ResourceMetadataStatus {
-      UNKNOWN, REQUESTED, DOES_NOT_EXIST, ACKED, NACKED
-    }
-
-    public static class UpdateFailureState {
-      private final String failedVersion;
-      private final long failedUpdateTime;
-      private final String failedDetails;
-
-      private UpdateFailureState(
-          String failedVersion, long failedUpdateTime, String failedDetails) {
-        this.failedVersion = checkNotNull(failedVersion, "failedVersion");
-        this.failedUpdateTime = failedUpdateTime;
-        this.failedDetails = checkNotNull(failedDetails, "failedDetails");
-      }
-
-      public String getFailedVersion() {
-        return failedVersion;
-      }
-
-      public long getFailedUpdateTime() {
-        return failedUpdateTime;
-      }
-
-      public String getFailedDetails() {
-        return failedDetails;
-      }
-    }
-
     private final String version;
     private final ResourceMetadataStatus status;
     private final long updateTime;
@@ -1668,18 +1643,18 @@ final class ClientXdsClient extends AbstractXdsClient {
       this.errorState = errorState;
     }
 
-    public static ResourceMetadata newResourceMetadataRequested() {
+    static ResourceMetadata newResourceMetadataRequested() {
       return new ResourceMetadata(ResourceMetadataStatus.REQUESTED, "", 0, null, null);
     }
 
-    public static ResourceMetadata newResourceMetadataAcked(
+    static ResourceMetadata newResourceMetadataAcked(
         Any resource, String version, long updateTime) {
       checkNotNull(resource, "resource");
       return new ResourceMetadata(ResourceMetadataStatus.ACKED, version, updateTime, resource,
           null);
     }
 
-    public static ResourceMetadata newResourceMetadataNacked(
+    static ResourceMetadata newResourceMetadataNacked(
         ResourceMetadata metadata, String failedVersion, long failedUpdateTime,
         String failedDetails) {
       checkNotNull(metadata, "metadata");
@@ -1688,26 +1663,76 @@ final class ClientXdsClient extends AbstractXdsClient {
           new UpdateFailureState(failedVersion, failedUpdateTime, failedDetails));
     }
 
-    public String getVersion() {
+    String getVersion() {
       return version;
     }
 
-    public ResourceMetadataStatus getStatus() {
+    ResourceMetadataStatus getStatus() {
       return status;
     }
 
-    public long getUpdateTime() {
+    long getUpdateTime() {
       return updateTime;
     }
 
     @Nullable
-    public Any getRawResource() {
+    Any getRawResource() {
       return rawResource;
     }
 
     @Nullable
-    public UpdateFailureState getErrorState() {
+    UpdateFailureState getErrorState() {
       return errorState;
+    }
+
+    enum ResourceMetadataStatus {
+      UNKNOWN, REQUESTED, DOES_NOT_EXIST, ACKED, NACKED
+    }
+
+    static final class UpdateFailureState {
+      private final String failedVersion;
+      private final long failedUpdateTime;
+      private final String failedDetails;
+
+      private UpdateFailureState(
+          String failedVersion, long failedUpdateTime, String failedDetails) {
+        this.failedVersion = checkNotNull(failedVersion, "failedVersion");
+        this.failedUpdateTime = failedUpdateTime;
+        this.failedDetails = checkNotNull(failedDetails, "failedDetails");
+      }
+
+      /** The rejected version string of the last failed update attempt. */
+      public String getFailedVersion() {
+        return failedVersion;
+      }
+
+      /** Details about the last failed update attempt. */
+      public long getFailedUpdateTime() {
+        return failedUpdateTime;
+      }
+
+      /** Timestamp of the last failed update attempt. */
+      public String getFailedDetails() {
+        return failedDetails;
+      }
+    }
+  }
+
+  private static final class ParsedResource {
+    private final ResourceUpdate resourceUpdate;
+    private final Any rawResource;
+
+    private ParsedResource(ResourceUpdate resourceUpdate, Any rawResource) {
+      this.resourceUpdate = checkNotNull(resourceUpdate, "resourceUpdate");
+      this.rawResource = checkNotNull(rawResource, "rawResource");
+    }
+
+    private ResourceUpdate getResourceUpdate() {
+      return resourceUpdate;
+    }
+
+    private Any getRawResource() {
+      return rawResource;
     }
   }
 
@@ -1783,6 +1808,7 @@ final class ClientXdsClient extends AbstractXdsClient {
       return !watchers.isEmpty();
     }
 
+    // TODO(sergiitk): when CDS, EDS updated, replace with onData(ParsedResource ...).
     void onData(ResourceUpdate data, Any resource, String version, long updateTime) {
       if (respTimer != null && respTimer.isPending()) {
         respTimer.cancel();
@@ -1797,6 +1823,11 @@ final class ClientXdsClient extends AbstractXdsClient {
           notifyWatcher(watcher, data);
         }
       }
+    }
+
+    void onData(ParsedResource parsedResource, String version, long updateTime) {
+      onData(parsedResource.getResourceUpdate(), parsedResource.getRawResource(), version,
+          updateTime);
     }
 
     void onAbsent() {
@@ -1823,6 +1854,11 @@ final class ClientXdsClient extends AbstractXdsClient {
       }
     }
 
+    void onRejected(String rejectedVersion, long rejectedTime, String rejectedDetails) {
+      metadata = ResourceMetadata
+          .newResourceMetadataNacked(metadata, rejectedVersion, rejectedTime, rejectedDetails);
+    }
+
     private void notifyWatcher(ResourceWatcher watcher, ResourceUpdate update) {
       switch (type) {
         case LDS:
@@ -1842,11 +1878,17 @@ final class ClientXdsClient extends AbstractXdsClient {
           throw new AssertionError("should never be here");
       }
     }
+  }
 
-    public void updateMetadataErrorState(
-        String failedVersion, long failedUpdateTime, String failedDetails) {
-      metadata = ResourceMetadata
-          .newResourceMetadataNacked(metadata, failedVersion, failedUpdateTime, failedDetails);
+  private static final class ResourceInvalidException extends Exception {
+    private static final long serialVersionUID = 0L;
+
+    public ResourceInvalidException(String message) {
+      super(message);
+    }
+
+    public ResourceInvalidException(String message, Throwable cause) {
+      super(message, cause);
     }
   }
 
@@ -1896,18 +1938,6 @@ final class ClientXdsClient extends AbstractXdsClient {
     @Nullable
     String getErrorDetail() {
       return errorDetail;
-    }
-  }
-
-  private static final class ResourceInvalidException extends Exception {
-    private static final long serialVersionUID = 0L;
-
-    public ResourceInvalidException(String message) {
-      super(message);
-    }
-
-    public ResourceInvalidException(String message, Throwable cause) {
-      super(message, cause);
     }
   }
 }
