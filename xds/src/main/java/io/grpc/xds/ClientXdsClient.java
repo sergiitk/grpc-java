@@ -897,11 +897,9 @@ final class ClientXdsClient extends AbstractXdsClient {
 
   @Override
   protected void handleRdsResponse(String versionInfo, List<Any> resources, String nonce) {
-    Map<String, RdsUpdate> rdsUpdates = new HashMap<>(resources.size());
-    Map<String, Any> resourceProtos = new HashMap<>(resources.size());
+    Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
     Set<String> routeConfigNames = new HashSet<>(resources.size());
     List<String> errors = new ArrayList<>();
-    long updateTime = timeProvider.currentTimeNanos();
 
     for (int i = 0; i < resources.size(); i++) {
       // Unpack the RouteConfiguration.
@@ -928,34 +926,16 @@ final class ClientXdsClient extends AbstractXdsClient {
         continue;
       }
 
-      // LdsUpdate parsed successfully.
-      rdsUpdates.put(routeConfigName, rdsUpdate);
-      resourceProtos.put(routeConfigName, resource);
+      parsedResources.put(routeConfigName, new ParsedResource(rdsUpdate, resource));
     }
     getLogger().log(XdsLogLevel.INFO,
         "Received RDS Response version {0} nonce {1}. Parsed resources: {2}",
         versionInfo, nonce, routeConfigNames);
 
-    // NACK on errors.
     if (!errors.isEmpty()) {
-      String errorDetail = combineErrors(errors);
-      getLogger().log(XdsLogLevel.WARNING,
-          "Failed processing RDS Response version {0} nonce {1}. Errors:\n{2}",
-          versionInfo, nonce, errorDetail);
-      attachErrorStateToMetadata(
-          ResourceType.RDS, routeConfigNames, versionInfo, updateTime, errorDetail);
-      nackResponse(ResourceType.RDS, nonce, errorDetail);
-      return;
-    }
-
-    // ACK on success.
-    ackResponse(ResourceType.RDS, versionInfo, nonce);
-    for (String resource : rdsResourceSubscribers.keySet()) {
-      if (rdsUpdates.containsKey(resource)) {
-        ResourceSubscriber subscriber = rdsResourceSubscribers.get(resource);
-        subscriber.onData(
-            rdsUpdates.get(resource), resourceProtos.get(resource), versionInfo, updateTime);
-      }
+      handleResourcesNacked(ResourceType.RDS, routeConfigNames, versionInfo, nonce, errors);
+    } else {
+      handleResourcesAcked(ResourceType.RDS, parsedResources, versionInfo, nonce, false);
     }
   }
 
