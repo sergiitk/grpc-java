@@ -291,7 +291,7 @@ final class ClientXdsClient extends AbstractXdsClient {
   @Override
   protected void handleLdsResponse(String versionInfo, List<Any> resources, String nonce) {
     Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
-    Set<String> listenerNames = new HashSet<>(resources.size());
+    Set<String> unpackedResources = new HashSet<>(resources.size());
     List<String> errors = new ArrayList<>();
     // Retained RDS resources
     Set<String> rdsNames = new HashSet<>();
@@ -310,7 +310,7 @@ final class ClientXdsClient extends AbstractXdsClient {
         continue;
       }
       String listenerName = listener.getName();
-      listenerNames.add(listenerName);
+      unpackedResources.add(listenerName);
 
       // Process Listener into LdsUpdate.
       LdsUpdate ldsUpdate;
@@ -321,7 +321,8 @@ final class ClientXdsClient extends AbstractXdsClient {
           ldsUpdate = processServerSideListener(listener);
         }
       } catch (ResourceInvalidException e) {
-        errors.add("LDS response Listener '" + listenerName + "' validation error: " + e);
+        errors.add(
+            "LDS response Listener '" + listenerName + "' validation error: " + e.getMessage());
         continue;
       }
 
@@ -333,10 +334,10 @@ final class ClientXdsClient extends AbstractXdsClient {
     }
     getLogger().log(XdsLogLevel.INFO,
         "Received LDS Response version {0} nonce {1}. Parsed resources: {2}",
-        versionInfo, nonce, listenerNames);
+        versionInfo, nonce, unpackedResources);
 
     if (!errors.isEmpty()) {
-      handleResourcesNacked(ResourceType.LDS, listenerNames, versionInfo, nonce, errors);
+      handleResourcesNacked(ResourceType.LDS, unpackedResources, versionInfo, nonce, errors);
       return;
     }
 
@@ -899,7 +900,7 @@ final class ClientXdsClient extends AbstractXdsClient {
   @Override
   protected void handleRdsResponse(String versionInfo, List<Any> resources, String nonce) {
     Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
-    Set<String> routeConfigNames = new HashSet<>(resources.size());
+    Set<String> unpackedResources = new HashSet<>(resources.size());
     List<String> errors = new ArrayList<>();
 
     for (int i = 0; i < resources.size(); i++) {
@@ -915,7 +916,7 @@ final class ClientXdsClient extends AbstractXdsClient {
         continue;
       }
       String routeConfigName = routeConfig.getName();
-      routeConfigNames.add(routeConfigName);
+      unpackedResources.add(routeConfigName);
 
       // Process RouteConfiguration into RdsUpdate.
       RdsUpdate rdsUpdate;
@@ -924,7 +925,8 @@ final class ClientXdsClient extends AbstractXdsClient {
         rdsUpdate = processRouteConfiguration(routeConfig, enableFaultInjection && isResourceV3);
       } catch (ResourceInvalidException e) {
         errors.add(
-            "RDS response RouteConfiguration '" + routeConfigName + "' validation error: " + e);
+            "RDS response RouteConfiguration '" + routeConfigName + "' validation error: " + e
+                .getMessage());
         continue;
       }
 
@@ -932,10 +934,10 @@ final class ClientXdsClient extends AbstractXdsClient {
     }
     getLogger().log(XdsLogLevel.INFO,
         "Received RDS Response version {0} nonce {1}. Parsed resources: {2}",
-        versionInfo, nonce, routeConfigNames);
+        versionInfo, nonce, unpackedResources);
 
     if (!errors.isEmpty()) {
-      handleResourcesNacked(ResourceType.RDS, routeConfigNames, versionInfo, nonce, errors);
+      handleResourcesNacked(ResourceType.RDS, unpackedResources, versionInfo, nonce, errors);
     } else {
       handleResourcesAcked(ResourceType.RDS, parsedResources, versionInfo, nonce, false);
     }
@@ -1051,7 +1053,7 @@ final class ClientXdsClient extends AbstractXdsClient {
   @Override
   protected void handleCdsResponse(String versionInfo, List<Any> resources, String nonce) {
     Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
-    Set<String> clusterNames = new HashSet<>(resources.size());
+    Set<String> unpackedResources = new HashSet<>(resources.size());
     List<String> errors = new ArrayList<>();
     Set<String> retainedEdsResources = new HashSet<>();
 
@@ -1075,24 +1077,25 @@ final class ClientXdsClient extends AbstractXdsClient {
       if (!cdsResourceSubscribers.containsKey(clusterName)) {
         continue;
       }
-      clusterNames.add(clusterName);
+      unpackedResources.add(clusterName);
 
       // Process Cluster into CdsUpdate.
       CdsUpdate cdsUpdate;
       try {
         cdsUpdate = processCluster(cluster, retainedEdsResources);
       } catch (ResourceInvalidException e) {
-        errors.add("CDS response Cluster '" + clusterName + "' validation error: " + e);
+        errors.add(
+            "CDS response Cluster '" + clusterName + "' validation error: " + e.getMessage());
         continue;
       }
       parsedResources.put(clusterName, new ParsedResource(cdsUpdate, resource));
     }
     getLogger().log(XdsLogLevel.INFO,
         "Received CDS Response version {0} nonce {1}. Parsed resources: {2}",
-        versionInfo, nonce, clusterNames);
+        versionInfo, nonce, unpackedResources);
 
     if (!errors.isEmpty()) {
-      handleResourcesNacked(ResourceType.CDS, clusterNames, versionInfo, nonce, errors);
+      handleResourcesNacked(ResourceType.CDS, unpackedResources, versionInfo, nonce, errors);
       return;
     }
 
@@ -1346,8 +1349,8 @@ final class ClientXdsClient extends AbstractXdsClient {
       try {
         edsUpdate = processClusterLoadAssignment(assignment);
       } catch (ResourceInvalidException e) {
-        errors.add(
-            "EDS response ClusterLoadAssignment '" + clusterName + "' validation error: " + e);
+        errors.add("EDS response ClusterLoadAssignment '" + clusterName
+            + "' validation error: " + e.getMessage());
         continue;
       }
       parsedResources.put(clusterName, new ParsedResource(edsUpdate, resource));
@@ -2070,11 +2073,11 @@ final class ClientXdsClient extends AbstractXdsClient {
     private static final long serialVersionUID = 0L;
 
     public ResourceInvalidException(String message) {
-      super(message);
+      super(message, null, false, false);
     }
 
     public ResourceInvalidException(String message, Throwable cause) {
-      super(message, cause);
+      super(cause != null ? message + ": " + cause.getMessage() : message, cause, false, false);
     }
   }
 

@@ -462,7 +462,7 @@ public abstract class ClientXdsClientTestBase {
    */
   @Test
   public void ldsResponseErrorHandling_subscribedResourceInvalid() {
-    List<String> subscribedResources = ImmutableList.of("A", "B", "C");
+    List<String> subscribedResourceNames = ImmutableList.of("A", "B", "C");
     xdsClient.watchLdsResource("A", ldsResourceWatcher);
     xdsClient.watchLdsResource("B", ldsResourceWatcher);
     xdsClient.watchLdsResource("C", ldsResourceWatcher);
@@ -483,7 +483,7 @@ public abstract class ClientXdsClientTestBase {
     verifyResourceMetadataAcked(LDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(LDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(LDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
-    call.verifyRequest(LDS, subscribedResources, VERSION_1, "0000", NODE);
+    call.verifyRequest(LDS, subscribedResourceNames, VERSION_1, "0000", NODE);
 
     // LDS -> {A, B}, version 2
     // Failed to parse endpoint B
@@ -499,7 +499,7 @@ public abstract class ClientXdsClientTestBase {
     verifyResourceMetadataNacked(LDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(LDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
-    call.verifyRequestNack(LDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
+    call.verifyRequestNack(LDS, subscribedResourceNames, VERSION_1, "0001", NODE, errorsV2);
 
     // LDS -> {B, C} version 3
     ImmutableMap<String, Any> resourcesV3 = ImmutableMap.of(
@@ -514,7 +514,7 @@ public abstract class ClientXdsClientTestBase {
     //     VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(LDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
     verifyResourceMetadataAcked(LDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
-    call.verifyRequest(LDS, subscribedResources, VERSION_3, "0002", NODE);
+    call.verifyRequest(LDS, subscribedResourceNames, VERSION_3, "0002", NODE);
     verifySubscribedResourcesMetadataSizes(3, 0, 0, 0);
   }
 
@@ -788,7 +788,7 @@ public abstract class ClientXdsClientTestBase {
    */
   @Test
   public void rdsResponseErrorHandling_subscribedResourceInvalid() {
-    List<String> subscribedResources = ImmutableList.of("A", "B", "C");
+    List<String> subscribedResourceNames = ImmutableList.of("A", "B", "C");
     xdsClient.watchRdsResource("A", rdsResourceWatcher);
     xdsClient.watchRdsResource("B", rdsResourceWatcher);
     xdsClient.watchRdsResource("C", rdsResourceWatcher);
@@ -810,7 +810,7 @@ public abstract class ClientXdsClientTestBase {
     verifyResourceMetadataAcked(RDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(RDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(RDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
-    call.verifyRequest(RDS, subscribedResources, VERSION_1, "0000", NODE);
+    call.verifyRequest(RDS, subscribedResourceNames, VERSION_1, "0000", NODE);
 
     // RDS -> {A, B}, version 2
     // Failed to parse endpoint B
@@ -827,7 +827,7 @@ public abstract class ClientXdsClientTestBase {
     verifyResourceMetadataNacked(RDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(RDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
-    call.verifyRequestNack(RDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
+    call.verifyRequestNack(RDS, subscribedResourceNames, VERSION_1, "0001", NODE, errorsV2);
 
     // RDS -> {B, C} version 3
     List<Message> vhostsV3 = mf.buildOpaqueVirtualHosts(3);
@@ -841,7 +841,7 @@ public abstract class ClientXdsClientTestBase {
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(RDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
     verifyResourceMetadataAcked(RDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
-    call.verifyRequest(RDS, subscribedResources, VERSION_3, "0002", NODE);
+    call.verifyRequest(RDS, subscribedResourceNames, VERSION_3, "0002", NODE);
     verifySubscribedResourcesMetadataSizes(0, 0, 3, 0);
   }
 
@@ -1061,7 +1061,7 @@ public abstract class ClientXdsClientTestBase {
    */
   @Test
   public void cdsResponseErrorHandling_subscribedResourceInvalid() {
-    List<String> subscribedResources = ImmutableList.of("A", "B", "C");
+    List<String> subscribedResourceNames = ImmutableList.of("A", "B", "C");
     xdsClient.watchCdsResource("A", cdsResourceWatcher);
     xdsClient.watchCdsResource("B", cdsResourceWatcher);
     xdsClient.watchCdsResource("C", cdsResourceWatcher);
@@ -1082,7 +1082,7 @@ public abstract class ClientXdsClientTestBase {
     verifyResourceMetadataAcked(CDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(CDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(CDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
-    call.verifyRequest(CDS, subscribedResources, VERSION_1, "0000", NODE);
+    call.verifyRequest(CDS, subscribedResourceNames, VERSION_1, "0000", NODE);
 
     // CDS -> {A, B}, version 2
     // Failed to parse endpoint B
@@ -1098,7 +1098,7 @@ public abstract class ClientXdsClientTestBase {
     verifyResourceMetadataNacked(CDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(CDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
-    call.verifyRequestNack(CDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
+    call.verifyRequestNack(CDS, subscribedResourceNames, VERSION_1, "0001", NODE, errorsV2);
 
     // CDS -> {B, C} version 3
     ImmutableMap<String, Any> resourcesV3 = ImmutableMap.of(
@@ -1113,7 +1113,7 @@ public abstract class ClientXdsClientTestBase {
     //     VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(CDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
     verifyResourceMetadataAcked(CDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
-    call.verifyRequest(CDS, subscribedResources, VERSION_3, "0002", NODE);
+    call.verifyRequest(CDS, subscribedResourceNames, VERSION_3, "0002", NODE);
   }
 
   @Test
@@ -1482,7 +1482,7 @@ public abstract class ClientXdsClientTestBase {
    */
   @Test
   public void edsResponseErrorHandling_subscribedResourceInvalid() {
-    List<String> subscribedResources = ImmutableList.of("A", "B", "C");
+    List<String> subscribedResourceNames = ImmutableList.of("A", "B", "C");
     xdsClient.watchEdsResource("A", edsResourceWatcher);
     xdsClient.watchEdsResource("B", edsResourceWatcher);
     xdsClient.watchEdsResource("C", edsResourceWatcher);
@@ -1505,7 +1505,7 @@ public abstract class ClientXdsClientTestBase {
     verifyResourceMetadataAcked(EDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(EDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(EDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
-    call.verifyRequest(EDS, subscribedResources, VERSION_1, "0000", NODE);
+    call.verifyRequest(EDS, subscribedResourceNames, VERSION_1, "0000", NODE);
 
     // EDS -> {A, B}, version 2
     // Failed to parse endpoint B
@@ -1523,7 +1523,7 @@ public abstract class ClientXdsClientTestBase {
     verifyResourceMetadataNacked(EDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(EDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
-    call.verifyRequestNack(EDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
+    call.verifyRequestNack(EDS, subscribedResourceNames, VERSION_1, "0001", NODE, errorsV2);
 
     // EDS -> {B, C} version 3
     List<Message> endpointsV3 =
@@ -1538,7 +1538,7 @@ public abstract class ClientXdsClientTestBase {
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(EDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
     verifyResourceMetadataAcked(EDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
-    call.verifyRequest(EDS, subscribedResources, VERSION_3, "0002", NODE);
+    call.verifyRequest(EDS, subscribedResourceNames, VERSION_3, "0002", NODE);
     verifySubscribedResourcesMetadataSizes(0, 0, 0, 3);
   }
 
