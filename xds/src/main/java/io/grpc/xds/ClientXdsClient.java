@@ -1623,6 +1623,10 @@ final class ClientXdsClient extends AbstractXdsClient {
       this.errorState = errorState;
     }
 
+    static ResourceMetadata newResourceMetadataUnknown() {
+      return new ResourceMetadata(ResourceMetadataStatus.UNKNOWN, "", 0, null, null);
+    }
+
     static ResourceMetadata newResourceMetadataRequested() {
       return new ResourceMetadata(ResourceMetadataStatus.REQUESTED, "", 0, null, null);
     }
@@ -1630,16 +1634,16 @@ final class ClientXdsClient extends AbstractXdsClient {
     static ResourceMetadata newResourceMetadataAcked(
         Any resource, String version, long updateTime) {
       checkNotNull(resource, "resource");
-      return new ResourceMetadata(ResourceMetadataStatus.ACKED, version, updateTime, resource,
-          null);
+      return new ResourceMetadata(
+          ResourceMetadataStatus.ACKED, version, updateTime, resource, null);
     }
 
     static ResourceMetadata newResourceMetadataNacked(
         ResourceMetadata metadata, String failedVersion, long failedUpdateTime,
         String failedDetails) {
       checkNotNull(metadata, "metadata");
-      return new ResourceMetadata(ResourceMetadataStatus.NACKED, metadata.getVersion(),
-          metadata.getUpdateTime(), metadata.getRawResource(),
+      return new ResourceMetadata(ResourceMetadataStatus.NACKED,
+          metadata.getVersion(), metadata.getUpdateTime(), metadata.getRawResource(),
           new UpdateFailureState(failedVersion, failedUpdateTime, failedDetails));
     }
 
@@ -1731,7 +1735,9 @@ final class ClientXdsClient extends AbstractXdsClient {
     ResourceSubscriber(ResourceType type, String resource) {
       this.type = type;
       this.resource = resource;
-      this.metadata = ResourceMetadata.newResourceMetadataRequested();
+      // Initialize metadata in UNKNOWN state to cover the case when resource subscriber,
+      // is created but not yet requested because the client is in backoff.
+      this.metadata = ResourceMetadata.newResourceMetadataUnknown();
       if (isInBackoff()) {
         return;
       }
@@ -1772,6 +1778,8 @@ final class ClientXdsClient extends AbstractXdsClient {
         }
       }
 
+      // Initial fetch scheduled or rescheduled, transition metadata state to REQUESTED.
+      metadata = ResourceMetadata.newResourceMetadataRequested();
       respTimer = getSyncContext().schedule(
           new ResourceNotFound(), INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS,
           getTimeService());
