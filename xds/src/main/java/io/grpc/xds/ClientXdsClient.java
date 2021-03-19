@@ -297,8 +297,9 @@ final class ClientXdsClient extends AbstractXdsClient {
     Set<String> rdsNames = new HashSet<>();
 
     for (int i = 0; i < resources.size(); i++) {
-      // Unpack the Listener.
       Any resource = resources.get(i);
+
+      // Unpack the Listener.
       boolean isResourceV3 = resource.getTypeUrl().equals(ResourceType.LDS.typeUrl());
       Listener listener;
       try {
@@ -383,10 +384,10 @@ final class ClientXdsClient extends AbstractXdsClient {
         if (filterConfig == null) {
           continue;
         }
-        if (filterConfig.errorDetail != null) {
+        if (filterConfig.getErrorDetail() != null) {
           throw new ResourceInvalidException(
               "HttpConnectionManager contains invalid HttpFault filter: "
-                  + filterConfig.errorDetail);
+                  + filterConfig.getErrorDetail());
         }
         filterChain.add(new NamedFilterConfig(filterName, filterConfig.struct));
       }
@@ -902,8 +903,9 @@ final class ClientXdsClient extends AbstractXdsClient {
     List<String> errors = new ArrayList<>();
 
     for (int i = 0; i < resources.size(); i++) {
-      // Unpack the RouteConfiguration.
       Any resource = resources.get(i);
+
+      // Unpack the RouteConfiguration.
       RouteConfiguration routeConfig;
       try {
         routeConfig = unpackCompatibleType(resource, RouteConfiguration.class,
@@ -1054,8 +1056,9 @@ final class ClientXdsClient extends AbstractXdsClient {
     Set<String> retainedEdsResources = new HashSet<>();
 
     for (int i = 0; i < resources.size(); i++) {
-      // Unpack Cluster messages.
       Any resource = resources.get(i);
+
+      // Unpack the Cluster.
       Cluster cluster;
       try {
         cluster = unpackCompatibleType(
@@ -1119,7 +1122,7 @@ final class ClientXdsClient extends AbstractXdsClient {
         throw new ResourceInvalidException("Unspecified cluster discovery type");
     }
     if (structOrError.getErrorDetail() != null) {
-      throw new ResourceInvalidException(structOrError.errorDetail);
+      throw new ResourceInvalidException(structOrError.getErrorDetail());
     }
 
     CdsUpdate.Builder updateBuilder = structOrError.getStruct();
@@ -1226,8 +1229,7 @@ final class ClientXdsClient extends AbstractXdsClient {
         "Cluster " + clusterName + ": unsupported built-in discovery type: " + type);
   }
 
-  @Override
-  protected void handleEdsResponse(String versionInfo, List<Any> resources, String nonce) {
+  private void handleEdsResponse2(String versionInfo, List<Any> resources, String nonce) {
     // Unpack ClusterLoadAssignment messages.
     List<ClusterLoadAssignment> clusterLoadAssignments = new ArrayList<>(resources.size());
     List<String> claNames = new ArrayList<>(resources.size());
@@ -1306,6 +1308,94 @@ final class ClientXdsClient extends AbstractXdsClient {
             .onData(edsUpdates.get(resource), rawResources.get(resource), versionInfo, updateTime);
       }
     }
+  }
+
+  @Override
+  protected void handleEdsResponse(String versionInfo, List<Any> resources, String nonce) {
+    Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
+    Set<String> unpackedResources = new HashSet<>(resources.size());
+    List<String> errors = new ArrayList<>();
+
+    for (int i = 0; i < resources.size(); i++) {
+      Any resource = resources.get(i);
+
+      // Unpack the ClusterLoadAssignment.
+      ClusterLoadAssignment assignment;
+      try {
+        assignment =
+            unpackCompatibleType(resource, ClusterLoadAssignment.class, ResourceType.EDS.typeUrl(),
+                ResourceType.EDS.typeUrlV2());
+      } catch (InvalidProtocolBufferException e) {
+        errors.add(
+            "EDS response Resource index " + i + " - can't decode ClusterLoadAssignment: " + e);
+        continue;
+      }
+      String clusterName = assignment.getClusterName();
+
+      // Skip information for clusters not requested.
+      // Management server is required to always send newly requested resources, even if they
+      // may have been sent previously (proactively). Thus, client does not need to cache
+      // unrequested resources.
+      if (!edsResourceSubscribers.containsKey(clusterName)) {
+        continue;
+      }
+      unpackedResources.add(clusterName);
+
+      // Process ClusterLoadAssignment into EdsUpdate.
+      EdsUpdate edsUpdate;
+      try {
+        edsUpdate = processClusterLoadAssignment(assignment);
+      } catch (ResourceInvalidException e) {
+        errors.add(
+            "EDS response ClusterLoadAssignment '" + clusterName + "' validation error: " + e);
+        continue;
+      }
+      parsedResources.put(clusterName, new ParsedResource(edsUpdate, resource));
+    }
+
+    if (!errors.isEmpty()) {
+      handleResourcesNacked(ResourceType.EDS, unpackedResources, versionInfo, nonce, errors);
+    } else {
+      handleResourcesAcked(ResourceType.EDS, parsedResources, versionInfo, nonce, false);
+    }
+  }
+
+  private static EdsUpdate processClusterLoadAssignment(ClusterLoadAssignment assignment)
+      throws ResourceInvalidException {
+    Set<Integer> priorities = new HashSet<>();
+    Map<Locality, LocalityLbEndpoints> localityLbEndpointsMap = new LinkedHashMap<>();
+    List<DropOverload> dropOverloads = new ArrayList<>();
+    int maxPriority = -1;
+    for (io.envoyproxy.envoy.config.endpoint.v3.LocalityLbEndpoints localityLbEndpointsProto
+        : assignment.getEndpointsList()) {
+      StructOrError<LocalityLbEndpoints> structOrError =
+          parseLocalityLbEndpoints(localityLbEndpointsProto);
+      if (structOrError == null) {
+        continue;
+      }
+      if (structOrError.getErrorDetail() != null) {
+        throw new ResourceInvalidException(structOrError.getErrorDetail());
+      }
+
+      LocalityLbEndpoints localityLbEndpoints = structOrError.getStruct();
+      maxPriority = Math.max(maxPriority, localityLbEndpoints.priority());
+      priorities.add(localityLbEndpoints.priority());
+      // Note endpoints with health status other than HEALTHY and UNKNOWN are still
+      // handed over to watching parties. It is watching parties' responsibility to
+      // filter out unhealthy endpoints. See EnvoyProtoData.LbEndpoint#isHealthy().
+      localityLbEndpointsMap.put(
+          parseLocality(localityLbEndpointsProto.getLocality()),
+          localityLbEndpoints);
+    }
+    if (priorities.size() != maxPriority + 1) {
+      throw new ResourceInvalidException("ClusterLoadAssignment has sparse priorities");
+    }
+
+    for (ClusterLoadAssignment.Policy.DropOverload dropOverloadProto
+        : assignment.getPolicy().getDropOverloadsList()) {
+      dropOverloads.add(parseDropOverload(dropOverloadProto));
+    }
+    return new EdsUpdate(assignment.getClusterName(), localityLbEndpointsMap, dropOverloads);
   }
 
   private static Locality parseLocality(io.envoyproxy.envoy.config.core.v3.Locality proto) {
@@ -1670,6 +1760,9 @@ final class ClientXdsClient extends AbstractXdsClient {
     for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
       String resourceName = entry.getKey();
       ResourceSubscriber subscriber = entry.getValue();
+
+      // Notify the watchers of the new data, or (optionally) of a subscribed resource absence from
+      // the ADS update.
       if (parsedResources.containsKey(resourceName)) {
         subscriber.onData(parsedResources.get(resourceName), version, updateTime);
       } else if (callOnAbsent) {
@@ -1679,7 +1772,7 @@ final class ClientXdsClient extends AbstractXdsClient {
   }
 
   private void handleResourcesNacked(
-      ResourceType type, Set<String> failedResourceNames, String version,
+      ResourceType type, Set<String> unpackedResourceNames, String version,
       String nonce, List<String> errors) {
     String errorDetail = combineErrors(errors);
     getLogger().log(XdsLogLevel.WARNING,
@@ -1689,9 +1782,12 @@ final class ClientXdsClient extends AbstractXdsClient {
 
     long updateTime = timeProvider.currentTimeNanos();
     for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
+      String resourceName = entry.getKey();
+      ResourceSubscriber subscriber = entry.getValue();
+
       // Attach error details to the subscribed resources that included in the ADS update.
-      if (failedResourceNames.contains(entry.getKey())) {
-        entry.getValue().onRejected(version, updateTime, errorDetail);
+      if (unpackedResourceNames.contains(resourceName)) {
+        subscriber.onRejected(version, updateTime, errorDetail);
       }
     }
   }

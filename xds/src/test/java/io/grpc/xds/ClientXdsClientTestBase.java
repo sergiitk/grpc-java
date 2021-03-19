@@ -1439,6 +1439,110 @@ public abstract class ClientXdsClientTestBase {
   }
 
   @Test
+  public void edsResponseErrorHandling_allResourcesFailedUnpack() {
+    DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
+    verifyResourceMetadataRequested(EDS, EDS_RESOURCE);
+    call.sendResponse(EDS, ImmutableList.of(FAILING_ANY, FAILING_ANY), VERSION_1, "0000");
+
+    // Resulting metadata unchanged because the response has no identifiable subscribed resources.
+    verifyResourceMetadataRequested(EDS, EDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 0, 0, 1);
+    // The response NACKed with errors indicating indices of the failed resources.
+    call.verifyRequestNack(EDS, EDS_RESOURCE, "", "0000", NODE, ImmutableList.of(
+        "EDS response Resource index 0 - can't decode ClusterLoadAssignment: ",
+        "EDS response Resource index 1 - can't decode ClusterLoadAssignment: "));
+    verifyNoInteractions(edsResourceWatcher);
+  }
+
+  @Test
+  public void edsResponseErrorHandling_someResourcesFailedUnpack() {
+    DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
+    verifyResourceMetadataRequested(EDS, EDS_RESOURCE);
+
+    // Correct resource is in the middle to ensure processing continues on errors.
+    List<Any> resources = ImmutableList.of(FAILING_ANY, testClusterLoadAssignment, FAILING_ANY);
+    call.sendResponse(EDS, resources, VERSION_1, "0000");
+
+    // All errors recorded in the metadata of successfully unpacked subscribed resources.
+    List<String> errors = ImmutableList.of(
+        "EDS response Resource index 0 - can't decode ClusterLoadAssignment: ",
+        "EDS response Resource index 2 - can't decode ClusterLoadAssignment: ");
+    verifyResourceMetadataNacked(EDS, EDS_RESOURCE, null, "", 0, VERSION_1, TIME_INCREMENT, errors);
+    verifySubscribedResourcesMetadataSizes(0, 0, 0, 1);
+    // The response is NACKed with the same error message.
+    call.verifyRequestNack(EDS, EDS_RESOURCE, "", "0000", NODE, errors);
+    verifyNoInteractions(edsResourceWatcher);
+  }
+
+  /**
+   * Tests a subscribed EDS resource transitioned to and from the invalid state.
+   *
+   * @see <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
+   * A40-csds-support.md</a>.
+   */
+  @Test
+  public void edsResponseErrorHandling_subscribedResourceInvalid() {
+    List<String> subscribedResources = ImmutableList.of("A", "B", "C");
+    xdsClient.watchEdsResource("A", edsResourceWatcher);
+    xdsClient.watchEdsResource("B", edsResourceWatcher);
+    xdsClient.watchEdsResource("C", edsResourceWatcher);
+    DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
+    assertThat(call).isNotNull();
+    verifyResourceMetadataRequested(EDS, "A");
+    verifyResourceMetadataRequested(EDS, "B");
+    verifyResourceMetadataRequested(EDS, "C");
+    verifySubscribedResourcesMetadataSizes(0, 0, 0, 3);
+
+    // EDS -> {A, B, C}, version 1
+    List<Message> dropOverloads = ImmutableList.of(mf.buildDropOverload("lb", 200));
+    List<Message> endpointsV1 = ImmutableList.of(lbEndpointHealthy);
+    ImmutableMap<String, Any> resourcesV1 = ImmutableMap.of(
+        "A", Any.pack(mf.buildClusterLoadAssignment("A", endpointsV1, dropOverloads)),
+        "B", Any.pack(mf.buildClusterLoadAssignment("B", endpointsV1, dropOverloads)),
+        "C", Any.pack(mf.buildClusterLoadAssignment("C", endpointsV1, dropOverloads)));
+    call.sendResponse(EDS, resourcesV1.values().asList(), VERSION_1, "0000");
+    // {A, B, C} -> ACK, version 1
+    verifyResourceMetadataAcked(EDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(EDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(EDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
+    call.verifyRequest(EDS, subscribedResources, VERSION_1, "0000", NODE);
+
+    // EDS -> {A, B}, version 2
+    // Failed to parse endpoint B
+    List<Message> endpointsV2 = ImmutableList.of(lbEndpointHealthy, lbEndpointEmpty);
+    ImmutableMap<String, Any> resourcesV2 = ImmutableMap.of(
+        "A", Any.pack(mf.buildClusterLoadAssignment("A", endpointsV2, dropOverloads)),
+        "B", Any.pack(mf.buildClusterLoadAssignmentInvalid("B")));
+    call.sendResponse(EDS, resourcesV2.values().asList(), VERSION_2, "0001");
+    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
+    // {C} -> ACK, version 1
+    List<String> errorsV2 =
+        ImmutableList.of("EDS response ClusterLoadAssignment 'B' validation error: ");
+    verifyResourceMetadataNacked(EDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataNacked(EDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataAcked(EDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
+    call.verifyRequestNack(EDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
+
+    // EDS -> {B, C} version 3
+    List<Message> endpointsV3 =
+        ImmutableList.of(lbEndpointHealthy, lbEndpointEmpty, lbEndpointZeroWeight);
+    ImmutableMap<String, Any> resourcesV3 = ImmutableMap.of(
+        "B", Any.pack(mf.buildClusterLoadAssignment("B", endpointsV3, dropOverloads)),
+        "C", Any.pack(mf.buildClusterLoadAssignment("C", endpointsV3, dropOverloads)));
+    call.sendResponse(EDS, resourcesV3.values().asList(), VERSION_3, "0002");
+    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
+    // {B, C} -> ACK, version 3
+    verifyResourceMetadataNacked(EDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataAcked(EDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(EDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
+    call.verifyRequest(EDS, subscribedResources, VERSION_3, "0002", NODE);
+    verifySubscribedResourcesMetadataSizes(0, 0, 0, 3);
+  }
+
+  @Test
   public void edsResourceFound() {
     DiscoveryRpcCall call = startResourceWatcher(EDS, EDS_RESOURCE, edsResourceWatcher);
     call.sendResponse(EDS, testClusterLoadAssignment, VERSION_1, "0000");
@@ -2070,6 +2174,8 @@ public abstract class ClientXdsClientTestBase {
 
     protected abstract Message buildClusterLoadAssignment(String cluster,
         List<Message> localityLbEndpoints, List<Message> dropOverloads);
+
+    protected abstract Message buildClusterLoadAssignmentInvalid(String cluster);
 
     protected abstract Message buildLocalityLbEndpoints(String region, String zone, String subZone,
         List<Message> lbEndpointList, int loadBalancingWeight, int priority);

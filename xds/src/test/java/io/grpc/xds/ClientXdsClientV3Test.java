@@ -580,6 +580,17 @@ public class ClientXdsClientV3Test extends ClientXdsClientTestBase {
     }
 
     @Override
+    protected Message buildClusterLoadAssignmentInvalid(String cluster) {
+      // Negative priority LocalityLbEndpoint.
+      return ClusterLoadAssignment.newBuilder()
+          .setClusterName(cluster)
+          .addEndpoints(LocalityLbEndpoints.newBuilder()
+              .setPriority(-1)
+              .setLoadBalancingWeight(UInt32Value.newBuilder().setValue(1)))
+          .build();
+    }
+
+    @Override
     protected Message buildLocalityLbEndpoints(String region, String zone, String subZone,
         List<Message> lbEndpointList, int loadBalancingWeight, int priority) {
       LocalityLbEndpoints.Builder builder = LocalityLbEndpoints.newBuilder();
