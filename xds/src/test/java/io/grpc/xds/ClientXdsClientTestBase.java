@@ -318,7 +318,13 @@ public abstract class ClientXdsClientTestBase {
         type, resourceName, null, ResourceMetadataStatus.REQUESTED, "", 0, false);
   }
 
-  /** Verify the resource was acked. */
+  /** Verify that the requested resource does not exist. */
+  private void verifyResourceMetadataDoesNotExist(ResourceType type, String resourceName) {
+    verifyResourceMetadata(
+        type, resourceName, null, ResourceMetadataStatus.DOES_NOT_EXIST, "", 0, false);
+  }
+
+  /** Verify the resource to be acked. */
   private void verifyResourceMetadataAcked(
       ResourceType type, String resourceName, Any rawResource, String versionInfo,
       long updateTime) {
@@ -326,26 +332,10 @@ public abstract class ClientXdsClientTestBase {
         versionInfo, updateTime, false);
   }
 
-  private ResourceMetadata verifyResourceMetadata(
-      ResourceType type, String resourceName, Any rawResource, ResourceMetadataStatus status,
-      String versionInfo, long updateTime, boolean hasErrorState) {
-    ResourceMetadata resourceMetadata = xdsClient.getSubscribedResourceMetadata(type, resourceName);
-    assertThat(resourceMetadata).isNotNull();
-    String name = type.toString() + " resource '" + resourceName + "' metadata field ";
-    assertWithMessage(name + "status").that(resourceMetadata.getStatus()).isEqualTo(status);
-    assertWithMessage(name + "version").that(resourceMetadata.getVersion()).isEqualTo(versionInfo);
-    assertWithMessage(name + "rawResource").that(resourceMetadata.getRawResource())
-        .isEqualTo(rawResource);
-    assertWithMessage(name + "updateTime").that(resourceMetadata.getUpdateTime())
-        .isEqualTo(updateTime);
-    if (hasErrorState) {
-      assertWithMessage(name + "errorState").that(resourceMetadata.getErrorState()).isNotNull();
-    } else {
-      assertWithMessage(name + "errorState").that(resourceMetadata.getErrorState()).isNull();
-    }
-    return resourceMetadata;
-  }
-
+  /**
+   * Verify the resource to be nacked, and every i-th line of error details to begin with
+   * corresponding i-th element of {@code List<String> failedDetails}.
+   */
   private void verifyResourceMetadataNacked(
       ResourceType type, String resourceName, Any rawResource, String versionInfo,
       long updateTime, String failedVersion, long failedUpdateTime,
@@ -366,6 +356,26 @@ public abstract class ClientXdsClientTestBase {
       assertWithMessage(name + "failedDetails line " + i).that(errors.get(i))
           .startsWith(failedDetails.get(i));
     }
+  }
+
+  private ResourceMetadata verifyResourceMetadata(
+      ResourceType type, String resourceName, Any rawResource, ResourceMetadataStatus status,
+      String versionInfo, long updateTime, boolean hasErrorState) {
+    ResourceMetadata resourceMetadata = xdsClient.getSubscribedResourceMetadata(type, resourceName);
+    assertThat(resourceMetadata).isNotNull();
+    String name = type.toString() + " resource '" + resourceName + "' metadata field ";
+    assertWithMessage(name + "status").that(resourceMetadata.getStatus()).isEqualTo(status);
+    assertWithMessage(name + "version").that(resourceMetadata.getVersion()).isEqualTo(versionInfo);
+    assertWithMessage(name + "rawResource").that(resourceMetadata.getRawResource())
+        .isEqualTo(rawResource);
+    assertWithMessage(name + "updateTime").that(resourceMetadata.getUpdateTime())
+        .isEqualTo(updateTime);
+    if (hasErrorState) {
+      assertWithMessage(name + "errorState").that(resourceMetadata.getErrorState()).isNotNull();
+    } else {
+      assertWithMessage(name + "errorState").that(resourceMetadata.getErrorState()).isNull();
+    }
+    return resourceMetadata;
   }
 
   /**
@@ -398,10 +408,13 @@ public abstract class ClientXdsClientTestBase {
     // Client sends an ACK LDS request.
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_1, "0000", NODE);
     verifyNoInteractions(ldsResourceWatcher);
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
+    // Server failed to return subscribed resource within expected time window.
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
-    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(LDS, LDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
   }
 
@@ -498,8 +511,10 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, listenersV3.values().asList(), VERSION_3, "0003");
     // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
     // {B, C} -> ACK, version 3
-    verifyResourceMetadataNacked(LDS, "A", listenersV1.get("A"), VERSION_1, TIME_INCREMENT,
-        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    // TODO(sergiitk): is there a way for this to not be deleted?
+    verifyResourceMetadataDoesNotExist(LDS, "A");
+    // verifyResourceMetadataNacked(LDS, "A", listenersV1.get("A"), VERSION_1, TIME_INCREMENT,
+    //     VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(LDS, "B", listenersV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
     verifyResourceMetadataAcked(LDS, "C", listenersV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
     call.verifyRequest(LDS, subscribedListeners, VERSION_3, "0003", NODE);
@@ -561,7 +576,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchLdsResource(LDS_RESOURCE, watcher);
     verify(watcher).onResourceDoesNotExist(LDS_RESOURCE);
     call.verifyNoMoreRequest();
-    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(LDS, LDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
   }
 
@@ -666,7 +681,8 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, Collections.<Any>emptyList(), VERSION_2, "0001");
     call.verifyRequest(LDS, LDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
-    // TODO(sergiitk): verify deleted metadata.
+    verifyResourceMetadataDoesNotExist(LDS, LDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
   }
 
   @Test
@@ -679,14 +695,17 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchLdsResource(ldsResourceTwo, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
     call.verifyRequest(LDS, ImmutableList.of(LDS_RESOURCE, ldsResourceTwo), "", "", NODE);
+    // Both LDS resources were requested.
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifyResourceMetadataRequested(LDS, ldsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(2, 0, 0, 0);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(ldsResourceWatcher).onResourceDoesNotExist(LDS_RESOURCE);
     verify(watcher1).onResourceDoesNotExist(ldsResourceTwo);
     verify(watcher2).onResourceDoesNotExist(ldsResourceTwo);
-    // Both LDS resources were requested.
-    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
-    verifyResourceMetadataRequested(LDS, ldsResourceTwo);
+    verifyResourceMetadataDoesNotExist(LDS, LDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(LDS, ldsResourceTwo);
     verifySubscribedResourcesMetadataSizes(2, 0, 0, 0);
 
     Any listenerTwo = Any.pack(mf.buildListenerForRds(ldsResourceTwo, RDS_RESOURCE));
@@ -717,12 +736,14 @@ public abstract class ClientXdsClientTestBase {
 
     // Client sends an ACK RDS request.
     call.verifyRequest(RDS, RDS_RESOURCE, VERSION_1, "0000", NODE);
-    // Unknown RDS resource.
     verifyNoInteractions(rdsResourceWatcher);
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
+    // Server failed to return subscribed resource within expected time window.
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(RDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
-    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(RDS, RDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
@@ -873,7 +894,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchRdsResource(RDS_RESOURCE, watcher);
     verify(watcher).onResourceDoesNotExist(RDS_RESOURCE);
     call.verifyNoMoreRequest();
-    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(RDS, RDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
@@ -930,9 +951,10 @@ public abstract class ClientXdsClientTestBase {
     verify(ldsResourceWatcher, times(2)).onChanged(ldsUpdateCaptor.capture());
     assertThat(ldsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
-    // TODO(sergiitk): verify deleted metadata.
-    verifyResourceMetadataAcked(LDS, LDS_RESOURCE, testListenerVhosts, VERSION_2,
-        TIME_INCREMENT * 3);
+    verifyResourceMetadataDoesNotExist(RDS, RDS_RESOURCE);
+    verifyResourceMetadataAcked(
+        LDS, LDS_RESOURCE, testListenerVhosts, VERSION_2, TIME_INCREMENT * 3);
+    verifySubscribedResourcesMetadataSizes(1, 0, 1, 0);
   }
 
   @Test
@@ -945,14 +967,17 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchRdsResource(rdsResourceTwo, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
     call.verifyRequest(RDS, Arrays.asList(RDS_RESOURCE, rdsResourceTwo), "", "", NODE);
+    // Both RDS resources were requested.
+    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
+    verifyResourceMetadataRequested(RDS, rdsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(0, 0, 2, 0);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(rdsResourceWatcher).onResourceDoesNotExist(RDS_RESOURCE);
     verify(watcher1).onResourceDoesNotExist(rdsResourceTwo);
     verify(watcher2).onResourceDoesNotExist(rdsResourceTwo);
-    // Both RDS resources were requested.
-    verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
-    verifyResourceMetadataRequested(RDS, rdsResourceTwo);
+    verifyResourceMetadataDoesNotExist(RDS, RDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(RDS, rdsResourceTwo);
     verifySubscribedResourcesMetadataSizes(0, 0, 2, 0);
 
     call.sendResponse(RDS, testRouteConfig, VERSION_1, "0000");
@@ -960,7 +985,8 @@ public abstract class ClientXdsClientTestBase {
     assertThat(rdsUpdateCaptor.getValue().virtualHosts).hasSize(VHOST_SIZE);
     verifyNoMoreInteractions(watcher1, watcher2);
     verifyResourceMetadataAcked(RDS, RDS_RESOURCE, testRouteConfig, VERSION_1, TIME_INCREMENT);
-    verifyResourceMetadataRequested(RDS, rdsResourceTwo);
+    verifyResourceMetadataDoesNotExist(RDS, rdsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(0, 0, 2, 0);
 
     Any routeConfigTwo =
         Any.pack(mf.buildRouteConfiguration(rdsResourceTwo, mf.buildOpaqueVirtualHosts(4)));
@@ -989,11 +1015,13 @@ public abstract class ClientXdsClientTestBase {
     // Client sent an ACK CDS request.
     call.verifyRequest(CDS, CDS_RESOURCE, VERSION_1, "0000", NODE);
     verifyNoInteractions(cdsResourceWatcher);
-
+    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
+    // Server failed to return subscribed resource within expected time window.
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(CDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
-    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(CDS, CDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
@@ -1165,7 +1193,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchCdsResource(CDS_RESOURCE, watcher);
     verify(watcher).onResourceDoesNotExist(CDS_RESOURCE);
     call.verifyNoMoreRequest();
-    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(CDS, CDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
@@ -1233,7 +1261,8 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(CDS, Collections.<Any>emptyList(), VERSION_2, "0001");
     call.verifyRequest(CDS, CDS_RESOURCE, VERSION_2, "0001", NODE);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
-    // TODO(sergiitk): verify deleted metadata.
+    verifyResourceMetadataDoesNotExist(CDS, CDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
   @Test
@@ -1246,13 +1275,16 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchCdsResource(cdsResourceTwo, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
     call.verifyRequest(CDS, Arrays.asList(CDS_RESOURCE, cdsResourceTwo), "", "", NODE);
+    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
+    verifyResourceMetadataRequested(CDS, cdsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(0, 2, 0, 0);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(cdsResourceWatcher).onResourceDoesNotExist(CDS_RESOURCE);
     verify(watcher1).onResourceDoesNotExist(cdsResourceTwo);
     verify(watcher2).onResourceDoesNotExist(cdsResourceTwo);
-    verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
-    verifyResourceMetadataRequested(CDS, cdsResourceTwo);
+    verifyResourceMetadataDoesNotExist(CDS, CDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(CDS, cdsResourceTwo);
     verifySubscribedResourcesMetadataSizes(0, 2, 0, 0);
 
     String edsService = "eds-service-bar.googleapis.com";
@@ -1305,10 +1337,13 @@ public abstract class ClientXdsClientTestBase {
     // Client sent an ACK EDS request.
     call.verifyRequest(EDS, EDS_RESOURCE, VERSION_1, "0000", NODE);
     verifyNoInteractions(edsResourceWatcher);
+    verifyResourceMetadataRequested(EDS, EDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(0, 0, 0, 1);
+    // Server failed to return subscribed resource within expected time window.
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(edsResourceWatcher).onResourceDoesNotExist(EDS_RESOURCE);
     assertThat(fakeClock.getPendingTasks(EDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
-    verifyResourceMetadataRequested(EDS, EDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(EDS, EDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(0, 0, 0, 1);
   }
 
@@ -1353,7 +1388,7 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchEdsResource(EDS_RESOURCE, watcher);
     verify(watcher).onResourceDoesNotExist(EDS_RESOURCE);
     call.verifyNoMoreRequest();
-    verifyResourceMetadataRequested(EDS, EDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(EDS, EDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(0, 0, 0, 1);
   }
 
@@ -1447,10 +1482,11 @@ public abstract class ClientXdsClientTestBase {
     verify(edsResourceWatcher).onChanged(edsUpdateCaptor.capture());
     assertThat(edsUpdateCaptor.getValue().clusterName).isEqualTo(EDS_RESOURCE);
 
-    verifyResourceMetadataAcked(EDS, EDS_RESOURCE, clusterLoadAssignments.get(0), VERSION_1,
-        TIME_INCREMENT * 2);
-    verifyResourceMetadataAcked(EDS, resource, clusterLoadAssignments.get(1), VERSION_1,
-        TIME_INCREMENT * 2);
+    verifyResourceMetadataAcked(
+        EDS, EDS_RESOURCE, clusterLoadAssignments.get(0), VERSION_1, TIME_INCREMENT * 2);
+    verifyResourceMetadataAcked(
+        EDS, resource, clusterLoadAssignments.get(1), VERSION_1, TIME_INCREMENT * 2);
+    // CDS not changed.
     verifyResourceMetadataAcked(CDS, resource, clusters.get(0), VERSION_1, TIME_INCREMENT);
     verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusters.get(1), VERSION_1, TIME_INCREMENT);
     verifySubscribedResourcesMetadataSizes(0, 2, 0, 2);
@@ -1464,9 +1500,12 @@ public abstract class ClientXdsClientTestBase {
     assertThat(cdsUpdateCaptor.getValue().edsServiceName()).isNull();
     verify(edsResourceWatcher).onResourceDoesNotExist(EDS_RESOURCE);
     verifyNoMoreInteractions(cdsWatcher, edsWatcher);
-    // TODO(sergiitk): verify deleted metadata.
+    verifyResourceMetadataDoesNotExist(EDS, EDS_RESOURCE);
+    verifyResourceMetadataAcked(
+        EDS, resource, clusterLoadAssignments.get(1), VERSION_1, TIME_INCREMENT * 2);  // no change
     verifyResourceMetadataAcked(CDS, resource, clusters.get(0), VERSION_2, TIME_INCREMENT * 3);
     verifyResourceMetadataAcked(CDS, CDS_RESOURCE, clusters.get(1), VERSION_2, TIME_INCREMENT * 3);
+    verifySubscribedResourcesMetadataSizes(0, 2, 0, 2);
   }
 
   @Test
@@ -1479,14 +1518,16 @@ public abstract class ClientXdsClientTestBase {
     xdsClient.watchEdsResource(edsResourceTwo, watcher2);
     DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
     call.verifyRequest(EDS, Arrays.asList(EDS_RESOURCE, edsResourceTwo), "", "", NODE);
+    verifyResourceMetadataRequested(EDS, EDS_RESOURCE);
+    verifyResourceMetadataRequested(EDS, edsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(0, 0, 0, 2);
 
     fakeClock.forwardTime(ClientXdsClient.INITIAL_RESOURCE_FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
     verify(edsResourceWatcher).onResourceDoesNotExist(EDS_RESOURCE);
     verify(watcher1).onResourceDoesNotExist(edsResourceTwo);
     verify(watcher2).onResourceDoesNotExist(edsResourceTwo);
-    // Both EDS resources were requested.
-    verifyResourceMetadataRequested(EDS, EDS_RESOURCE);
-    verifyResourceMetadataRequested(EDS, edsResourceTwo);
+    verifyResourceMetadataDoesNotExist(EDS, EDS_RESOURCE);
+    verifyResourceMetadataDoesNotExist(EDS, edsResourceTwo);
     verifySubscribedResourcesMetadataSizes(0, 0, 0, 2);
 
     call.sendResponse(EDS, testClusterLoadAssignment, VERSION_1, "0000");
@@ -1494,9 +1535,10 @@ public abstract class ClientXdsClientTestBase {
     EdsUpdate edsUpdate = edsUpdateCaptor.getValue();
     validateTestClusterLoadAssigment(edsUpdate);
     verifyNoMoreInteractions(watcher1, watcher2);
-    verifyResourceMetadataAcked(EDS, EDS_RESOURCE, testClusterLoadAssignment, VERSION_1,
-        TIME_INCREMENT);
-    verifyResourceMetadataRequested(EDS, edsResourceTwo);
+    verifyResourceMetadataAcked(
+        EDS, EDS_RESOURCE, testClusterLoadAssignment, VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataDoesNotExist(EDS, edsResourceTwo);
+    verifySubscribedResourcesMetadataSizes(0, 0, 0, 2);
 
     Any clusterLoadAssignmentTwo = Any.pack(
         mf.buildClusterLoadAssignment(edsResourceTwo,
@@ -1527,11 +1569,10 @@ public abstract class ClientXdsClientTestBase {
                 ImmutableList.of(
                     LbEndpoint.create("172.44.2.2", 8000, 3, true)), 2, 0));
     verifyNoMoreInteractions(edsResourceWatcher);
-
-    verifyResourceMetadataAcked(EDS, edsResourceTwo, clusterLoadAssignmentTwo, VERSION_2,
-        TIME_INCREMENT * 2);
-    verifyResourceMetadataAcked(EDS, EDS_RESOURCE, testClusterLoadAssignment, VERSION_1,
-        TIME_INCREMENT);
+    verifyResourceMetadataAcked(
+        EDS, edsResourceTwo, clusterLoadAssignmentTwo, VERSION_2, TIME_INCREMENT * 2);
+    verifyResourceMetadataAcked(
+        EDS, EDS_RESOURCE, testClusterLoadAssignment, VERSION_1, TIME_INCREMENT);
     verifySubscribedResourcesMetadataSizes(0, 0, 0, 2);
   }
 

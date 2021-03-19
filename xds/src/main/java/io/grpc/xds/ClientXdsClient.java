@@ -1631,6 +1631,10 @@ final class ClientXdsClient extends AbstractXdsClient {
       return new ResourceMetadata(ResourceMetadataStatus.REQUESTED, "", 0, null, null);
     }
 
+    static ResourceMetadata newResourceMetadataDoesNotExist() {
+      return new ResourceMetadata(ResourceMetadataStatus.DOES_NOT_EXIST, "", 0, null, null);
+    }
+
     static ResourceMetadata newResourceMetadataAcked(
         Any resource, String version, long updateTime) {
       checkNotNull(resource, "resource");
@@ -1826,6 +1830,7 @@ final class ClientXdsClient extends AbstractXdsClient {
       if (!absent) {
         data = null;
         absent = true;
+        metadata = ResourceMetadata.newResourceMetadataDoesNotExist();
         for (ResourceWatcher watcher : watchers) {
           watcher.onResourceDoesNotExist(resource);
         }
