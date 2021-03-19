@@ -23,12 +23,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.protobuf.Any;
 import com.google.protobuf.Message;
 import com.google.protobuf.UInt32Value;
 import com.google.protobuf.UInt64Value;
 import com.google.protobuf.util.Durations;
+import com.google.rpc.Code;
 import io.envoyproxy.envoy.api.v2.Cluster;
 import io.envoyproxy.envoy.api.v2.Cluster.CustomClusterType;
 import io.envoyproxy.envoy.api.v2.Cluster.DiscoveryType;
@@ -178,7 +180,16 @@ public class ClientXdsClientV2Test extends ClientXdsClientTestBase {
         ResourceType type, List<String> resources, String versionInfo, String nonce,
         EnvoyProtoData.Node node) {
       verify(requestObserver).onNext(argThat(new DiscoveryRequestMatcher(
-          node.toEnvoyProtoNodeV2(), versionInfo, resources, type.typeUrlV2(), nonce)));
+          node.toEnvoyProtoNodeV2(), versionInfo, resources, type.typeUrlV2(), nonce, null, null)));
+    }
+
+    @Override
+    protected void verifyRequestNack(
+        ResourceType type, List<String> resources, String versionInfo, String nonce,
+        EnvoyProtoData.Node node, List<String> errorMessages) {
+      verify(requestObserver).onNext(argThat(new DiscoveryRequestMatcher(
+          node.toEnvoyProtoNodeV2(), versionInfo, resources, type.typeUrlV2(), nonce,
+          Code.INVALID_ARGUMENT_VALUE, errorMessages)));
     }
 
     @Override
@@ -273,6 +284,15 @@ public class ClientXdsClientV2Test extends ClientXdsClientTestBase {
                                   ConfigSource.newBuilder()
                                       .setAds(AggregatedConfigSource.getDefaultInstance())))
                       .build())))
+          .build();
+    }
+
+    @Override
+    protected Message buildListenerInvalid(String name) {
+      return Listener.newBuilder()
+          .setName(name)
+          .setAddress(Address.getDefaultInstance())
+          .setApiListener(ApiListener.newBuilder().setApiListener(FAILING_ANY))
           .build();
     }
 
@@ -585,14 +605,19 @@ public class ClientXdsClientV2Test extends ClientXdsClientTestBase {
     private final String typeUrl;
     private final Set<String> resources;
     private final String responseNonce;
+    @Nullable private final Integer errorCode;
+    private final List<String> errorMessages;
 
     private DiscoveryRequestMatcher(Node node, String versionInfo, List<String> resources,
-        String typeUrl, String responseNonce) {
+        String typeUrl, String responseNonce, @Nullable Integer errorCode,
+        @Nullable List<String> errorMessages) {
       this.node = node;
       this.versionInfo = versionInfo;
       this.resources = new HashSet<>(resources);
       this.typeUrl = typeUrl;
       this.responseNonce = responseNonce;
+      this.errorCode = errorCode;
+      this.errorMessages = errorMessages != null ? errorMessages : ImmutableList.<String>of();
     }
 
     @Override
@@ -607,6 +632,13 @@ public class ClientXdsClientV2Test extends ClientXdsClientTestBase {
         return false;
       }
       if (!resources.equals(new HashSet<>(argument.getResourceNamesList()))) {
+        return false;
+      }
+      if (errorCode == null && argument.hasErrorDetail()) {
+        return false;
+      }
+      if (errorCode != null
+          && !matchErrorDetail(argument.getErrorDetail(), errorCode, errorMessages)) {
         return false;
       }
       return node.equals(argument.getNode());

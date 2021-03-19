@@ -29,6 +29,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
@@ -53,6 +54,7 @@ import io.grpc.testing.GrpcCleanupRule;
 import io.grpc.xds.AbstractXdsClient.ResourceType;
 import io.grpc.xds.ClientXdsClient.ResourceMetadata;
 import io.grpc.xds.ClientXdsClient.ResourceMetadata.ResourceMetadataStatus;
+import io.grpc.xds.ClientXdsClient.ResourceMetadata.UpdateFailureState;
 import io.grpc.xds.Endpoints.DropOverload;
 import io.grpc.xds.Endpoints.LbEndpoint;
 import io.grpc.xds.Endpoints.LocalityLbEndpoints;
@@ -107,7 +109,9 @@ public abstract class ClientXdsClientTestBase {
       "grpc/server?xds.resource.listening_address=0.0.0.0:7000";
   private static final String VERSION_1 = "42";
   private static final String VERSION_2 = "43";
+  private static final String VERSION_3 = "44";
   private static final Node NODE = Node.newBuilder().build();
+  private static final Any FAILING_ANY = MessageFactory.FAILING_ANY;
 
   private static final FakeClock.TaskFilter RPC_RETRY_TASK_FILTER =
       new FakeClock.TaskFilter() {
@@ -230,12 +234,15 @@ public abstract class ClientXdsClientTestBase {
 
   @Before
   public void setUp() throws IOException {
-    originalEnableFaultInjection = ClientXdsClient.enableFaultInjection;
-    ClientXdsClient.enableFaultInjection = true;
+    // Init mocks.
     MockitoAnnotations.initMocks(this);
     when(backoffPolicyProvider.get()).thenReturn(backoffPolicy1, backoffPolicy2);
     when(backoffPolicy1.nextBackoffNanos()).thenReturn(10L, 100L);
     when(backoffPolicy2.nextBackoffNanos()).thenReturn(20L, 200L);
+
+    // Start the server and the client.
+    originalEnableFaultInjection = ClientXdsClient.enableFaultInjection;
+    ClientXdsClient.enableFaultInjection = true;
     final String serverName = InProcessServerBuilder.generateName();
     cleanupRule.register(
         InProcessServerBuilder
@@ -280,6 +287,23 @@ public abstract class ClientXdsClientTestBase {
 
   protected abstract MessageFactory createMessageFactory();
 
+  protected static boolean matchErrorDetail(
+      com.google.rpc.Status errorDetail, int expectedCode, List<String> expectedMessages) {
+    if (expectedCode != errorDetail.getCode()) {
+      return false;
+    }
+    List<String> errors = Splitter.on('\n').splitToList(errorDetail.getMessage());
+    if (errors.size() != expectedMessages.size()) {
+      return false;
+    }
+    for (int i = 0; i < errors.size(); i++) {
+      if (!errors.get(i).startsWith(expectedMessages.get(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private void verifySubscribedResourcesMetadataSizes(
       int ldsSize, int cdsSize, int rdsSize, int edsSize) {
     assertThat(xdsClient.getSubscribedResourcesMetadata(LDS)).hasSize(ldsSize);
@@ -290,23 +314,58 @@ public abstract class ClientXdsClientTestBase {
 
   /** Verify the resource requested, but not updated. */
   private void verifyResourceMetadataRequested(ResourceType type, String resourceName) {
-    ResourceMetadata resourceMetadata = xdsClient.getSubscribedResourceMetadata(type, resourceName);
-    assertThat(resourceMetadata).isNotNull();
-    assertThat(resourceMetadata.getStatus()).isEqualTo(ResourceMetadataStatus.REQUESTED);
-    assertThat(resourceMetadata.getVersion()).isEmpty();
-    assertThat(resourceMetadata.getUpdateTime()).isEqualTo(0);
-    assertThat(resourceMetadata.getRawResource()).isNull();
+    verifyResourceMetadata(
+        type, resourceName, null, ResourceMetadataStatus.REQUESTED, "", 0, false);
   }
 
   /** Verify the resource was acked. */
   private void verifyResourceMetadataAcked(
       ResourceType type, String resourceName, Any rawResource, String versionInfo,
       long updateTime) {
+    verifyResourceMetadata(type, resourceName, rawResource, ResourceMetadataStatus.ACKED,
+        versionInfo, updateTime, false);
+  }
+
+  private ResourceMetadata verifyResourceMetadata(
+      ResourceType type, String resourceName, Any rawResource, ResourceMetadataStatus status,
+      String versionInfo, long updateTime, boolean hasErrorState) {
     ResourceMetadata resourceMetadata = xdsClient.getSubscribedResourceMetadata(type, resourceName);
     assertThat(resourceMetadata).isNotNull();
-    assertWithMessage("version").that(resourceMetadata.getVersion()).isEqualTo(versionInfo);
-    assertWithMessage("rawResource").that(resourceMetadata.getRawResource()).isEqualTo(rawResource);
-    assertWithMessage("updateTime").that(resourceMetadata.getUpdateTime()).isEqualTo(updateTime);
+    String name = type.toString() + " resource '" + resourceName + "' metadata field ";
+    assertWithMessage(name + "status").that(resourceMetadata.getStatus()).isEqualTo(status);
+    assertWithMessage(name + "version").that(resourceMetadata.getVersion()).isEqualTo(versionInfo);
+    assertWithMessage(name + "rawResource").that(resourceMetadata.getRawResource())
+        .isEqualTo(rawResource);
+    assertWithMessage(name + "updateTime").that(resourceMetadata.getUpdateTime())
+        .isEqualTo(updateTime);
+    if (hasErrorState) {
+      assertWithMessage(name + "errorState").that(resourceMetadata.getErrorState()).isNotNull();
+    } else {
+      assertWithMessage(name + "errorState").that(resourceMetadata.getErrorState()).isNull();
+    }
+    return resourceMetadata;
+  }
+
+  private void verifyResourceMetadataNacked(
+      ResourceType type, String resourceName, Any rawResource, String versionInfo,
+      long updateTime, String failedVersion, long failedUpdateTime,
+      List<String> failedDetails) {
+    ResourceMetadata resourceMetadata =
+        verifyResourceMetadata(type, resourceName, rawResource, ResourceMetadataStatus.NACKED,
+            versionInfo, updateTime, true);
+
+    UpdateFailureState errorState = resourceMetadata.getErrorState();
+    assertThat(errorState).isNotNull();
+    String name = type.toString() + " resource '" + resourceName + "' metadata error ";
+    assertWithMessage(name + "failedVersion").that(errorState.getFailedVersion())
+        .isEqualTo(failedVersion);
+    assertWithMessage(name + "failedUpdateTime").that(errorState.getFailedUpdateTime())
+        .isEqualTo(failedUpdateTime);
+    List<String> errors = Splitter.on('\n').splitToList(errorState.getFailedDetails());
+    for (int i = 0; i < errors.size(); i++) {
+      assertWithMessage(name + "failedDetails line " + i).that(errors.get(i))
+          .startsWith(failedDetails.get(i));
+    }
   }
 
   /**
@@ -344,6 +403,107 @@ public abstract class ClientXdsClientTestBase {
     assertThat(fakeClock.getPendingTasks(LDS_RESOURCE_FETCH_TIMEOUT_TASK_FILTER)).isEmpty();
     verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
+  }
+
+  /** Error unpacking unknown listeners. */
+  @Test
+  public void ldsResponse_metadataUnknownListenersIgnored() {
+    DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+
+    // Error unpacking Listener resources.
+    call.sendResponse(LDS, ImmutableList.of(FAILING_ANY, FAILING_ANY), VERSION_1, "0000");
+
+    // Resulting metadata unchanged.
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
+    // The response NACKed with errors indicating indices of the failed resources.
+    call.verifyRequestNack(LDS, LDS_RESOURCE, "", "0000", NODE, ImmutableList.of(
+        "LDS response Resource index 0 - can't decode Listener: ",
+        "LDS response Resource index 1 - can't decode Listener: "));
+    verifyNoInteractions(ldsResourceWatcher);
+  }
+
+  /** Error unpacking unknown listeners, success processing a known listener. */
+  @Test
+  public void ldsResponse_metadataKnownListenersNacked() {
+    DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
+    verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
+
+    // Correct resource is in the middle of the response to ensure processing continues on errors.
+    call.sendResponse(
+        LDS, ImmutableList.of(FAILING_ANY, testListenerRds, FAILING_ANY), VERSION_1, "0000");
+
+    // Errors unpacking unknown resources recorded in the metadata of the known LDS_RESOURCE.
+    List<String> errors = ImmutableList.of(
+        "LDS response Resource index 0 - can't decode Listener: ",
+        "LDS response Resource index 2 - can't decode Listener: ");
+    verifyResourceMetadataNacked(LDS, LDS_RESOURCE, null, "", 0, VERSION_1, TIME_INCREMENT, errors);
+    verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
+    // The response is NACKed with the same error messages.
+    call.verifyRequestNack(LDS, LDS_RESOURCE, "", "0000", NODE, errors);
+    verifyNoInteractions(ldsResourceWatcher);
+  }
+
+  /**
+   * ADS Parsing Logic Update as described in
+   * <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
+   * A40-csds-support.md</a>.
+   */
+  @Test
+  public void ldsResponse_metadataParsingLogic() {
+    List<String> subscribedListeners = ImmutableList.of("A", "B", "C");
+    xdsClient.watchLdsResource("A", ldsResourceWatcher);
+    xdsClient.watchLdsResource("B", ldsResourceWatcher);
+    xdsClient.watchLdsResource("C", ldsResourceWatcher);
+    DiscoveryRpcCall call = resourceDiscoveryCalls.poll();
+    assertThat(call).isNotNull();
+    verifyResourceMetadataRequested(LDS, "A");
+    verifyResourceMetadataRequested(LDS, "B");
+    verifyResourceMetadataRequested(LDS, "C");
+    verifySubscribedResourcesMetadataSizes(3, 0, 0, 0);
+
+    // LDS -> {A, B, C}, version 1
+    ImmutableMap<String, Any> listenersV1 = ImmutableMap.of(
+        "A", Any.pack(mf.buildListenerForRds("A", "A.1")),
+        "B", Any.pack(mf.buildListenerForRds("B", "B.1")),
+        "C", Any.pack(mf.buildListenerForRds("C", "C.1")));
+    call.sendResponse(LDS, listenersV1.values().asList(), VERSION_1, "0000");
+    // {A, B, C} -> ACK, version 1
+    verifyResourceMetadataAcked(LDS, "A", listenersV1.get("A"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(LDS, "B", listenersV1.get("B"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(LDS, "C", listenersV1.get("C"), VERSION_1, TIME_INCREMENT);
+    call.verifyRequest(LDS, subscribedListeners, VERSION_1, "0000", NODE);
+
+    // LDS -> {A, B}, version 2
+    // Failed to parse endpoint B
+    ImmutableMap<String, Any> listenersV2 = ImmutableMap.of(
+        "A", Any.pack(mf.buildListenerForRds("A", "A.2")),
+        "B", Any.pack(mf.buildListenerInvalid("B")));
+    call.sendResponse(LDS, listenersV2.values().asList(), VERSION_2, "0001");
+    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    // {C} -> ACK, version 1
+    List<String> errorsV2 = ImmutableList.of("LDS response Listener 'B' validation error: ");
+    verifyResourceMetadataNacked(LDS, "A", listenersV1.get("A"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataNacked(LDS, "B", listenersV1.get("B"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataAcked(LDS, "C", listenersV1.get("C"), VERSION_1, TIME_INCREMENT);
+    call.verifyRequestNack(LDS, subscribedListeners, VERSION_1, "0001", NODE, errorsV2);
+
+    // LDS -> {B, C} version 3
+    ImmutableMap<String, Any> listenersV3 = ImmutableMap.of(
+        "B", Any.pack(mf.buildListenerForRds("B", "B.3")),
+        "C", Any.pack(mf.buildListenerForRds("C", "C.3")));
+    call.sendResponse(LDS, listenersV3.values().asList(), VERSION_3, "0003");
+    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    // {B, C} -> ACK, version 3
+    verifyResourceMetadataNacked(LDS, "A", listenersV1.get("A"), VERSION_1, TIME_INCREMENT,
+        VERSION_2, TIME_INCREMENT * 2, errorsV2);
+    verifyResourceMetadataAcked(LDS, "B", listenersV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(LDS, "C", listenersV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
+    call.verifyRequest(LDS, subscribedListeners, VERSION_3, "0003", NODE);
+    verifySubscribedResourcesMetadataSizes(3, 0, 0, 0);
   }
 
   @Test
@@ -1579,6 +1739,16 @@ public abstract class ClientXdsClientTestBase {
       verifyRequest(type, ImmutableList.of(resource), versionInfo, nonce, node);
     }
 
+    protected abstract void verifyRequestNack(
+        ResourceType type, List<String> resources, String versionInfo, String nonce, Node node,
+        List<String> errorMessages);
+
+    protected void verifyRequestNack(
+        ResourceType type, String resource, String versionInfo, String nonce, Node node,
+        List<String> errorMessages) {
+      verifyRequestNack(type, ImmutableList.of(resource), versionInfo, nonce, node, errorMessages);
+    }
+
     protected abstract void verifyNoMoreRequest();
 
     protected abstract void sendResponse(
@@ -1604,6 +1774,8 @@ public abstract class ClientXdsClientTestBase {
   }
 
   protected abstract static class MessageFactory {
+    /** Throws {@link InvalidProtocolBufferException} on {@link Any#unpack(Class)}. */
+    protected static final Any FAILING_ANY = Any.newBuilder().setTypeUrl("fake").build();
 
     protected final Message buildListener(String name, Message routeConfiguration) {
       return buildListener(name, routeConfiguration, Collections.<Message>emptyList());
@@ -1614,6 +1786,8 @@ public abstract class ClientXdsClientTestBase {
         String name, Message routeConfiguration, List<? extends Message> httpFilters);
 
     protected abstract Message buildListenerForRds(String name, String rdsResourceName);
+
+    protected abstract Message buildListenerInvalid(String name);
 
     protected abstract Message buildHttpFilter(
         String name, @Nullable Any typedConfig, boolean isOptional);
