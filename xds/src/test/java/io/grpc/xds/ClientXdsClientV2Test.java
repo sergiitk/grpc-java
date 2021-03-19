@@ -382,6 +382,12 @@ public class ClientXdsClientV2Test extends ClientXdsClientTestBase {
     }
 
     @Override
+    protected Message buildClusterInvalid(String name) {
+      // Unspecified cluster discovery type
+      return Cluster.newBuilder().setName(name).build();
+    }
+
+    @Override
     protected Message buildEdsCluster(String clusterName, @Nullable String edsServiceName,
         String lbPolicy, @Nullable Message ringHashLbConfig, boolean enableLrs,
         @Nullable Message upstreamTlsContext, @Nullable Message circuitBreakers) {

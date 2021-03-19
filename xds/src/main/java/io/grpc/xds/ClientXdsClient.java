@@ -293,6 +293,7 @@ final class ClientXdsClient extends AbstractXdsClient {
     Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
     Set<String> listenerNames = new HashSet<>(resources.size());
     List<String> errors = new ArrayList<>();
+    // Retained RDS resources
     Set<String> rdsNames = new HashSet<>();
 
     for (int i = 0; i < resources.size(); i++) {
@@ -953,8 +954,7 @@ final class ClientXdsClient extends AbstractXdsClient {
     return new RdsUpdate(virtualHosts);
   }
 
-  @Override
-  protected void handleCdsResponse(String versionInfo, List<Any> resources, String nonce) {
+  private void handleCdsResponse2(String versionInfo, List<Any> resources, String nonce) {
     // Unpack Cluster messages.
     List<Cluster> clusters = new ArrayList<>(resources.size());
     List<String> clusterNames = new ArrayList<>(resources.size());
@@ -1044,6 +1044,103 @@ final class ClientXdsClient extends AbstractXdsClient {
         subscriber.onAbsent();
       }
     }
+  }
+
+  @Override
+  protected void handleCdsResponse(String versionInfo, List<Any> resources, String nonce) {
+    Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
+    Set<String> clusterNames = new HashSet<>(resources.size());
+    List<String> errors = new ArrayList<>();
+    Set<String> retainedEdsResources = new HashSet<>();
+
+    for (int i = 0; i < resources.size(); i++) {
+      // Unpack Cluster messages.
+      Any resource = resources.get(i);
+      Cluster cluster;
+      try {
+        cluster = unpackCompatibleType(
+            resource, Cluster.class, ResourceType.CDS.typeUrl(), ResourceType.CDS.typeUrlV2());
+      } catch (InvalidProtocolBufferException e) {
+        errors.add("CDS response Resource index " + i + " - can't decode Cluster: " + e);
+        continue;
+      }
+      String clusterName = cluster.getName();
+
+      // Management server is required to always send newly requested resources, even if they
+      // may have been sent previously (proactively). Thus, client does not need to cache
+      // unrequested resources.
+      if (!cdsResourceSubscribers.containsKey(clusterName)) {
+        continue;
+      }
+      clusterNames.add(clusterName);
+
+      // Process Cluster into CdsUpdate.
+      CdsUpdate cdsUpdate;
+      try {
+        cdsUpdate = processCluster(cluster, retainedEdsResources);
+      } catch (ResourceInvalidException e) {
+        errors.add("CDS response Cluster '" + clusterName + "' validation error: " + e);
+        continue;
+      }
+      parsedResources.put(clusterName, new ParsedResource(cdsUpdate, resource));
+    }
+    getLogger().log(XdsLogLevel.INFO,
+        "Received CDS Response version {0} nonce {1}. Parsed resources: {2}",
+        versionInfo, nonce, clusterNames);
+
+    if (!errors.isEmpty()) {
+      handleResourcesNacked(ResourceType.CDS, clusterNames, versionInfo, nonce, errors);
+      return;
+    }
+
+    handleResourcesAcked(ResourceType.CDS, parsedResources, versionInfo, nonce, true);
+    // CDS responses represents the state of the world, EDS resources not referenced in CDS
+    // resources should be deleted.
+    for (String resource : edsResourceSubscribers.keySet()) {
+      ResourceSubscriber subscriber = edsResourceSubscribers.get(resource);
+      if (!retainedEdsResources.contains(resource)) {
+        subscriber.onAbsent();
+      }
+    }
+  }
+
+  private static CdsUpdate processCluster(Cluster cluster, Set<String> retainedEdsResources)
+      throws ResourceInvalidException {
+    StructOrError<CdsUpdate.Builder> structOrError;
+    switch (cluster.getClusterDiscoveryTypeCase()) {
+      case TYPE:
+        structOrError = parseNonAggregateCluster(cluster, retainedEdsResources);
+        break;
+      case CLUSTER_TYPE:
+        structOrError = parseAggregateCluster(cluster);
+        break;
+      case CLUSTERDISCOVERYTYPE_NOT_SET:
+      default:
+        throw new ResourceInvalidException("Unspecified cluster discovery type");
+    }
+    if (structOrError.getErrorDetail() != null) {
+      throw new ResourceInvalidException(structOrError.errorDetail);
+    }
+
+    CdsUpdate.Builder updateBuilder = structOrError.getStruct();
+    String lbPolicy = CaseFormat.UPPER_UNDERSCORE.to(
+        CaseFormat.LOWER_UNDERSCORE, cluster.getLbPolicy().name());
+
+    if (cluster.getLbPolicy() == LbPolicy.RING_HASH) {
+      RingHashLbConfig lbConfig = cluster.getRingHashLbConfig();
+      if (lbConfig.getHashFunction() != RingHashLbConfig.HashFunction.XX_HASH) {
+        throw new ResourceInvalidException(
+            "Unsupported ring hash function: " + lbConfig.getHashFunction());
+      }
+      updateBuilder.lbPolicy(lbPolicy, lbConfig.getMinimumRingSize().getValue(),
+          lbConfig.getMaximumRingSize().getValue());
+    } else if (cluster.getLbPolicy() == LbPolicy.ROUND_ROBIN) {
+      updateBuilder.lbPolicy(lbPolicy);
+    } else {
+      throw new ResourceInvalidException("Unsupported lb policy: " + cluster.getLbPolicy());
+    }
+
+    return updateBuilder.build();
   }
 
   private static StructOrError<CdsUpdate.Builder> parseAggregateCluster(Cluster cluster) {
