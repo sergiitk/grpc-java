@@ -418,16 +418,13 @@ public abstract class ClientXdsClientTestBase {
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
   }
 
-  /** Error unpacking unknown listeners. */
   @Test
-  public void ldsResponse_metadataUnknownListenersIgnored() {
+  public void ldsResponseErrorHandling_allResourcesFailedUnpack() {
     DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
     verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
-
-    // Error unpacking Listener resources.
     call.sendResponse(LDS, ImmutableList.of(FAILING_ANY, FAILING_ANY), VERSION_1, "0000");
 
-    // Resulting metadata unchanged.
+    // Resulting metadata unchanged because the response has no identifiable subscribed resources.
     verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
     // The response NACKed with errors indicating indices of the failed resources.
@@ -437,34 +434,34 @@ public abstract class ClientXdsClientTestBase {
     verifyNoInteractions(ldsResourceWatcher);
   }
 
-  /** Error unpacking unknown listeners, success processing a known listener. */
   @Test
-  public void ldsResponse_metadataKnownListenersNacked() {
+  public void ldsResponseErrorHandling_someResourcesFailedUnpack() {
     DiscoveryRpcCall call = startResourceWatcher(LDS, LDS_RESOURCE, ldsResourceWatcher);
     verifyResourceMetadataRequested(LDS, LDS_RESOURCE);
 
-    // Correct resource is in the middle of the response to ensure processing continues on errors.
-    call.sendResponse(
-        LDS, ImmutableList.of(FAILING_ANY, testListenerRds, FAILING_ANY), VERSION_1, "0000");
+    // Correct resource is in the middle to ensure processing continues on errors.
+    List<Any> resources = ImmutableList.of(FAILING_ANY, testListenerRds, FAILING_ANY);
+    call.sendResponse(LDS, resources, VERSION_1, "0000");
 
-    // Errors unpacking unknown resources recorded in the metadata of the known LDS_RESOURCE.
+    // All errors recorded in the metadata of successfully unpacked subscribed resources.
     List<String> errors = ImmutableList.of(
         "LDS response Resource index 0 - can't decode Listener: ",
         "LDS response Resource index 2 - can't decode Listener: ");
     verifyResourceMetadataNacked(LDS, LDS_RESOURCE, null, "", 0, VERSION_1, TIME_INCREMENT, errors);
     verifySubscribedResourcesMetadataSizes(1, 0, 0, 0);
-    // The response is NACKed with the same error messages.
+    // The response is NACKed with the same error message.
     call.verifyRequestNack(LDS, LDS_RESOURCE, "", "0000", NODE, errors);
     verifyNoInteractions(ldsResourceWatcher);
   }
 
   /**
-   * ADS Parsing Logic Update as described in
-   * <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
+   * Tests a subscribed LDS resource transitioned to and from the invalid state.
+   *
+   * @see <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
    * A40-csds-support.md</a>.
    */
   @Test
-  public void ldsResponse_metadataParsingLogic() {
+  public void ldsResponseErrorHandling_subscribedResourceInvalid() {
     List<String> subscribedResources = ImmutableList.of("A", "B", "C");
     xdsClient.watchLdsResource("A", ldsResourceWatcher);
     xdsClient.watchLdsResource("B", ldsResourceWatcher);
@@ -477,46 +474,46 @@ public abstract class ClientXdsClientTestBase {
     verifySubscribedResourcesMetadataSizes(3, 0, 0, 0);
 
     // LDS -> {A, B, C}, version 1
-    ImmutableMap<String, Any> listenersV1 = ImmutableMap.of(
+    ImmutableMap<String, Any> resourcesV1 = ImmutableMap.of(
         "A", Any.pack(mf.buildListenerForRds("A", "A.1")),
         "B", Any.pack(mf.buildListenerForRds("B", "B.1")),
         "C", Any.pack(mf.buildListenerForRds("C", "C.1")));
-    call.sendResponse(LDS, listenersV1.values().asList(), VERSION_1, "0000");
+    call.sendResponse(LDS, resourcesV1.values().asList(), VERSION_1, "0000");
     // {A, B, C} -> ACK, version 1
-    verifyResourceMetadataAcked(LDS, "A", listenersV1.get("A"), VERSION_1, TIME_INCREMENT);
-    verifyResourceMetadataAcked(LDS, "B", listenersV1.get("B"), VERSION_1, TIME_INCREMENT);
-    verifyResourceMetadataAcked(LDS, "C", listenersV1.get("C"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(LDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(LDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(LDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
     call.verifyRequest(LDS, subscribedResources, VERSION_1, "0000", NODE);
 
     // LDS -> {A, B}, version 2
     // Failed to parse endpoint B
-    ImmutableMap<String, Any> listenersV2 = ImmutableMap.of(
+    ImmutableMap<String, Any> resourcesV2 = ImmutableMap.of(
         "A", Any.pack(mf.buildListenerForRds("A", "A.2")),
         "B", Any.pack(mf.buildListenerInvalid("B")));
-    call.sendResponse(LDS, listenersV2.values().asList(), VERSION_2, "0001");
-    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    call.sendResponse(LDS, resourcesV2.values().asList(), VERSION_2, "0001");
+    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
     // {C} -> ACK, version 1
     List<String> errorsV2 = ImmutableList.of("LDS response Listener 'B' validation error: ");
-    verifyResourceMetadataNacked(LDS, "A", listenersV1.get("A"), VERSION_1, TIME_INCREMENT,
+    verifyResourceMetadataNacked(LDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataNacked(LDS, "B", listenersV1.get("B"), VERSION_1, TIME_INCREMENT,
+    verifyResourceMetadataNacked(LDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataAcked(LDS, "C", listenersV1.get("C"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(LDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
     call.verifyRequestNack(LDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
 
     // LDS -> {B, C} version 3
-    ImmutableMap<String, Any> listenersV3 = ImmutableMap.of(
+    ImmutableMap<String, Any> resourcesV3 = ImmutableMap.of(
         "B", Any.pack(mf.buildListenerForRds("B", "B.3")),
         "C", Any.pack(mf.buildListenerForRds("C", "C.3")));
-    call.sendResponse(LDS, listenersV3.values().asList(), VERSION_3, "0002");
-    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    call.sendResponse(LDS, resourcesV3.values().asList(), VERSION_3, "0002");
+    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
     // {B, C} -> ACK, version 3
     // TODO(sergiitk): is there a way for this to not be deleted?
     verifyResourceMetadataDoesNotExist(LDS, "A");
-    // verifyResourceMetadataNacked(LDS, "A", listenersV1.get("A"), VERSION_1, TIME_INCREMENT,
+    // verifyResourceMetadataNacked(LDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
     //     VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataAcked(LDS, "B", listenersV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
-    verifyResourceMetadataAcked(LDS, "C", listenersV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(LDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(LDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
     call.verifyRequest(LDS, subscribedResources, VERSION_3, "0002", NODE);
     verifySubscribedResourcesMetadataSizes(3, 0, 0, 0);
   }
@@ -747,16 +744,13 @@ public abstract class ClientXdsClientTestBase {
     verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
   }
 
-  /** Error unpacking unknown route configs. */
   @Test
-  public void rdsResponse_metadataUnknownRouteConfigsIgnored() {
+  public void rdsResponseErrorHandling_allResourcesFailedUnpack() {
     DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
     verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
-
-    // Error unpacking RouteConfiguration resources.
     call.sendResponse(RDS, ImmutableList.of(FAILING_ANY, FAILING_ANY), VERSION_1, "0000");
 
-    // Resulting metadata unchanged.
+    // Resulting metadata unchanged because the response has no identifiable subscribed resources.
     verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
     // The response NACKed with errors indicating indices of the failed resources.
@@ -766,36 +760,34 @@ public abstract class ClientXdsClientTestBase {
     verifyNoInteractions(rdsResourceWatcher);
   }
 
-  /** Error unpacking unknown route configs, success processing a known route config. */
   @Test
-  public void rdsResponse_metadataKnownRouteConfigsNacked() {
+  public void rdsResponseErrorHandling_someResourcesFailedUnpack() {
     DiscoveryRpcCall call = startResourceWatcher(RDS, RDS_RESOURCE, rdsResourceWatcher);
     verifyResourceMetadataRequested(RDS, RDS_RESOURCE);
 
-    // Correct resource is in the middle of the response to ensure processing continues on errors.
-    call.sendResponse(
-        RDS, ImmutableList.of(FAILING_ANY, testRouteConfig, FAILING_ANY), VERSION_1, "0000");
+    // Correct resource is in the middle to ensure processing continues on errors.
+    List<Any> resources = ImmutableList.of(FAILING_ANY, testRouteConfig, FAILING_ANY);
+    call.sendResponse(RDS, resources, VERSION_1, "0000");
 
-    // Errors unpacking unknown resources recorded in the metadata of the known LDS_RESOURCE.
+    // All errors recorded in the metadata of successfully unpacked subscribed resources.
     List<String> errors = ImmutableList.of(
         "RDS response Resource index 0 - can't decode RouteConfiguration: ",
         "RDS response Resource index 2 - can't decode RouteConfiguration: ");
     verifyResourceMetadataNacked(RDS, RDS_RESOURCE, null, "", 0, VERSION_1, TIME_INCREMENT, errors);
     verifySubscribedResourcesMetadataSizes(0, 0, 1, 0);
-    // The response is NACKed with the same error messages.
+    // The response is NACKed with the same error message.
     call.verifyRequestNack(RDS, RDS_RESOURCE, "", "0000", NODE, errors);
     verifyNoInteractions(rdsResourceWatcher);
   }
 
   /**
-   * RDS metadata workflow.
+   * Tests a subscribed RDS resource transitioned to and from the invalid state.
    *
-   * <p>ADS Parsing Logic Update as described in
-   * <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
+   * @see <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
    * A40-csds-support.md</a>.
    */
   @Test
-  public void rdsResponse_metadataParsingLogic() {
+  public void rdsResponseErrorHandling_subscribedResourceInvalid() {
     List<String> subscribedResources = ImmutableList.of("A", "B", "C");
     xdsClient.watchRdsResource("A", rdsResourceWatcher);
     xdsClient.watchRdsResource("B", rdsResourceWatcher);
@@ -809,46 +801,46 @@ public abstract class ClientXdsClientTestBase {
 
     // RDS -> {A, B, C}, version 1
     List<Message> vhostsV1 = mf.buildOpaqueVirtualHosts(1);
-    ImmutableMap<String, Any> routeConfigsV1 = ImmutableMap.of(
+    ImmutableMap<String, Any> resourcesV1 = ImmutableMap.of(
         "A", Any.pack(mf.buildRouteConfiguration("A", vhostsV1)),
         "B", Any.pack(mf.buildRouteConfiguration("B", vhostsV1)),
         "C", Any.pack(mf.buildRouteConfiguration("C", vhostsV1)));
-    call.sendResponse(RDS, routeConfigsV1.values().asList(), VERSION_1, "0000");
+    call.sendResponse(RDS, resourcesV1.values().asList(), VERSION_1, "0000");
     // {A, B, C} -> ACK, version 1
-    verifyResourceMetadataAcked(RDS, "A", routeConfigsV1.get("A"), VERSION_1, TIME_INCREMENT);
-    verifyResourceMetadataAcked(RDS, "B", routeConfigsV1.get("B"), VERSION_1, TIME_INCREMENT);
-    verifyResourceMetadataAcked(RDS, "C", routeConfigsV1.get("C"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(RDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(RDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(RDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
     call.verifyRequest(RDS, subscribedResources, VERSION_1, "0000", NODE);
 
     // RDS -> {A, B}, version 2
     // Failed to parse endpoint B
-    ImmutableMap<String, Any> routeConfigsV2 = ImmutableMap.of(
+    ImmutableMap<String, Any> resourcesV2 = ImmutableMap.of(
         "A", Any.pack(mf.buildRouteConfiguration("A", mf.buildOpaqueVirtualHosts(2))),
         "B", Any.pack(mf.buildRouteConfigurationInvalid("B")));
-    call.sendResponse(RDS, routeConfigsV2.values().asList(), VERSION_2, "0001");
-    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    call.sendResponse(RDS, resourcesV2.values().asList(), VERSION_2, "0001");
+    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
     // {C} -> ACK, version 1
-    List<String> errorsV2 = ImmutableList.of(
-        "RDS response RouteConfiguration 'B' validation error: ");
-    verifyResourceMetadataNacked(RDS, "A", routeConfigsV1.get("A"), VERSION_1, TIME_INCREMENT,
+    List<String> errorsV2 =
+        ImmutableList.of("RDS response RouteConfiguration 'B' validation error: ");
+    verifyResourceMetadataNacked(RDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataNacked(RDS, "B", routeConfigsV1.get("B"), VERSION_1, TIME_INCREMENT,
+    verifyResourceMetadataNacked(RDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataAcked(RDS, "C", routeConfigsV1.get("C"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(RDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
     call.verifyRequestNack(RDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
 
     // RDS -> {B, C} version 3
     List<Message> vhostsV3 = mf.buildOpaqueVirtualHosts(3);
-    ImmutableMap<String, Any> routeConfigsV3 = ImmutableMap.of(
+    ImmutableMap<String, Any> resourcesV3 = ImmutableMap.of(
         "B", Any.pack(mf.buildRouteConfiguration("B", vhostsV3)),
         "C", Any.pack(mf.buildRouteConfiguration("C", vhostsV3)));
-    call.sendResponse(RDS, routeConfigsV3.values().asList(), VERSION_3, "0002");
-    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    call.sendResponse(RDS, resourcesV3.values().asList(), VERSION_3, "0002");
+    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
     // {B, C} -> ACK, version 3
-    verifyResourceMetadataNacked(RDS, "A", routeConfigsV1.get("A"), VERSION_1, TIME_INCREMENT,
+    verifyResourceMetadataNacked(RDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataAcked(RDS, "B", routeConfigsV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
-    verifyResourceMetadataAcked(RDS, "C", routeConfigsV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(RDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(RDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
     call.verifyRequest(RDS, subscribedResources, VERSION_3, "0002", NODE);
     verifySubscribedResourcesMetadataSizes(0, 0, 3, 0);
   }
@@ -1025,16 +1017,13 @@ public abstract class ClientXdsClientTestBase {
     verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
   }
 
-  /** Error unpacking unknown clusters. */
   @Test
-  public void cdsResponse_metadataUnknownClustersIgnored() {
+  public void cdsResponseErrorHandling_allResourcesFailedUnpack() {
     DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
     verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
-
-    // Error unpacking RouteConfiguration resources.
     call.sendResponse(CDS, ImmutableList.of(FAILING_ANY, FAILING_ANY), VERSION_1, "0000");
 
-    // Resulting metadata unchanged.
+    // Resulting metadata unchanged because the response has no identifiable subscribed resources.
     verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
     verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
     // The response NACKed with errors indicating indices of the failed resources.
@@ -1044,34 +1033,34 @@ public abstract class ClientXdsClientTestBase {
     verifyNoInteractions(cdsResourceWatcher);
   }
 
-  /** Error unpacking unknown clusters, success processing a known cluster. */
   @Test
-  public void cdsResponse_metadataKnownListenersNacked() {
+  public void cdsResponseErrorHandling_someResourcesFailedUnpack() {
     DiscoveryRpcCall call = startResourceWatcher(CDS, CDS_RESOURCE, cdsResourceWatcher);
     verifyResourceMetadataRequested(CDS, CDS_RESOURCE);
 
-    // Correct resource is in the middle of the response to ensure processing continues on errors.
-    call.sendResponse(
-        CDS, ImmutableList.of(FAILING_ANY, testClusterRoundRobin, FAILING_ANY), VERSION_1, "0000");
+    // Correct resource is in the middle to ensure processing continues on errors.
+    List<Any> resources = ImmutableList.of(FAILING_ANY, testClusterRoundRobin, FAILING_ANY);
+    call.sendResponse(CDS, resources, VERSION_1, "0000");
 
-    // Errors unpacking unknown resources recorded in the metadata of the known CDS_RESOURCE.
+    // All errors recorded in the metadata of successfully unpacked subscribed resources.
     List<String> errors = ImmutableList.of(
         "CDS response Resource index 0 - can't decode Cluster: ",
         "CDS response Resource index 2 - can't decode Cluster: ");
     verifyResourceMetadataNacked(CDS, CDS_RESOURCE, null, "", 0, VERSION_1, TIME_INCREMENT, errors);
     verifySubscribedResourcesMetadataSizes(0, 1, 0, 0);
-    // The response is NACKed with the same error messages.
+    // The response is NACKed with the same error message.
     call.verifyRequestNack(CDS, CDS_RESOURCE, "", "0000", NODE, errors);
     verifyNoInteractions(cdsResourceWatcher);
   }
 
   /**
-   * ADS Parsing Logic Update as described in
-   * <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
+   * Tests a subscribed CDS resource transitioned to and from the invalid state.
+   *
+   * @see <a href="https://github.com/grpc/proposal/blob/master/A40-csds-support.md#ads-parsing-logic-update-continue-after-first-error">
    * A40-csds-support.md</a>.
    */
   @Test
-  public void cdsResponse_metadataParsingLogic() {
+  public void cdsResponseErrorHandling_subscribedResourceInvalid() {
     List<String> subscribedResources = ImmutableList.of("A", "B", "C");
     xdsClient.watchCdsResource("A", cdsResourceWatcher);
     xdsClient.watchCdsResource("B", cdsResourceWatcher);
@@ -1084,46 +1073,46 @@ public abstract class ClientXdsClientTestBase {
     verifySubscribedResourcesMetadataSizes(0, 3, 0, 0);
 
     // CDS -> {A, B, C}, version 1
-    ImmutableMap<String, Any> clustersV1 = ImmutableMap.of(
+    ImmutableMap<String, Any> resourcesV1 = ImmutableMap.of(
         "A", Any.pack(mf.buildEdsCluster("A", "A.1", "round_robin", null, false, null, null)),
         "B", Any.pack(mf.buildEdsCluster("B", "B.1", "round_robin", null, false, null, null)),
         "C", Any.pack(mf.buildEdsCluster("C", "C.1", "round_robin", null, false, null, null)));
-    call.sendResponse(CDS, clustersV1.values().asList(), VERSION_1, "0000");
+    call.sendResponse(CDS, resourcesV1.values().asList(), VERSION_1, "0000");
     // {A, B, C} -> ACK, version 1
-    verifyResourceMetadataAcked(CDS, "A", clustersV1.get("A"), VERSION_1, TIME_INCREMENT);
-    verifyResourceMetadataAcked(CDS, "B", clustersV1.get("B"), VERSION_1, TIME_INCREMENT);
-    verifyResourceMetadataAcked(CDS, "C", clustersV1.get("C"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(CDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(CDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(CDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
     call.verifyRequest(CDS, subscribedResources, VERSION_1, "0000", NODE);
 
     // CDS -> {A, B}, version 2
     // Failed to parse endpoint B
-    ImmutableMap<String, Any> clustersV2 = ImmutableMap.of(
+    ImmutableMap<String, Any> resourcesV2 = ImmutableMap.of(
         "A", Any.pack(mf.buildEdsCluster("A", "A.2", "round_robin", null, false, null, null)),
         "B", Any.pack(mf.buildClusterInvalid("B")));
-    call.sendResponse(CDS, clustersV2.values().asList(), VERSION_2, "0001");
-    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    call.sendResponse(CDS, resourcesV2.values().asList(), VERSION_2, "0001");
+    // {A, B} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
     // {C} -> ACK, version 1
     List<String> errorsV2 = ImmutableList.of("CDS response Cluster 'B' validation error: ");
-    verifyResourceMetadataNacked(CDS, "A", clustersV1.get("A"), VERSION_1, TIME_INCREMENT,
+    verifyResourceMetadataNacked(CDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataNacked(CDS, "B", clustersV1.get("B"), VERSION_1, TIME_INCREMENT,
+    verifyResourceMetadataNacked(CDS, "B", resourcesV1.get("B"), VERSION_1, TIME_INCREMENT,
         VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataAcked(CDS, "C", clustersV1.get("C"), VERSION_1, TIME_INCREMENT);
+    verifyResourceMetadataAcked(CDS, "C", resourcesV1.get("C"), VERSION_1, TIME_INCREMENT);
     call.verifyRequestNack(CDS, subscribedResources, VERSION_1, "0001", NODE, errorsV2);
 
-    // // CDS -> {B, C} version 3
-    ImmutableMap<String, Any> clustersV3 = ImmutableMap.of(
+    // CDS -> {B, C} version 3
+    ImmutableMap<String, Any> resourcesV3 = ImmutableMap.of(
         "B", Any.pack(mf.buildEdsCluster("B", "B.3", "round_robin", null, false, null, null)),
         "C", Any.pack(mf.buildEdsCluster("C", "C.3", "round_robin", null, false, null, null)));
-    call.sendResponse(CDS, clustersV3.values().asList(), VERSION_3, "0002");
-    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse endpoint B
+    call.sendResponse(CDS, resourcesV3.values().asList(), VERSION_3, "0002");
+    // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
     // {B, C} -> ACK, version 3
     // TODO(sergiitk): is there a way for this to not be deleted?
     verifyResourceMetadataDoesNotExist(CDS, "A");
-    // verifyResourceMetadataNacked(CDS, "A", clustersV1.get("A"), VERSION_1, TIME_INCREMENT,
+    // verifyResourceMetadataNacked(CDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
     //     VERSION_2, TIME_INCREMENT * 2, errorsV2);
-    verifyResourceMetadataAcked(CDS, "B", clustersV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
-    verifyResourceMetadataAcked(CDS, "C", clustersV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(CDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
+    verifyResourceMetadataAcked(CDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
     call.verifyRequest(CDS, subscribedResources, VERSION_3, "0002", NODE);
   }
 
