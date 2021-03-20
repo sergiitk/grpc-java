@@ -322,6 +322,9 @@ public class ClientXdsClientV2Test extends ClientXdsClientTestBase {
 
     @Override
     protected Message buildRouteConfigurationInvalid(String name) {
+      // Invalid Path matcher: Pattern.compile() will throw PatternSyntaxException
+      // when attempting to process SAFE_REGEX RouteMatch malformed safe regex pattern.
+      // I wish there was a simpler way.
       return RouteConfiguration.newBuilder()
           .setName(name)
           .addVirtualHosts(

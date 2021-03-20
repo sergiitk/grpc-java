@@ -147,8 +147,7 @@ final class ClientXdsClient extends AbstractXdsClient {
     Map<String, ParsedResource> parsedResources = new HashMap<>(resources.size());
     Set<String> unpackedResources = new HashSet<>(resources.size());
     List<String> errors = new ArrayList<>();
-    // Retained RDS resources
-    Set<String> rdsNames = new HashSet<>();
+    Set<String> retainedRdsResources = new HashSet<>();
 
     for (int i = 0; i < resources.size(); i++) {
       Any resource = resources.get(i);
@@ -183,7 +182,7 @@ final class ClientXdsClient extends AbstractXdsClient {
       // LdsUpdate parsed successfully.
       parsedResources.put(listenerName, new ParsedResource(ldsUpdate, resource));
       if (ldsUpdate.rdsName != null) {
-        rdsNames.add(ldsUpdate.rdsName);
+        retainedRdsResources.add(ldsUpdate.rdsName);
       }
     }
     getLogger().log(XdsLogLevel.INFO,
@@ -197,7 +196,7 @@ final class ClientXdsClient extends AbstractXdsClient {
 
     handleResourcesAcked(ResourceType.LDS, parsedResources, versionInfo, nonce, true);
     for (String resource : rdsResourceSubscribers.keySet()) {
-      if (!rdsNames.contains(resource)) {
+      if (!retainedRdsResources.contains(resource)) {
         ResourceSubscriber subscriber = rdsResourceSubscribers.get(resource);
         subscriber.onAbsent();
       }

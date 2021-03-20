@@ -508,10 +508,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(LDS, resourcesV3.values().asList(), VERSION_3, "0002");
     // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
     // {B, C} -> ACK, version 3
-    // TODO(sergiitk): is there a way for this to not be deleted?
     verifyResourceMetadataDoesNotExist(LDS, "A");
-    // verifyResourceMetadataNacked(LDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
-    //     VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(LDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
     verifyResourceMetadataAcked(LDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
     call.verifyRequest(LDS, subscribedResourceNames, VERSION_3, "0002", NODE);
@@ -1107,10 +1104,7 @@ public abstract class ClientXdsClientTestBase {
     call.sendResponse(CDS, resourcesV3.values().asList(), VERSION_3, "0002");
     // {A} -> NACK, version 1, rejected version 2, rejected reason: Failed to parse B
     // {B, C} -> ACK, version 3
-    // TODO(sergiitk): is there a way for this to not be deleted?
     verifyResourceMetadataDoesNotExist(CDS, "A");
-    // verifyResourceMetadataNacked(CDS, "A", resourcesV1.get("A"), VERSION_1, TIME_INCREMENT,
-    //     VERSION_2, TIME_INCREMENT * 2, errorsV2);
     verifyResourceMetadataAcked(CDS, "B", resourcesV3.get("B"), VERSION_3, TIME_INCREMENT * 3);
     verifyResourceMetadataAcked(CDS, "C", resourcesV3.get("C"), VERSION_3, TIME_INCREMENT * 3);
     call.verifyRequest(CDS, subscribedResourceNames, VERSION_3, "0002", NODE);
