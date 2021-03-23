@@ -17,11 +17,19 @@
 package io.grpc.xds;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.protobuf.Any;
 import com.google.protobuf.Timestamp;
+import io.envoyproxy.envoy.admin.v3.ClientResourceStatus;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
+import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListener;
+import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListenerState;
+import io.envoyproxy.envoy.admin.v3.UpdateFailureState;
 import io.envoyproxy.envoy.config.core.v3.Node;
+import io.envoyproxy.envoy.config.listener.v3.Listener;
 import io.envoyproxy.envoy.service.status.v3.ClientConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
@@ -35,6 +43,7 @@ import io.grpc.internal.ObjectPool;
 import io.grpc.testing.GrpcCleanupRule;
 import io.grpc.xds.AbstractXdsClient.ResourceType;
 import io.grpc.xds.Bootstrapper.ServerInfo;
+import io.grpc.xds.XdsClient.ResourceMetadata;
 import java.util.EnumMap;
 import org.junit.After;
 import org.junit.Before;
@@ -159,6 +168,135 @@ public class CsdsServiceTest {
   @RunWith(JUnit4.class)
   public static class MetadataToProtoTests {
     private static final String LDS_RESOURCE = "listener.googleapis.com";
+    private static final String VERSION_1 = "42";
+    private static final String VERSION_2 = "43";
+    private static final String ERROR = "Parse error line 1\n Parse error line 2";
+    private static final Any RAW_LISTENER = Any.pack(Listener.getDefaultInstance());
+    // Test timestamps.
     private static final Timestamp TIMESTAMP_ZERO = Timestamp.getDefaultInstance();
+    private static final long NANOS_LAST_UPDATE = 1577923199_606042047L;
+    private static final Timestamp TIMESTAMP_LAST_UPDATE = Timestamp.newBuilder()
+        .setSeconds(1577923199L)  // 2020-01-01T23:59:59Z
+        .setNanos(606042047)
+        .build();
+    private static final long NANOS_FAILED_UPDATE = 1609545599_732105843L;
+    private static final Timestamp TIMESTAMP_FAILED_UPDATE = Timestamp.newBuilder()
+        .setSeconds(1609545599L)  // 2021-01-01T23:59:59Z
+        .setNanos(732105843)
+        .build();
+
+    /* LDS tests */
+
+    @Test
+    public void dumpLdsConfig() {
+      ListenersConfigDump configDump = CsdsService.dumpLdsConfig(VERSION_1, ImmutableMap.of(
+          "A", ResourceMetadata.newResourceMetadataUnknown(),
+          "B", ResourceMetadata.newResourceMetadataRequested()));
+      assertThat(configDump.getVersionInfo()).isEqualTo(VERSION_1);
+      assertThat(configDump.getStaticListenersCount()).isEqualTo(0);
+      assertThat(configDump.getDynamicListenersCount()).isEqualTo(2);
+      // Minimal check to verify listeners generated from corresponding metadata.
+      DynamicListener listenerA = configDump.getDynamicListeners(0);
+      assertThat(listenerA.getName()).isEqualTo("A");
+      assertThat(listenerA.getClientStatus()).isEqualTo(ClientResourceStatus.UNKNOWN);
+      DynamicListener listenerB = configDump.getDynamicListeners(1);
+      assertThat(listenerB.getName()).isEqualTo("B");
+      assertThat(listenerB.getClientStatus()).isEqualTo(ClientResourceStatus.REQUESTED);
+    }
+
+    @Test
+    public void buildDynamicListener_metadataUnknown() {
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataUnknown();
+      DynamicListener dynamicListener = CsdsService.buildDynamicListener(LDS_RESOURCE, metadata);
+      verifyDynamicListener(dynamicListener, ClientResourceStatus.UNKNOWN, false);
+      verifyDynamicListenerStateEmpty(dynamicListener.getActiveState());
+    }
+
+    @Test
+    public void buildDynamicListener_metadataDoesNotExist() {
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataDoesNotExist();
+      DynamicListener dynamicListener = CsdsService.buildDynamicListener(LDS_RESOURCE, metadata);
+      verifyDynamicListener(dynamicListener, ClientResourceStatus.DOES_NOT_EXIST, false);
+      verifyDynamicListenerStateEmpty(dynamicListener.getActiveState());
+    }
+
+    @Test
+    public void buildDynamicListener_metadataRequested() {
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataRequested();
+      DynamicListener dynamicListener = CsdsService.buildDynamicListener(LDS_RESOURCE, metadata);
+      verifyDynamicListener(dynamicListener, ClientResourceStatus.REQUESTED, false);
+      verifyDynamicListenerStateEmpty(dynamicListener.getActiveState());
+    }
+
+    @Test
+    public void buildDynamicListener_metadataAcked() {
+      ResourceMetadata metadata =
+          ResourceMetadata.newResourceMetadataAcked(RAW_LISTENER, VERSION_1, NANOS_LAST_UPDATE);
+      DynamicListener dynamicListener = CsdsService.buildDynamicListener(LDS_RESOURCE, metadata);
+      verifyDynamicListener(dynamicListener, ClientResourceStatus.ACKED, false);
+      verifyDynamicListenerStateNotEmpty(dynamicListener.getActiveState());
+    }
+
+    @Test
+    public void buildDynamicListener_metadataNackedFromRequested() {
+      ResourceMetadata metadataRequested = ResourceMetadata.newResourceMetadataRequested();
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
+          metadataRequested, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+      DynamicListener dynamicListener = CsdsService.buildDynamicListener(LDS_RESOURCE, metadata);
+      verifyDynamicListener(dynamicListener, ClientResourceStatus.NACKED, true);
+      verifyErrorState(dynamicListener.getErrorState());
+      verifyDynamicListenerStateEmpty(dynamicListener.getActiveState());
+    }
+
+    @Test
+    public void buildDynamicListener_metadataNackedFromAcked() {
+      ResourceMetadata metadataAcked =
+          ResourceMetadata.newResourceMetadataAcked(RAW_LISTENER, VERSION_1, NANOS_LAST_UPDATE);
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
+          metadataAcked, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+      DynamicListener dynamicListener = CsdsService.buildDynamicListener(LDS_RESOURCE, metadata);
+      verifyDynamicListener(dynamicListener, ClientResourceStatus.NACKED, true);
+      verifyErrorState(dynamicListener.getErrorState());
+      verifyDynamicListenerStateNotEmpty(dynamicListener.getActiveState());
+    }
+
+    private void verifyDynamicListener(
+        DynamicListener dynamicListener, ClientResourceStatus clientStatus, boolean hasErrorState) {
+      assertWithMessage("name").that(dynamicListener.getName()).isEqualTo(LDS_RESOURCE);
+      assertWithMessage("active_state").that(dynamicListener.hasActiveState()).isTrue();
+      assertWithMessage("warming_state").that(dynamicListener.hasWarmingState()).isFalse();
+      assertWithMessage("draining_state").that(dynamicListener.hasDrainingState()).isFalse();
+      assertWithMessage("error_state").that(dynamicListener.hasErrorState())
+          .isEqualTo(hasErrorState);
+      assertWithMessage("client_status").that(dynamicListener.getClientStatus())
+          .isEqualTo(clientStatus);
+    }
+
+    private void verifyDynamicListenerStateEmpty(DynamicListenerState dynamicListenerState) {
+      assertWithMessage("version_info").that(dynamicListenerState.getVersionInfo()).isEmpty();
+      assertWithMessage("listener").that(dynamicListenerState.hasListener()).isFalse();
+      assertWithMessage("last_updated").that(dynamicListenerState.getLastUpdated())
+          .isEqualTo(TIMESTAMP_ZERO);
+    }
+
+    private void verifyDynamicListenerStateNotEmpty(DynamicListenerState dynamicListenerState) {
+      assertWithMessage("version_info").that(dynamicListenerState.getVersionInfo())
+          .isEqualTo(VERSION_1);
+      assertWithMessage("listener").that(dynamicListenerState.hasListener()).isTrue();
+      assertWithMessage("listener").that(dynamicListenerState.getListener())
+          .isEqualTo(RAW_LISTENER);
+      assertWithMessage("last_updated").that(dynamicListenerState.getLastUpdated())
+          .isEqualTo(TIMESTAMP_LAST_UPDATE);
+    }
+
+    /* Common helpers */
+
+    private void verifyErrorState(UpdateFailureState errorState) {
+      assertWithMessage("failed_configuration").that(errorState.hasFailedConfiguration()).isFalse();
+      assertWithMessage("last_update_attempt").that(errorState.getLastUpdateAttempt())
+          .isEqualTo(TIMESTAMP_FAILED_UPDATE);
+      assertWithMessage("details").that(errorState.getDetails()).isEqualTo(ERROR);
+      assertWithMessage("version_info").that(errorState.getVersionInfo()).isEqualTo(VERSION_2);
+    }
   }
 }

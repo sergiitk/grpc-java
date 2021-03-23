@@ -424,10 +424,10 @@ abstract class XdsClient {
     }
 
     static ResourceMetadata newResourceMetadataAcked(
-        Any resource, String version, long updateTime) {
-      checkNotNull(resource, "resource");
+        Any rawResource, String version, long updateTimeNanos) {
+      checkNotNull(rawResource, "rawResource");
       return new ResourceMetadata(
-          ResourceMetadataStatus.ACKED, version, updateTime, resource, null);
+          ResourceMetadataStatus.ACKED, version, updateTimeNanos, rawResource, null);
     }
 
     static ResourceMetadata newResourceMetadataNacked(

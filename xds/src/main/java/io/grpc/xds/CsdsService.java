@@ -37,8 +37,8 @@ import io.grpc.stub.StreamObserver;
 import io.grpc.xds.AbstractXdsClient.ResourceType;
 import io.grpc.xds.XdsClient.ResourceMetadata;
 import io.grpc.xds.XdsClient.ResourceMetadata.ResourceMetadataStatus;
+import io.grpc.xds.XdsClient.ResourceMetadata.UpdateFailureState;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 // TODO(sergiitk): finish description, update since.
 /**
@@ -137,7 +137,8 @@ public final class CsdsService extends
         .build();
   }
 
-  private static ListenersConfigDump dumpLdsConfig(
+  @VisibleForTesting
+  static ListenersConfigDump dumpLdsConfig(
       String version, Map<String, ResourceMetadata> resourcesMetadata) {
     ListenersConfigDump.Builder ldsConfig = ListenersConfigDump.newBuilder();
     for (Map.Entry<String, ResourceMetadata> entry : resourcesMetadata.entrySet()) {
@@ -148,27 +149,34 @@ public final class CsdsService extends
 
   @VisibleForTesting
   static DynamicListener buildDynamicListener(String name, ResourceMetadata metadata) {
+    DynamicListener.Builder listener = DynamicListener.newBuilder()
+        .setName(name)
+        .setClientStatus(metadataStatusToClientStatus(metadata.getStatus()));
+    if (metadata.getErrorState() != null) {
+      listener.setErrorState(metadataUpdateFailureStateToProto(metadata.getErrorState()));
+    }
     DynamicListenerState.Builder listenerState = DynamicListenerState.newBuilder()
         .setVersionInfo(metadata.getVersion())
         .setLastUpdated(nanosToTimestamp(metadata.getUpdateTimeNanos()));
     if (metadata.getRawResource() != null) {
       listenerState.setListener(metadata.getRawResource());
     }
-    // TODO(sergiitk): Add error state if present.
-    return DynamicListener.newBuilder()
-        .setName(name)
-        .setClientStatus(metadataStatusToClientStatus(metadata.getStatus()))
-        .setActiveState(listenerState)
-        .build();
+    return listener.setActiveState(listenerState).build();
   }
 
   private static Timestamp nanosToTimestamp(long updateTimeNanos) {
-    // TODO(sergiitk): build directly from nanos.
-    long millis = TimeUnit.NANOSECONDS.toMillis(updateTimeNanos);
-    // See https://developers.google.com/protocol-buffers/docs/reference/google.protobuf#google.protobuf.Timestamp
-    return Timestamp.newBuilder()
-        .setSeconds(millis / 1000)
-        .setNanos((int) ((millis % 1000) * 1000000))
+    long exponent = 1_000_000_000L;
+    long seconds = updateTimeNanos / exponent;
+    int nanos = (int) (updateTimeNanos - seconds * exponent);
+    return Timestamp.newBuilder().setSeconds(seconds).setNanos(nanos).build();
+  }
+
+  private static io.envoyproxy.envoy.admin.v3.UpdateFailureState metadataUpdateFailureStateToProto(
+      UpdateFailureState errorState) {
+    return io.envoyproxy.envoy.admin.v3.UpdateFailureState.newBuilder()
+        .setLastUpdateAttempt(nanosToTimestamp(errorState.getFailedUpdateTimeNanos()))
+        .setDetails(errorState.getFailedDetails())
+        .setVersionInfo(errorState.getFailedVersion())
         .build();
   }
 
