@@ -23,6 +23,8 @@ import com.google.protobuf.Timestamp;
 import io.envoyproxy.envoy.admin.v3.ClientResourceStatus;
 import io.envoyproxy.envoy.admin.v3.ClustersConfigDump;
 import io.envoyproxy.envoy.admin.v3.ClustersConfigDump.DynamicCluster;
+import io.envoyproxy.envoy.admin.v3.EndpointsConfigDump;
+import io.envoyproxy.envoy.admin.v3.EndpointsConfigDump.DynamicEndpointConfig;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListener;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListenerState;
@@ -140,12 +142,15 @@ public final class CsdsService extends
     ClustersConfigDump cdsConfig = dumpCdsConfig(
         xdsClient.getSubscribedResourcesMetadata(ResourceType.CDS),
         xdsClient.getCurrentVersion(ResourceType.CDS));
+    EndpointsConfigDump edsConfig = dumpEdsConfig(
+        xdsClient.getSubscribedResourcesMetadata(ResourceType.EDS));
 
     return ClientConfig.newBuilder()
         .setNode(xdsClient.getNode().toEnvoyProtoNode())
         .addXdsConfig(PerXdsConfig.newBuilder().setListenerConfig(ldsConfig))
         .addXdsConfig(PerXdsConfig.newBuilder().setRouteConfig(rdsConfig))
         .addXdsConfig(PerXdsConfig.newBuilder().setClusterConfig(cdsConfig))
+        .addXdsConfig(PerXdsConfig.newBuilder().setEndpointConfig(edsConfig))
         .build();
   }
 
@@ -223,6 +228,30 @@ public final class CsdsService extends
       dynamicCluster.setCluster(metadata.getRawResource());
     }
     return dynamicCluster.build();
+  }
+
+  @VisibleForTesting
+  static EndpointsConfigDump dumpEdsConfig(Map<String, ResourceMetadata> resourcesMetadata) {
+    EndpointsConfigDump.Builder edsConfig = EndpointsConfigDump.newBuilder();
+    for (ResourceMetadata metadata : resourcesMetadata.values()) {
+      edsConfig.addDynamicEndpointConfigs(buildDynamicEndpointConfig(metadata));
+    }
+    return edsConfig.build();
+  }
+
+  @VisibleForTesting
+  static DynamicEndpointConfig buildDynamicEndpointConfig(ResourceMetadata metadata) {
+    DynamicEndpointConfig.Builder dynamicRouteConfig = DynamicEndpointConfig.newBuilder()
+        .setVersionInfo(metadata.getVersion())
+        .setClientStatus(metadataStatusToClientStatus(metadata.getStatus()))
+        .setLastUpdated(nanosToTimestamp(metadata.getUpdateTimeNanos()));
+    if (metadata.getErrorState() != null) {
+      dynamicRouteConfig.setErrorState(metadataUpdateFailureStateToProto(metadata.getErrorState()));
+    }
+    if (metadata.getRawResource() != null) {
+      dynamicRouteConfig.setEndpointConfig(metadata.getRawResource());
+    }
+    return dynamicRouteConfig.build();
   }
 
   private static Timestamp nanosToTimestamp(long updateTimeNanos) {

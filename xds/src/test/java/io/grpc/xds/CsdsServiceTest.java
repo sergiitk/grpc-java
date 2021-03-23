@@ -26,6 +26,8 @@ import com.google.protobuf.Timestamp;
 import io.envoyproxy.envoy.admin.v3.ClientResourceStatus;
 import io.envoyproxy.envoy.admin.v3.ClustersConfigDump;
 import io.envoyproxy.envoy.admin.v3.ClustersConfigDump.DynamicCluster;
+import io.envoyproxy.envoy.admin.v3.EndpointsConfigDump;
+import io.envoyproxy.envoy.admin.v3.EndpointsConfigDump.DynamicEndpointConfig;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListener;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListenerState;
@@ -34,6 +36,7 @@ import io.envoyproxy.envoy.admin.v3.RoutesConfigDump.DynamicRouteConfig;
 import io.envoyproxy.envoy.admin.v3.UpdateFailureState;
 import io.envoyproxy.envoy.config.cluster.v3.Cluster;
 import io.envoyproxy.envoy.config.core.v3.Node;
+import io.envoyproxy.envoy.config.endpoint.v3.ClusterLoadAssignment;
 import io.envoyproxy.envoy.config.listener.v3.Listener;
 import io.envoyproxy.envoy.config.route.v3.RouteConfiguration;
 import io.envoyproxy.envoy.service.status.v3.ClientConfig;
@@ -174,8 +177,8 @@ public class CsdsServiceTest {
   @RunWith(JUnit4.class)
   public static class MetadataToProtoTests {
     private static final String LDS_RESOURCE = "listener.googleapis.com";
-    private static final String VERSION_1 = "42";
-    private static final String VERSION_2 = "43";
+    private static final String VERSION_ACK = "42";
+    private static final String VERSION_NACK = "43";
     private static final String ERROR = "Parse error line 1\n Parse error line 2";
     // Test timestamps.
     private static final Timestamp TIMESTAMP_ZERO = Timestamp.getDefaultInstance();
@@ -191,8 +194,11 @@ public class CsdsServiceTest {
         .build();
     // Raw resources
     private static final Any RAW_LISTENER = Any.pack(Listener.getDefaultInstance());
-    private static final Any RAW_ROUTE_CONFIG = Any.pack(RouteConfiguration.getDefaultInstance());
+    private static final Any RAW_ROUTE_CONFIGURATION =
+        Any.pack(RouteConfiguration.getDefaultInstance());
     private static final Any RAW_CLUSTER = Any.pack(Cluster.getDefaultInstance());
+    private static final Any RAW_CLUSTER_LOAD_ASSIGNMENT =
+        Any.pack(ClusterLoadAssignment.getDefaultInstance());
     // Test metadata: no data received states.
     private static final ResourceMetadata METADATA_UNKNOWN =
         ResourceMetadata.newResourceMetadataUnknown();
@@ -201,12 +207,14 @@ public class CsdsServiceTest {
     private static final ResourceMetadata METADATA_REQUESTED =
         ResourceMetadata.newResourceMetadataRequested();
     // Test metadata: resource acknowledged state, per resource type.
-    private static final ResourceMetadata METADATA_ACKED_LDS =
-        ResourceMetadata.newResourceMetadataAcked(RAW_LISTENER, VERSION_1, NANOS_LAST_UPDATE);
-    private static final ResourceMetadata METADATA_ACKED_RDS =
-        ResourceMetadata.newResourceMetadataAcked(RAW_ROUTE_CONFIG, VERSION_1, NANOS_LAST_UPDATE);
-    private static final ResourceMetadata METADATA_ACKED_CDS =
-        ResourceMetadata.newResourceMetadataAcked(RAW_CLUSTER, VERSION_1, NANOS_LAST_UPDATE);
+    private static final ResourceMetadata METADATA_ACKED_LDS = ResourceMetadata
+        .newResourceMetadataAcked(RAW_LISTENER, VERSION_ACK, NANOS_LAST_UPDATE);
+    private static final ResourceMetadata METADATA_ACKED_RDS = ResourceMetadata
+        .newResourceMetadataAcked(RAW_ROUTE_CONFIGURATION, VERSION_ACK, NANOS_LAST_UPDATE);
+    private static final ResourceMetadata METADATA_ACKED_CDS = ResourceMetadata
+        .newResourceMetadataAcked(RAW_CLUSTER, VERSION_ACK, NANOS_LAST_UPDATE);
+    private static final ResourceMetadata METADATA_ACKED_EDS = ResourceMetadata
+        .newResourceMetadataAcked(RAW_CLUSTER_LOAD_ASSIGNMENT, VERSION_ACK, NANOS_LAST_UPDATE);
     // Test resources list.
     private static final ImmutableMap<String, ResourceMetadata> RESOURCES_METADATA =
         ImmutableMap.of("A", METADATA_UNKNOWN, "B", METADATA_REQUESTED);
@@ -215,8 +223,8 @@ public class CsdsServiceTest {
 
     @Test
     public void dumpLdsConfig() {
-      ListenersConfigDump ldsConfig = CsdsService.dumpLdsConfig(RESOURCES_METADATA, VERSION_1);
-      assertThat(ldsConfig.getVersionInfo()).isEqualTo(VERSION_1);
+      ListenersConfigDump ldsConfig = CsdsService.dumpLdsConfig(RESOURCES_METADATA, VERSION_ACK);
+      assertThat(ldsConfig.getVersionInfo()).isEqualTo(VERSION_ACK);
       assertThat(ldsConfig.getStaticListenersCount()).isEqualTo(0);
       assertThat(ldsConfig.getDynamicListenersCount()).isEqualTo(2);
       // Minimal check to confirm that resources generated from corresponding metadata.
@@ -263,7 +271,7 @@ public class CsdsServiceTest {
     @Test
     public void buildDynamicListener_metadataNackedFromRequested() {
       ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
-          METADATA_REQUESTED, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+          METADATA_REQUESTED, VERSION_NACK, NANOS_FAILED_UPDATE, ERROR);
       DynamicListener dynamicListener = CsdsService.buildDynamicListener(LDS_RESOURCE, metadata);
       verifyDynamicListener(dynamicListener, ClientResourceStatus.NACKED);
       verifyErrorState(dynamicListener.getErrorState());
@@ -273,7 +281,7 @@ public class CsdsServiceTest {
     @Test
     public void buildDynamicListener_metadataNackedFromAcked() {
       ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
-          METADATA_ACKED_LDS, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+          METADATA_ACKED_LDS, VERSION_NACK, NANOS_FAILED_UPDATE, ERROR);
       DynamicListener dynamicListener = CsdsService.buildDynamicListener(LDS_RESOURCE, metadata);
       verifyDynamicListener(dynamicListener, ClientResourceStatus.NACKED);
       verifyErrorState(dynamicListener.getErrorState());
@@ -300,7 +308,7 @@ public class CsdsServiceTest {
 
     private void verifyDynamicListenerStateAccepted(DynamicListenerState dynamicListenerState) {
       assertWithMessage("version_info").that(dynamicListenerState.getVersionInfo())
-          .isEqualTo(VERSION_1);
+          .isEqualTo(VERSION_ACK);
       assertWithMessage("listener").that(dynamicListenerState.hasListener()).isTrue();
       assertWithMessage("listener").that(dynamicListenerState.getListener())
           .isEqualTo(RAW_LISTENER);
@@ -353,7 +361,7 @@ public class CsdsServiceTest {
     @Test
     public void buildDynamicRouteConfig_metadataNackedFromRequested() {
       ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
-          METADATA_REQUESTED, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+          METADATA_REQUESTED, VERSION_NACK, NANOS_FAILED_UPDATE, ERROR);
       DynamicRouteConfig dynamicRouteConfig = CsdsService.buildDynamicRouteConfig(metadata);
       verifyDynamicRouteConfigNoData(dynamicRouteConfig, ClientResourceStatus.NACKED);
       verifyErrorState(dynamicRouteConfig.getErrorState());
@@ -362,7 +370,7 @@ public class CsdsServiceTest {
     @Test
     public void buildDynamicRouteConfig_metadataNackedFromAcked() {
       ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
-          METADATA_ACKED_RDS, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+          METADATA_ACKED_RDS, VERSION_NACK, NANOS_FAILED_UPDATE, ERROR);
       DynamicRouteConfig dynamicRouteConfig = CsdsService.buildDynamicRouteConfig(metadata);
       verifyDynamicRouteConfigAccepted(dynamicRouteConfig, ClientResourceStatus.NACKED);
       verifyErrorState(dynamicRouteConfig.getErrorState());
@@ -383,10 +391,10 @@ public class CsdsServiceTest {
     private void verifyDynamicRouteConfigAccepted(
         DynamicRouteConfig dynamicRouteConfig, ClientResourceStatus status) {
       assertWithMessage("version_info").that(dynamicRouteConfig.getVersionInfo())
-          .isEqualTo(VERSION_1);
+          .isEqualTo(VERSION_ACK);
       assertWithMessage("route_config").that(dynamicRouteConfig.hasRouteConfig()).isTrue();
       assertWithMessage("route_config").that(dynamicRouteConfig.getRouteConfig())
-          .isEqualTo(RAW_ROUTE_CONFIG);
+          .isEqualTo(RAW_ROUTE_CONFIGURATION);
       assertWithMessage("last_updated").that(dynamicRouteConfig.getLastUpdated())
           .isEqualTo(TIMESTAMP_LAST_UPDATE);
       assertWithMessage("error_state").that(dynamicRouteConfig.hasErrorState())
@@ -399,8 +407,8 @@ public class CsdsServiceTest {
 
     @Test
     public void dumpCdsConfig() {
-      ClustersConfigDump cdsConfig = CsdsService.dumpCdsConfig(RESOURCES_METADATA, VERSION_1);
-      assertThat(cdsConfig.getVersionInfo()).isEqualTo(VERSION_1);
+      ClustersConfigDump cdsConfig = CsdsService.dumpCdsConfig(RESOURCES_METADATA, VERSION_ACK);
+      assertThat(cdsConfig.getVersionInfo()).isEqualTo(VERSION_ACK);
       assertThat(cdsConfig.getStaticClustersCount()).isEqualTo(0);
       assertThat(cdsConfig.getDynamicWarmingClustersCount()).isEqualTo(0);
       assertThat(cdsConfig.getDynamicActiveClustersCount()).isEqualTo(2);
@@ -442,7 +450,7 @@ public class CsdsServiceTest {
     @Test
     public void buildDynamicCluster_metadataNackedFromRequested() {
       ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
-          METADATA_REQUESTED, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+          METADATA_REQUESTED, VERSION_NACK, NANOS_FAILED_UPDATE, ERROR);
       DynamicCluster dynamicCluster = CsdsService.buildDynamicCluster(metadata);
       verifyDynamicClusterNoData(dynamicCluster, ClientResourceStatus.NACKED);
       verifyErrorState(dynamicCluster.getErrorState());
@@ -451,7 +459,7 @@ public class CsdsServiceTest {
     @Test
     public void buildDynamicCluster_metadataNackedFromAcked() {
       ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
-          METADATA_ACKED_CDS, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+          METADATA_ACKED_CDS, VERSION_NACK, NANOS_FAILED_UPDATE, ERROR);
       DynamicCluster dynamicCluster = CsdsService.buildDynamicCluster(metadata);
       verifyDynamicClusterAccepted(dynamicCluster, ClientResourceStatus.NACKED);
       verifyErrorState(dynamicCluster.getErrorState());
@@ -470,7 +478,8 @@ public class CsdsServiceTest {
 
     private void verifyDynamicClusterAccepted(
         DynamicCluster dynamicCluster, ClientResourceStatus status) {
-      assertWithMessage("version_info").that(dynamicCluster.getVersionInfo()).isEqualTo(VERSION_1);
+      assertWithMessage("version_info").that(dynamicCluster.getVersionInfo())
+          .isEqualTo(VERSION_ACK);
       assertWithMessage("route_config").that(dynamicCluster.hasCluster()).isTrue();
       assertWithMessage("route_config").that(dynamicCluster.getCluster()).isEqualTo(RAW_CLUSTER);
       assertWithMessage("last_updated").that(dynamicCluster.getLastUpdated())
@@ -480,14 +489,104 @@ public class CsdsServiceTest {
       assertWithMessage("client_status").that(dynamicCluster.getClientStatus()).isEqualTo(status);
     }
 
+    /* EDS tests */
+
+    @Test
+    public void dumpEdsConfig() {
+      EndpointsConfigDump edsConfig = CsdsService.dumpEdsConfig(RESOURCES_METADATA);
+      assertThat(edsConfig.getStaticEndpointConfigsCount()).isEqualTo(0);
+      assertThat(edsConfig.getDynamicEndpointConfigsCount()).isEqualTo(2);
+      // Minimal check to confirm that resources generated from corresponding metadata.
+      assertThat(edsConfig.getDynamicEndpointConfigs(0).getClientStatus())
+          .isEqualTo(ClientResourceStatus.UNKNOWN);
+      assertThat(edsConfig.getDynamicEndpointConfigs(1).getClientStatus())
+          .isEqualTo(ClientResourceStatus.REQUESTED);
+    }
+
+    @Test
+    public void buildDynamicEndpointConfig_metadataUnknown() {
+      buildDynamicEndpointConfigNoData(
+          CsdsService.buildDynamicEndpointConfig(METADATA_UNKNOWN),
+          ClientResourceStatus.UNKNOWN);
+    }
+
+    @Test
+    public void buildDynamicEndpointConfig_metadataDoesNotExist() {
+      buildDynamicEndpointConfigNoData(
+          CsdsService.buildDynamicEndpointConfig(METADATA_DOES_NOT_EXIST),
+          ClientResourceStatus.DOES_NOT_EXIST);
+    }
+
+    @Test
+    public void buildDynamicEndpointConfig_metadataRequested() {
+      buildDynamicEndpointConfigNoData(
+          CsdsService.buildDynamicEndpointConfig(METADATA_REQUESTED),
+          ClientResourceStatus.REQUESTED);
+    }
+
+    @Test
+    public void buildDynamicEndpointConfig_metadataAcked() {
+      verifyDynamicEndpointConfigAccepted(
+          CsdsService.buildDynamicEndpointConfig(METADATA_ACKED_EDS),
+          ClientResourceStatus.ACKED);
+    }
+
+    @Test
+    public void buildDynamicEndpointConfig_metadataNackedFromRequested() {
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
+          METADATA_REQUESTED, VERSION_NACK, NANOS_FAILED_UPDATE, ERROR);
+      DynamicEndpointConfig dynamicEndpointConfig =
+          CsdsService.buildDynamicEndpointConfig(metadata);
+      buildDynamicEndpointConfigNoData(dynamicEndpointConfig, ClientResourceStatus.NACKED);
+      verifyErrorState(dynamicEndpointConfig.getErrorState());
+    }
+
+    @Test
+    public void buildDynamicEndpointConfig_metadataNackedFromAcked() {
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
+          METADATA_ACKED_EDS, VERSION_NACK, NANOS_FAILED_UPDATE, ERROR);
+      DynamicEndpointConfig dynamicEndpointConfig =
+          CsdsService.buildDynamicEndpointConfig(metadata);
+      verifyDynamicEndpointConfigAccepted(dynamicEndpointConfig, ClientResourceStatus.NACKED);
+      verifyErrorState(dynamicEndpointConfig.getErrorState());
+    }
+
+    private void buildDynamicEndpointConfigNoData(
+        DynamicEndpointConfig dynamicEndpointConfig, ClientResourceStatus status) {
+      assertWithMessage("version_info").that(dynamicEndpointConfig.getVersionInfo()).isEmpty();
+      assertWithMessage("route_config").that(dynamicEndpointConfig.hasEndpointConfig()).isFalse();
+      assertWithMessage("last_updated").that(dynamicEndpointConfig.getLastUpdated())
+          .isEqualTo(TIMESTAMP_ZERO);
+      assertWithMessage("error_state").that(dynamicEndpointConfig.hasErrorState())
+          .isEqualTo(status.equals(ClientResourceStatus.NACKED));
+      assertWithMessage("client_status").that(dynamicEndpointConfig.getClientStatus())
+          .isEqualTo(status);
+    }
+
+    private void verifyDynamicEndpointConfigAccepted(
+        DynamicEndpointConfig dynamicEndpointConfig, ClientResourceStatus status) {
+      assertWithMessage("version_info").that(dynamicEndpointConfig.getVersionInfo())
+          .isEqualTo(VERSION_ACK);
+      assertWithMessage("route_config").that(dynamicEndpointConfig.hasEndpointConfig()).isTrue();
+      assertWithMessage("route_config").that(dynamicEndpointConfig.getEndpointConfig())
+          .isEqualTo(RAW_CLUSTER_LOAD_ASSIGNMENT);
+      assertWithMessage("last_updated").that(dynamicEndpointConfig.getLastUpdated())
+          .isEqualTo(TIMESTAMP_LAST_UPDATE);
+      assertWithMessage("error_state").that(dynamicEndpointConfig.hasErrorState())
+          .isEqualTo(status.equals(ClientResourceStatus.NACKED));
+      assertWithMessage("client_status").that(dynamicEndpointConfig.getClientStatus())
+          .isEqualTo(status);
+    }
+
     /* Common helpers */
 
     private void verifyErrorState(UpdateFailureState errorState) {
+      // failed_configuration currently not supported.
       assertWithMessage("failed_configuration").that(errorState.hasFailedConfiguration()).isFalse();
       assertWithMessage("last_update_attempt").that(errorState.getLastUpdateAttempt())
           .isEqualTo(TIMESTAMP_FAILED_UPDATE);
       assertWithMessage("details").that(errorState.getDetails()).isEqualTo(ERROR);
-      assertWithMessage("version_info").that(errorState.getVersionInfo()).isEqualTo(VERSION_2);
+      assertWithMessage("version_info").that(errorState.getVersionInfo()).isEqualTo(VERSION_NACK);
     }
   }
 }
