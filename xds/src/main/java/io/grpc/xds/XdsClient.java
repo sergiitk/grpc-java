@@ -24,8 +24,10 @@ import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.Any;
 import io.grpc.Status;
+import io.grpc.xds.AbstractXdsClient.ResourceType;
 import io.grpc.xds.Endpoints.DropOverload;
 import io.grpc.xds.Endpoints.LocalityLbEndpoints;
+import io.grpc.xds.EnvoyProtoData.Node;
 import io.grpc.xds.EnvoyServerProtoData.Listener;
 import io.grpc.xds.EnvoyServerProtoData.UpstreamTlsContext;
 import io.grpc.xds.Filter.NamedFilterConfig;
@@ -523,6 +525,25 @@ abstract class XdsClient {
    * Returns {@code true} if {@link #shutdown()} has been called.
    */
   boolean isShutDown() {
+    throw new UnsupportedOperationException();
+  }
+
+  /**
+   * Returns gRPC representation of {@link io.envoyproxy.envoy.config.core.v3.Node}.
+   */
+  Node getNode() {
+    throw new UnsupportedOperationException();
+  }
+
+  /**
+   * Returns the latest accepted version of the given resource type.
+   */
+  // Must be synchronized.
+  String getCurrentVersion(ResourceType type) {
+    throw new UnsupportedOperationException();
+  }
+
+  Map<String, ResourceMetadata> getSubscribedResourcesMetadata(ResourceType type) {
     throw new UnsupportedOperationException();
   }
 
