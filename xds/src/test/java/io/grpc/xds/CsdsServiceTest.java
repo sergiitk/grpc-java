@@ -24,12 +24,15 @@ import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.Any;
 import com.google.protobuf.Timestamp;
 import io.envoyproxy.envoy.admin.v3.ClientResourceStatus;
+import io.envoyproxy.envoy.admin.v3.ClustersConfigDump;
+import io.envoyproxy.envoy.admin.v3.ClustersConfigDump.DynamicCluster;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListener;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListenerState;
 import io.envoyproxy.envoy.admin.v3.RoutesConfigDump;
 import io.envoyproxy.envoy.admin.v3.RoutesConfigDump.DynamicRouteConfig;
 import io.envoyproxy.envoy.admin.v3.UpdateFailureState;
+import io.envoyproxy.envoy.config.cluster.v3.Cluster;
 import io.envoyproxy.envoy.config.core.v3.Node;
 import io.envoyproxy.envoy.config.listener.v3.Listener;
 import io.envoyproxy.envoy.config.route.v3.RouteConfiguration;
@@ -174,8 +177,6 @@ public class CsdsServiceTest {
     private static final String VERSION_1 = "42";
     private static final String VERSION_2 = "43";
     private static final String ERROR = "Parse error line 1\n Parse error line 2";
-    private static final Any RAW_LISTENER = Any.pack(Listener.getDefaultInstance());
-    private static final Any RAW_ROUTE_CONFIG = Any.pack(RouteConfiguration.getDefaultInstance());
     // Test timestamps.
     private static final Timestamp TIMESTAMP_ZERO = Timestamp.getDefaultInstance();
     private static final long NANOS_LAST_UPDATE = 1577923199_606042047L;
@@ -188,6 +189,10 @@ public class CsdsServiceTest {
         .setSeconds(1609545599L)  // 2021-01-01T23:59:59Z
         .setNanos(732105843)
         .build();
+    // Raw resources
+    private static final Any RAW_LISTENER = Any.pack(Listener.getDefaultInstance());
+    private static final Any RAW_ROUTE_CONFIG = Any.pack(RouteConfiguration.getDefaultInstance());
+    private static final Any RAW_CLUSTER = Any.pack(Cluster.getDefaultInstance());
     // Test metadata: no data received states.
     private static final ResourceMetadata METADATA_UNKNOWN =
         ResourceMetadata.newResourceMetadataUnknown();
@@ -200,6 +205,8 @@ public class CsdsServiceTest {
         ResourceMetadata.newResourceMetadataAcked(RAW_LISTENER, VERSION_1, NANOS_LAST_UPDATE);
     private static final ResourceMetadata METADATA_ACKED_RDS =
         ResourceMetadata.newResourceMetadataAcked(RAW_ROUTE_CONFIG, VERSION_1, NANOS_LAST_UPDATE);
+    private static final ResourceMetadata METADATA_ACKED_CDS =
+        ResourceMetadata.newResourceMetadataAcked(RAW_CLUSTER, VERSION_1, NANOS_LAST_UPDATE);
     // Test resources list.
     private static final ImmutableMap<String, ResourceMetadata> RESOURCES_METADATA =
         ImmutableMap.of("A", METADATA_UNKNOWN, "B", METADATA_REQUESTED);
@@ -384,6 +391,88 @@ public class CsdsServiceTest {
           .isEqualTo(hasErrorState);
       assertWithMessage("client_status").that(dynamicRouteConfig.getClientStatus())
           .isEqualTo(status);
+    }
+
+    /* CDS tests */
+
+    @Test
+    public void dumpCdsConfig() {
+      ClustersConfigDump cdsConfig = CsdsService.dumpCdsConfig(RESOURCES_METADATA, VERSION_1);
+      assertThat(cdsConfig.getVersionInfo()).isEqualTo(VERSION_1);
+      assertThat(cdsConfig.getStaticClustersCount()).isEqualTo(0);
+      assertThat(cdsConfig.getDynamicWarmingClustersCount()).isEqualTo(0);
+      assertThat(cdsConfig.getDynamicActiveClustersCount()).isEqualTo(2);
+      // Minimal check to confirm that resources generated from corresponding metadata.
+      assertThat(cdsConfig.getDynamicActiveClusters(0).getClientStatus())
+          .isEqualTo(ClientResourceStatus.UNKNOWN);
+      assertThat(cdsConfig.getDynamicActiveClusters(1).getClientStatus())
+          .isEqualTo(ClientResourceStatus.REQUESTED);
+    }
+
+    @Test
+    public void buildDynamicCluster_metadataUnknown() {
+      verifyDynamicClusterNoData(CsdsService.buildDynamicCluster(METADATA_UNKNOWN),
+          ClientResourceStatus.UNKNOWN, false);
+    }
+
+    @Test
+    public void buildDynamicCluster_metadataDoesNotExist() {
+      verifyDynamicClusterNoData(CsdsService.buildDynamicCluster(METADATA_DOES_NOT_EXIST),
+          ClientResourceStatus.DOES_NOT_EXIST, false);
+    }
+
+    @Test
+    public void buildDynamicCluster_metadataRequested() {
+      verifyDynamicClusterNoData(CsdsService.buildDynamicCluster(METADATA_REQUESTED),
+          ClientResourceStatus.REQUESTED, false);
+    }
+
+    @Test
+    public void buildDynamicCluster_metadataAcked() {
+      verifyDynamicClusterAccepted(CsdsService.buildDynamicCluster(METADATA_ACKED_CDS),
+          ClientResourceStatus.ACKED, RAW_CLUSTER, false);
+    }
+
+    @Test
+    public void buildDynamicCluster_metadataNackedFromRequested() {
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
+          METADATA_REQUESTED, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+      DynamicCluster dynamicCluster = CsdsService.buildDynamicCluster(metadata);
+      verifyDynamicClusterNoData(dynamicCluster, ClientResourceStatus.NACKED, true);
+      verifyErrorState(dynamicCluster.getErrorState());
+    }
+
+    @Test
+    public void buildDynamicCluster_metadataNackedFromAcked() {
+      ResourceMetadata metadata = ResourceMetadata.newResourceMetadataNacked(
+          METADATA_ACKED_CDS, VERSION_2, NANOS_FAILED_UPDATE, ERROR);
+      DynamicCluster dynamicCluster = CsdsService.buildDynamicCluster(metadata);
+      verifyDynamicClusterAccepted(dynamicCluster, ClientResourceStatus.NACKED, RAW_CLUSTER, true);
+      verifyErrorState(dynamicCluster.getErrorState());
+    }
+
+    private void verifyDynamicClusterNoData(
+        DynamicCluster dynamicCluster, ClientResourceStatus status, boolean hasErrorState) {
+      assertWithMessage("version_info").that(dynamicCluster.getVersionInfo()).isEmpty();
+      assertWithMessage("route_config").that(dynamicCluster.hasCluster()).isFalse();
+      assertWithMessage("last_updated").that(dynamicCluster.getLastUpdated())
+          .isEqualTo(TIMESTAMP_ZERO);
+      assertWithMessage("error_state").that(dynamicCluster.hasErrorState())
+          .isEqualTo(hasErrorState);
+      assertWithMessage("client_status").that(dynamicCluster.getClientStatus()).isEqualTo(status);
+    }
+
+    private void verifyDynamicClusterAccepted(
+        DynamicCluster dynamicCluster, ClientResourceStatus status, Any rawResource,
+        boolean hasErrorState) {
+      assertWithMessage("version_info").that(dynamicCluster.getVersionInfo()).isEqualTo(VERSION_1);
+      assertWithMessage("route_config").that(dynamicCluster.hasCluster()).isTrue();
+      assertWithMessage("route_config").that(dynamicCluster.getCluster()).isEqualTo(rawResource);
+      assertWithMessage("last_updated").that(dynamicCluster.getLastUpdated())
+          .isEqualTo(TIMESTAMP_LAST_UPDATE);
+      assertWithMessage("error_state").that(dynamicCluster.hasErrorState())
+          .isEqualTo(hasErrorState);
+      assertWithMessage("client_status").that(dynamicCluster.getClientStatus()).isEqualTo(status);
     }
 
     /* Common helpers */

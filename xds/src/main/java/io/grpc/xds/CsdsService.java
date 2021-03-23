@@ -21,6 +21,8 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.Timestamp;
 import io.envoyproxy.envoy.admin.v3.ClientResourceStatus;
+import io.envoyproxy.envoy.admin.v3.ClustersConfigDump;
+import io.envoyproxy.envoy.admin.v3.ClustersConfigDump.DynamicCluster;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListener;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListenerState;
@@ -135,11 +137,15 @@ public final class CsdsService extends
         xdsClient.getCurrentVersion(ResourceType.LDS));
     RoutesConfigDump rdsConfig = dumpRdsConfig(
         xdsClient.getSubscribedResourcesMetadata(ResourceType.RDS));
+    ClustersConfigDump cdsConfig = dumpCdsConfig(
+        xdsClient.getSubscribedResourcesMetadata(ResourceType.CDS),
+        xdsClient.getCurrentVersion(ResourceType.CDS));
 
     return ClientConfig.newBuilder()
         .setNode(xdsClient.getNode().toEnvoyProtoNode())
         .addXdsConfig(PerXdsConfig.newBuilder().setListenerConfig(ldsConfig))
         .addXdsConfig(PerXdsConfig.newBuilder().setRouteConfig(rdsConfig))
+        .addXdsConfig(PerXdsConfig.newBuilder().setClusterConfig(cdsConfig))
         .build();
   }
 
@@ -155,19 +161,19 @@ public final class CsdsService extends
 
   @VisibleForTesting
   static DynamicListener buildDynamicListener(String name, ResourceMetadata metadata) {
-    DynamicListener.Builder listener = DynamicListener.newBuilder()
+    DynamicListener.Builder dynamicListener = DynamicListener.newBuilder()
         .setName(name)
         .setClientStatus(metadataStatusToClientStatus(metadata.getStatus()));
     if (metadata.getErrorState() != null) {
-      listener.setErrorState(metadataUpdateFailureStateToProto(metadata.getErrorState()));
+      dynamicListener.setErrorState(metadataUpdateFailureStateToProto(metadata.getErrorState()));
     }
-    DynamicListenerState.Builder listenerState = DynamicListenerState.newBuilder()
+    DynamicListenerState.Builder dynamicListenerState = DynamicListenerState.newBuilder()
         .setVersionInfo(metadata.getVersion())
         .setLastUpdated(nanosToTimestamp(metadata.getUpdateTimeNanos()));
     if (metadata.getRawResource() != null) {
-      listenerState.setListener(metadata.getRawResource());
+      dynamicListenerState.setListener(metadata.getRawResource());
     }
-    return listener.setActiveState(listenerState).build();
+    return dynamicListener.setActiveState(dynamicListenerState).build();
   }
 
   @VisibleForTesting
@@ -181,17 +187,42 @@ public final class CsdsService extends
 
   @VisibleForTesting
   static DynamicRouteConfig buildDynamicRouteConfig(ResourceMetadata metadata) {
-    DynamicRouteConfig.Builder routeConfig = DynamicRouteConfig.newBuilder()
+    DynamicRouteConfig.Builder dynamicRouteConfig = DynamicRouteConfig.newBuilder()
         .setVersionInfo(metadata.getVersion())
         .setClientStatus(metadataStatusToClientStatus(metadata.getStatus()))
         .setLastUpdated(nanosToTimestamp(metadata.getUpdateTimeNanos()));
     if (metadata.getErrorState() != null) {
-      routeConfig.setErrorState(metadataUpdateFailureStateToProto(metadata.getErrorState()));
+      dynamicRouteConfig.setErrorState(metadataUpdateFailureStateToProto(metadata.getErrorState()));
     }
     if (metadata.getRawResource() != null) {
-      routeConfig.setRouteConfig(metadata.getRawResource());
+      dynamicRouteConfig.setRouteConfig(metadata.getRawResource());
     }
-    return routeConfig.build();
+    return dynamicRouteConfig.build();
+  }
+
+  @VisibleForTesting
+  static ClustersConfigDump dumpCdsConfig(
+      Map<String, ResourceMetadata> resourcesMetadata, String version) {
+    ClustersConfigDump.Builder cdsConfig = ClustersConfigDump.newBuilder();
+    for (ResourceMetadata metadata : resourcesMetadata.values()) {
+      cdsConfig.addDynamicActiveClusters(buildDynamicCluster(metadata));
+    }
+    return cdsConfig.setVersionInfo(version).build();
+  }
+
+  @VisibleForTesting
+  static DynamicCluster buildDynamicCluster(ResourceMetadata metadata) {
+    DynamicCluster.Builder dynamicCluster = DynamicCluster.newBuilder()
+        .setVersionInfo(metadata.getVersion())
+        .setClientStatus(metadataStatusToClientStatus(metadata.getStatus()))
+        .setLastUpdated(nanosToTimestamp(metadata.getUpdateTimeNanos()));
+    if (metadata.getErrorState() != null) {
+      dynamicCluster.setErrorState(metadataUpdateFailureStateToProto(metadata.getErrorState()));
+    }
+    if (metadata.getRawResource() != null) {
+      dynamicCluster.setCluster(metadata.getRawResource());
+    }
+    return dynamicCluster.build();
   }
 
   private static Timestamp nanosToTimestamp(long updateTimeNanos) {
