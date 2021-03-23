@@ -69,6 +69,12 @@ final class SharedXdsClientPoolProvider implements XdsClientPoolFactory {
     bootstrapOverride.set(bootstrap);
   }
 
+  // TODO(sergiitk): better name, docs, test. synchronize?
+  @Nullable
+  public ObjectPool<XdsClient> getXdsClientPoolOrNull() {
+    return xdsClientPool;
+  }
+
   @Override
   public ObjectPool<XdsClient> getXdsClientPool() throws XdsInitializationException {
     ObjectPool<XdsClient> ref = xdsClientPool;
