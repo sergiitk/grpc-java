@@ -146,7 +146,8 @@ public final class CsdsService extends
     return ldsConfig.setVersionInfo(version).build();
   }
 
-  private static DynamicListener buildDynamicListener(String name, ResourceMetadata metadata) {
+  @VisibleForTesting
+  static DynamicListener buildDynamicListener(String name, ResourceMetadata metadata) {
     DynamicListenerState.Builder listenerState = DynamicListenerState.newBuilder()
         .setVersionInfo(metadata.getVersion())
         .setLastUpdated(nanosToTimestamp(metadata.getUpdateTimeNanos()));
