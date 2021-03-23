@@ -74,11 +74,8 @@ public final class CsdsService extends
   @Override
   public void fetchClientStatus(
       ClientStatusRequest request, StreamObserver<ClientStatusResponse> responseObserver) {
-    try {
-      responseObserver.onNext(getConfigDumpForRequest(request));
+    if (handleRequest(request, responseObserver)) {
       responseObserver.onCompleted();
-    } catch (StatusException e) {
-      responseObserver.onError(e);
     }
   }
 
@@ -88,12 +85,7 @@ public final class CsdsService extends
     return new StreamObserver<ClientStatusRequest>() {
       @Override
       public void onNext(ClientStatusRequest request) {
-        // TODO(sergiitk): common method to handle errors?
-        try {
-          responseObserver.onNext(getConfigDumpForRequest(request));
-        } catch (StatusException e) {
-          responseObserver.onError(e);
-        }
+        handleRequest(request, responseObserver);
       }
 
       @Override
@@ -106,6 +98,19 @@ public final class CsdsService extends
         responseObserver.onCompleted();
       }
     };
+  }
+
+  private boolean handleRequest(
+      ClientStatusRequest request, StreamObserver<ClientStatusResponse> responseObserver) {
+    try {
+      responseObserver.onNext(getConfigDumpForRequest(request));
+      return true;
+    } catch (StatusException e) {
+      responseObserver.onError(e);
+    } catch (Exception e) {
+      responseObserver.onError(new StatusException(Status.INTERNAL.withCause(e)));
+    }
+    return false;
   }
 
   private ClientStatusResponse getConfigDumpForRequest(ClientStatusRequest request)

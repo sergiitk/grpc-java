@@ -64,16 +64,15 @@ final class SharedXdsClientPoolProvider implements XdsClientPoolFactory {
     return SharedXdsClientPoolProviderHolder.instance;
   }
 
-  // TODO(sergiitk): better name, docs, test.
-  @Nullable
-  public ObjectPool<XdsClient> getXdsClientPoolOrNull() {
-    // TODO(sergiitk): synchronize
-    return xdsClientPool;
-  }
-
   @Override
   public void setBootstrapOverride(Map<String, ?> bootstrap) {
     bootstrapOverride.set(bootstrap);
+  }
+
+  // TODO(sergiitk): better name, docs, test. synchronize?
+  @Nullable
+  public ObjectPool<XdsClient> getXdsClientPoolOrNull() {
+    return xdsClientPool;
   }
 
   @Override
