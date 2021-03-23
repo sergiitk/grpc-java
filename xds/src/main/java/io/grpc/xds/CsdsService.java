@@ -24,6 +24,8 @@ import io.envoyproxy.envoy.admin.v3.ClientResourceStatus;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListener;
 import io.envoyproxy.envoy.admin.v3.ListenersConfigDump.DynamicListenerState;
+import io.envoyproxy.envoy.admin.v3.RoutesConfigDump;
+import io.envoyproxy.envoy.admin.v3.RoutesConfigDump.DynamicRouteConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
@@ -128,18 +130,22 @@ public final class CsdsService extends
   }
 
   private ClientConfig getClientConfigForXdsClient(XdsClient xdsClient) {
-    ListenersConfigDump ldsConfig = dumpLdsConfig(xdsClient.getCurrentVersion(ResourceType.LDS),
-        xdsClient.getSubscribedResourcesMetadata(ResourceType.LDS));
+    ListenersConfigDump ldsConfig = dumpLdsConfig(
+        xdsClient.getSubscribedResourcesMetadata(ResourceType.LDS),
+        xdsClient.getCurrentVersion(ResourceType.LDS));
+    RoutesConfigDump rdsConfig = dumpRdsConfig(
+        xdsClient.getSubscribedResourcesMetadata(ResourceType.RDS));
 
     return ClientConfig.newBuilder()
         .setNode(xdsClient.getNode().toEnvoyProtoNode())
         .addXdsConfig(PerXdsConfig.newBuilder().setListenerConfig(ldsConfig))
+        .addXdsConfig(PerXdsConfig.newBuilder().setRouteConfig(rdsConfig))
         .build();
   }
 
   @VisibleForTesting
   static ListenersConfigDump dumpLdsConfig(
-      String version, Map<String, ResourceMetadata> resourcesMetadata) {
+      Map<String, ResourceMetadata> resourcesMetadata, String version) {
     ListenersConfigDump.Builder ldsConfig = ListenersConfigDump.newBuilder();
     for (Map.Entry<String, ResourceMetadata> entry : resourcesMetadata.entrySet()) {
       ldsConfig.addDynamicListeners(buildDynamicListener(entry.getKey(), entry.getValue()));
@@ -162,6 +168,30 @@ public final class CsdsService extends
       listenerState.setListener(metadata.getRawResource());
     }
     return listener.setActiveState(listenerState).build();
+  }
+
+  @VisibleForTesting
+  static RoutesConfigDump dumpRdsConfig(Map<String, ResourceMetadata> resourcesMetadata) {
+    RoutesConfigDump.Builder rdsConfig = RoutesConfigDump.newBuilder();
+    for (ResourceMetadata metadata : resourcesMetadata.values()) {
+      rdsConfig.addDynamicRouteConfigs(buildDynamicRouteConfig(metadata));
+    }
+    return rdsConfig.build();
+  }
+
+  @VisibleForTesting
+  static DynamicRouteConfig buildDynamicRouteConfig(ResourceMetadata metadata) {
+    DynamicRouteConfig.Builder routeConfig = DynamicRouteConfig.newBuilder()
+        .setVersionInfo(metadata.getVersion())
+        .setClientStatus(metadataStatusToClientStatus(metadata.getStatus()))
+        .setLastUpdated(nanosToTimestamp(metadata.getUpdateTimeNanos()));
+    if (metadata.getErrorState() != null) {
+      routeConfig.setErrorState(metadataUpdateFailureStateToProto(metadata.getErrorState()));
+    }
+    if (metadata.getRawResource() != null) {
+      routeConfig.setRouteConfig(metadata.getRawResource());
+    }
+    return routeConfig.build();
   }
 
   private static Timestamp nanosToTimestamp(long updateTimeNanos) {
