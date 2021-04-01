@@ -428,13 +428,14 @@ final class ClientXdsClient extends AbstractXdsClient {
   @Nullable
   static StructOrError<Route> parseRoute(
       io.envoyproxy.envoy.config.route.v3.Route proto, boolean parseFilter) {
-    StructOrError<RouteMatch> routeMatch = parseRouteMatch(proto.getMatch());
+    RouteMatch routeMatch = null;
+    try {
+      routeMatch = parseRouteMatch(proto.getMatch());
+    } catch (ResourceInvalidException e) {
+      return StructOrError.fromError(e.getMessage());
+    }
     if (routeMatch == null) {
       return null;
-    }
-    if (routeMatch.getErrorDetail() != null) {
-      return StructOrError.fromError(
-          "Invalid route [" + proto.getName() + "]: " + routeMatch.getErrorDetail());
     }
 
     StructOrError<RouteAction> routeAction;
@@ -460,8 +461,8 @@ final class ClientXdsClient extends AbstractXdsClient {
           "Invalid route [" + proto.getName() + "]: " + routeAction.getErrorDetail());
     }
     if (!parseFilter) {
-      return StructOrError.fromStruct(Route.create(
-          routeMatch.getStruct(), routeAction.getStruct(), new HashMap<String, FilterConfig>()));
+      return StructOrError.fromStruct(
+          Route.create(routeMatch, routeAction.getStruct(), new HashMap<String, FilterConfig>()));
     }
     StructOrError<Map<String, FilterConfig>> overrideConfigs =
         parseOverrideFilterConfigs(proto.getTypedPerFilterConfigMap());
@@ -470,71 +471,58 @@ final class ClientXdsClient extends AbstractXdsClient {
           "Route [" + proto.getName() + "] contains invalid HttpFilter config: "
               + overrideConfigs.errorDetail);
     }
-    return StructOrError.fromStruct(Route.create(
-        routeMatch.getStruct(), routeAction.getStruct(), overrideConfigs.struct));
+    return StructOrError.fromStruct(
+        Route.create(routeMatch, routeAction.getStruct(), overrideConfigs.struct));
   }
 
   @VisibleForTesting
   @Nullable
-  static StructOrError<RouteMatch> parseRouteMatch(
-      io.envoyproxy.envoy.config.route.v3.RouteMatch proto) {
+  static RouteMatch parseRouteMatch(
+      io.envoyproxy.envoy.config.route.v3.RouteMatch proto) throws ResourceInvalidException {
     if (proto.getQueryParametersCount() != 0) {
       return null;
     }
-    StructOrError<PathMatcher> pathMatch = parsePathMatcher(proto);
-    if (pathMatch.getErrorDetail() != null) {
-      return StructOrError.fromError(pathMatch.getErrorDetail());
-    }
+    PathMatcher pathMatch = parsePathMatcher(proto);
 
     FractionMatcher fractionMatch = null;
     if (proto.hasRuntimeFraction()) {
-      StructOrError<FractionMatcher> parsedFraction =
-          parseFractionMatcher(proto.getRuntimeFraction().getDefaultValue());
-      if (parsedFraction.getErrorDetail() != null) {
-        return StructOrError.fromError(parsedFraction.getErrorDetail());
-      }
-      fractionMatch = parsedFraction.getStruct();
+      fractionMatch = parseFractionMatcher(proto.getRuntimeFraction().getDefaultValue());
     }
 
     List<HeaderMatcher> headerMatchers = new ArrayList<>();
     for (io.envoyproxy.envoy.config.route.v3.HeaderMatcher hmProto : proto.getHeadersList()) {
-      StructOrError<HeaderMatcher> headerMatcher = parseHeaderMatcher(hmProto);
-      if (headerMatcher.getErrorDetail() != null) {
-        return StructOrError.fromError(headerMatcher.getErrorDetail());
-      }
-      headerMatchers.add(headerMatcher.getStruct());
+      headerMatchers.add(parseHeaderMatcher(hmProto));
     }
 
-    return StructOrError.fromStruct(RouteMatch.create(
-        pathMatch.getStruct(), headerMatchers, fractionMatch));
+    return RouteMatch.create(pathMatch, headerMatchers, fractionMatch);
   }
 
   @VisibleForTesting
-  static StructOrError<PathMatcher> parsePathMatcher(
-      io.envoyproxy.envoy.config.route.v3.RouteMatch proto) {
+  static PathMatcher parsePathMatcher(io.envoyproxy.envoy.config.route.v3.RouteMatch proto)
+      throws ResourceInvalidException {
     boolean caseSensitive = proto.getCaseSensitive().getValue();
     switch (proto.getPathSpecifierCase()) {
       case PREFIX:
-        return StructOrError.fromStruct(
-            PathMatcher.fromPrefix(proto.getPrefix(), caseSensitive));
+        return PathMatcher.fromPrefix(proto.getPrefix(), caseSensitive);
       case PATH:
-        return StructOrError.fromStruct(PathMatcher.fromPath(proto.getPath(), caseSensitive));
+        return PathMatcher.fromPath(proto.getPath(), caseSensitive);
       case SAFE_REGEX:
         String rawPattern = proto.getSafeRegex().getRegex();
         Pattern safeRegEx;
         try {
           safeRegEx = Pattern.compile(rawPattern);
         } catch (PatternSyntaxException e) {
-          return StructOrError.fromError("Malformed safe regex pattern: " + e.getMessage());
+          throw new ResourceInvalidException("RouteMatch contains malformed safe regex pattern", e);
         }
-        return StructOrError.fromStruct(PathMatcher.fromRegEx(safeRegEx));
+        return PathMatcher.fromRegEx(safeRegEx);
       case PATHSPECIFIER_NOT_SET:
       default:
-        return StructOrError.fromError("Unknown path match type");
+        throw new ResourceInvalidException("Unknown path match type");
     }
   }
 
-  private static StructOrError<FractionMatcher> parseFractionMatcher(FractionalPercent proto) {
+  private static FractionMatcher parseFractionMatcher(FractionalPercent proto)
+      throws ResourceInvalidException {
     int numerator = proto.getNumerator();
     int denominator = 0;
     switch (proto.getDenominator()) {
@@ -549,48 +537,46 @@ final class ClientXdsClient extends AbstractXdsClient {
         break;
       case UNRECOGNIZED:
       default:
-        return StructOrError.fromError(
-            "Unrecognized fractional percent denominator: " + proto.getDenominator());
+        throw new ResourceInvalidException(
+            "Could not parse FractionalPercent: unknown denominator type " + proto
+                .getDenominator());
     }
-    return StructOrError.fromStruct(FractionMatcher.create(numerator, denominator));
+    return FractionMatcher.create(numerator, denominator);
   }
 
   @VisibleForTesting
-  static StructOrError<HeaderMatcher> parseHeaderMatcher(
-      io.envoyproxy.envoy.config.route.v3.HeaderMatcher proto) {
+  static HeaderMatcher parseHeaderMatcher(io.envoyproxy.envoy.config.route.v3.HeaderMatcher proto)
+      throws ResourceInvalidException {
     switch (proto.getHeaderMatchSpecifierCase()) {
       case EXACT_MATCH:
-        return StructOrError.fromStruct(HeaderMatcher.forExactValue(
-            proto.getName(), proto.getExactMatch(), proto.getInvertMatch()));
+        return HeaderMatcher
+            .forExactValue(proto.getName(), proto.getExactMatch(), proto.getInvertMatch());
       case SAFE_REGEX_MATCH:
         String rawPattern = proto.getSafeRegexMatch().getRegex();
         Pattern safeRegExMatch;
         try {
           safeRegExMatch = Pattern.compile(rawPattern);
         } catch (PatternSyntaxException e) {
-          return StructOrError.fromError(
-              "HeaderMatcher [" + proto.getName() + "] contains malformed safe regex pattern: "
-                  + e.getMessage());
+          throw new ResourceInvalidException(
+              "HeaderMatcher [" + proto.getName() + "] contains malformed safe regex pattern", e);
         }
-        return StructOrError.fromStruct(HeaderMatcher.forSafeRegEx(
-            proto.getName(), safeRegExMatch, proto.getInvertMatch()));
+        return HeaderMatcher.forSafeRegEx(proto.getName(), safeRegExMatch, proto.getInvertMatch());
       case RANGE_MATCH:
         HeaderMatcher.Range rangeMatch = HeaderMatcher.Range.create(
             proto.getRangeMatch().getStart(), proto.getRangeMatch().getEnd());
-        return StructOrError.fromStruct(HeaderMatcher.forRange(
-            proto.getName(), rangeMatch, proto.getInvertMatch()));
+        return HeaderMatcher.forRange(proto.getName(), rangeMatch, proto.getInvertMatch());
       case PRESENT_MATCH:
-        return StructOrError.fromStruct(HeaderMatcher.forPresent(
-            proto.getName(), proto.getPresentMatch(), proto.getInvertMatch()));
+        return HeaderMatcher
+            .forPresent(proto.getName(), proto.getPresentMatch(), proto.getInvertMatch());
       case PREFIX_MATCH:
-        return StructOrError.fromStruct(HeaderMatcher.forPrefix(
-            proto.getName(), proto.getPrefixMatch(), proto.getInvertMatch()));
+        return HeaderMatcher
+            .forPrefix(proto.getName(), proto.getPrefixMatch(), proto.getInvertMatch());
       case SUFFIX_MATCH:
-        return StructOrError.fromStruct(HeaderMatcher.forSuffix(
-            proto.getName(), proto.getSuffixMatch(), proto.getInvertMatch()));
+        return HeaderMatcher
+            .forSuffix(proto.getName(), proto.getSuffixMatch(), proto.getInvertMatch());
       case HEADERMATCHSPECIFIER_NOT_SET:
       default:
-        return StructOrError.fromError("Unknown header matcher type");
+        throw new ResourceInvalidException("Unknown header matcher type");
     }
   }
 
@@ -1579,6 +1565,13 @@ final class ClientXdsClient extends AbstractXdsClient {
 
     public ResourceInvalidException(String message, Throwable cause) {
       super(cause != null ? message + ": " + cause.getMessage() : message, cause, false, false);
+    }
+
+    public static ResourceInvalidException fromDownstreamFault(
+        String resourceName, ResourceInvalidException downstreamFault) {
+      return new ResourceInvalidException(
+          "Invalid " + resourceName + ": " + downstreamFault.getMessage(),
+          downstreamFault.getCause());
     }
   }
 
