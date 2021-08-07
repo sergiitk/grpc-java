@@ -36,6 +36,7 @@ final class FilterRegistry {
     if (instance == null) {
       instance = newRegistry().register(
               FaultFilter.INSTANCE,
+              RateLimitFilter.INSTANCE,
               RouterFilter.INSTANCE,
               RbacFilter.INSTANCE);
     }
