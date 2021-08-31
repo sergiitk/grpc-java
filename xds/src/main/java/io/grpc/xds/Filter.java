@@ -70,6 +70,8 @@ interface Filter {
     @Nullable
     ServerInterceptor buildServerInterceptor(
         FilterConfig config, @Nullable FilterConfig overrideConfig);
+
+    // shutdown/close
   }
 
   // TODO(zdapeng): Unify with ClientXdsClient.StructOrError, or just have parseFilterConfig() throw

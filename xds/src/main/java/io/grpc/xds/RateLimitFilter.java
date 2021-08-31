@@ -119,6 +119,26 @@ final class RateLimitFilter implements Filter, ServerInterceptorBuilder {
 
   private ServerInterceptor buildRateLimitInterceptor(final RateLimitConfig rateLimitConfig) {
     checkNotNull(rateLimitConfig, "rateLimitConfig");
+    // map rateLimitConfig.domain() -> object
+    // shared resource holder, acquire every rpc
+    // this is per route configuration
+    // store RLS Client or channel in the config as a reference - FilterConfig config ref when parse
+    //   - atomic maybe
+    //   - allocate channel on demand / ref counting
+    //   - and interface to notify service interceptor on shutdown
+    //   - destroy channel when ref count 0
+    // potentially many RLS Clients sharing a channel to grpc RLS service -
+    //   TODO(sergiitk): look up how cache is looked up
+    // now we create filters every RPC. will be change in RBAC.
+    //    we need to avoid recreating filter when config doesn't change
+    //    m: trigger close() after we create new instances
+    //    RBAC filter recreate? - has to be fixed for RBAC
+    // TODO(sergiitk): buffering calls. See DelayedClientCall. We need this for server.
+    //   we need to be careful with draining buffered calls from the queue to avoid races.
+    //   We need the same thing as described in https://github.com/grpc/grpc-java/issues/7868 on serv side.
+    // AI: https://github.com/grpc/grpc-java/issues/7868 discuss on stabl meeting
+    // AI: follow up with Eric on how cache is shared, this changes if we need to cache interceptor
+
     return new ServerInterceptor() {
       @Override
       public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
