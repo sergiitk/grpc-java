@@ -28,7 +28,9 @@ import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.util.concurrent.SettableFuture;
 import com.google.protobuf.Any;
 import com.google.protobuf.Duration;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -1958,8 +1960,25 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
   }
 
   @Override
-  Map<String, ResourceMetadata> getSubscribedResourcesMetadata(ResourceType type) {
+  Map<String, ResourceMetadata> getSubscribedResourcesMetadata(final ResourceType type) {
+    final SettableFuture<Map<String, ResourceMetadata>> future = SettableFuture.create();
+    syncContext.execute(new Runnable() {
+      @Override
+      public void run() {
+        future.set(getSubscribedResourcesMetadataUnsafe(type));
+      }
+    });
+
     Map<String, ResourceMetadata> metadataMap = new HashMap<>();
+    for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
+      metadataMap.put(entry.getKey(), entry.getValue().metadata);
+    }
+    return metadataMap;
+  }
+
+  private Map<String, ResourceMetadata> getSubscribedResourcesMetadataUnsafe(ResourceType type) {
+    ImmutableMap<String, ResourceMetadata> metadataMap = ImmutableMap.<String, ResourceMetadata>builder();
+
     for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
       metadataMap.put(entry.getKey(), entry.getValue().metadata);
     }
