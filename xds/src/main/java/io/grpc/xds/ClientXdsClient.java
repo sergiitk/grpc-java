@@ -117,8 +117,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.annotation.Nullable;
 
 /**
@@ -153,6 +156,7 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
       Strings.isNullOrEmpty(System.getenv("GRPC_XDS_EXPERIMENTAL_RBAC"))
           || Boolean.parseBoolean(System.getenv("GRPC_XDS_EXPERIMENTAL_RBAC"));
 
+  private static final long METADATA_SYNC_TIMEOUT_SEC = 1;
   private static final String TYPE_URL_HTTP_CONNECTION_MANAGER_V2 =
       "type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2"
           + ".HttpConnectionManager";
@@ -1968,21 +1972,28 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
         future.set(getSubscribedResourcesMetadataUnsafe(type));
       }
     });
-
-    Map<String, ResourceMetadata> metadataMap = new HashMap<>();
-    for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
-      metadataMap.put(entry.getKey(), entry.getValue().metadata);
-    }
-    return metadataMap;
+    return awaitSubscribedResourcesMetadata(future);
   }
 
   private Map<String, ResourceMetadata> getSubscribedResourcesMetadataUnsafe(ResourceType type) {
-    ImmutableMap<String, ResourceMetadata> metadataMap = ImmutableMap.<String, ResourceMetadata>builder();
-
+    ImmutableMap.Builder<String, ResourceMetadata> metadataMap = ImmutableMap.builder();
     for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
       metadataMap.put(entry.getKey(), entry.getValue().metadata);
     }
-    return metadataMap;
+    return metadataMap.build();
+  }
+
+  private static Map<String, ResourceMetadata> awaitSubscribedResourcesMetadata(
+      Future<Map<String, ResourceMetadata>> future) {
+    try {
+      return future.get(METADATA_SYNC_TIMEOUT_SEC, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      throw new MetadataLoadException(e);
+    } catch (ExecutionException e) {
+      throw new MetadataLoadException(e);
+    } catch (TimeoutException e) {
+      throw new MetadataLoadException(e);
+    }
   }
 
   @Override
@@ -2514,5 +2525,22 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
     };
 
     abstract ManagedChannel create(ServerInfo serverInfo);
+  }
+
+  private static final class MetadataLoadException extends RuntimeException {
+    private static final long serialVersionUID = 0L;
+
+    public MetadataLoadException(String message) {
+      // TODO(sergiitk): clarify last two options for this case.
+      super(message, null, false, false);
+    }
+
+    public MetadataLoadException(Throwable cause) {
+      super(cause != null ? cause.getMessage() : null, cause, false, false);
+    }
+
+    public MetadataLoadException(String message, Throwable cause) {
+      super(cause != null ? message + ": " + cause.getMessage() : message, cause, false, false);
+    }
   }
 }
