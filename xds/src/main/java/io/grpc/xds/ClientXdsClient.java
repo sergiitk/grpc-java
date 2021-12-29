@@ -31,6 +31,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.SettableFuture;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 import com.google.protobuf.Any;
 import com.google.protobuf.Duration;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -1963,22 +1964,6 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
   }
 
   @Override
-  Map<String, ResourceMetadata> getSubscribedResourcesMetadata(final ResourceType type) {
-    final SettableFuture<Map<String, ResourceMetadata>> future = SettableFuture.create();
-    syncContext.execute(new Runnable() {
-      @Override
-      public void run() {
-        future.set(getSubscribedResourcesMetadataUnsafe(type));
-      }
-    });
-    try {
-      return future.get(METADATA_SYNC_TIMEOUT_SEC, TimeUnit.SECONDS);
-    } catch (InterruptedException | ExecutionException | TimeoutException e) {
-      throw new MetadataLoadException(e);
-    }
-  }
-
-  @Override
   Map<ResourceType, Map<String, ResourceMetadata>> getSubscribedResourcesMetadataSnapshot() {
     final SettableFuture<Map<ResourceType, Map<String, ResourceMetadata>>> future =
         SettableFuture.create();
@@ -1992,7 +1977,11 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
           if (type == ResourceType.UNKNOWN) {
             continue;
           }
-          metadataSnapshot.put(type, getSubscribedResourcesMetadataUnsafe(type));
+          ImmutableMap.Builder<String, ResourceMetadata> metadataMap = ImmutableMap.builder();
+          for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
+            metadataMap.put(entry.getKey(), entry.getValue().metadata);
+          }
+          metadataSnapshot.put(type, metadataMap.build());
         }
         future.set(metadataSnapshot.build());
       }
@@ -2000,16 +1989,8 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
     try {
       return future.get(METADATA_SYNC_TIMEOUT_SEC, TimeUnit.SECONDS);
     } catch (InterruptedException | ExecutionException | TimeoutException e) {
-      throw new MetadataLoadException(e);
+      throw new UncheckedExecutionException(e);
     }
-  }
-
-  private Map<String, ResourceMetadata> getSubscribedResourcesMetadataUnsafe(ResourceType type) {
-    ImmutableMap.Builder<String, ResourceMetadata> metadataMap = ImmutableMap.builder();
-    for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
-      metadataMap.put(entry.getKey(), entry.getValue().metadata);
-    }
-    return metadataMap.build();
   }
 
   @Override
@@ -2541,22 +2522,5 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
     };
 
     abstract ManagedChannel create(ServerInfo serverInfo);
-  }
-
-  private static final class MetadataLoadException extends RuntimeException {
-    private static final long serialVersionUID = 0L;
-
-    public MetadataLoadException(String message) {
-      // TODO(sergiitk): clarify last two options for this case.
-      super(message, null, false, false);
-    }
-
-    public MetadataLoadException(Throwable cause) {
-      super(cause != null ? cause.getMessage() : null, cause, false, false);
-    }
-
-    public MetadataLoadException(String message, Throwable cause) {
-      super(cause != null ? message + ": " + cause.getMessage() : message, cause, false, false);
-    }
   }
 }

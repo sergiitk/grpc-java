@@ -130,7 +130,7 @@ public class CsdsServiceTest {
     public void fetchClientConfig_unexpectedException() {
       XdsClient throwingXdsClient = new XdsClient() {
         @Override
-        Map<String, ResourceMetadata> getSubscribedResourcesMetadata(ResourceType type) {
+        Map<ResourceType, Map<String, ResourceMetadata>> getSubscribedResourcesMetadataSnapshot() {
           throw new IllegalArgumentException("IllegalArgumentException");
         }
       };
