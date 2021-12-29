@@ -499,6 +499,15 @@ abstract class XdsClient {
   }
 
   /**
+   * Returns the map containing the {@link ResourceMetadata} of the subscribed resources for the
+   * given resource type, indexed by the resource name.
+   */
+  // Must be synchronized.
+  Map<ResourceType, Map<String, ResourceMetadata>> getSubscribedResourcesMetadataSnapshot() {
+    throw new UnsupportedOperationException();
+  }
+
+  /**
    * Registers a data watcher for the given LDS resource.
    */
   void watchLdsResource(String resourceName, LdsResourceWatcher watcher) {

@@ -118,7 +118,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -1972,7 +1971,37 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
         future.set(getSubscribedResourcesMetadataUnsafe(type));
       }
     });
-    return awaitSubscribedResourcesMetadata(future);
+    try {
+      return future.get(METADATA_SYNC_TIMEOUT_SEC, TimeUnit.SECONDS);
+    } catch (InterruptedException | ExecutionException | TimeoutException e) {
+      throw new MetadataLoadException(e);
+    }
+  }
+
+  @Override
+  Map<ResourceType, Map<String, ResourceMetadata>> getSubscribedResourcesMetadataSnapshot() {
+    final SettableFuture<Map<ResourceType, Map<String, ResourceMetadata>>> future =
+        SettableFuture.create();
+    syncContext.execute(new Runnable() {
+      @Override
+      public void run() {
+        // A map from ResourceType to a map (ResourceName: ResourceMetadata)
+        ImmutableMap.Builder<ResourceType, Map<String, ResourceMetadata>> metadataSnapshot =
+            ImmutableMap.builder();
+        for (ResourceType type : ResourceType.values()) {
+          if (type == ResourceType.UNKNOWN) {
+            continue;
+          }
+          metadataSnapshot.put(type, getSubscribedResourcesMetadataUnsafe(type));
+        }
+        future.set(metadataSnapshot.build());
+      }
+    });
+    try {
+      return future.get(METADATA_SYNC_TIMEOUT_SEC, TimeUnit.SECONDS);
+    } catch (InterruptedException | ExecutionException | TimeoutException e) {
+      throw new MetadataLoadException(e);
+    }
   }
 
   private Map<String, ResourceMetadata> getSubscribedResourcesMetadataUnsafe(ResourceType type) {
@@ -1981,19 +2010,6 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
       metadataMap.put(entry.getKey(), entry.getValue().metadata);
     }
     return metadataMap.build();
-  }
-
-  private static Map<String, ResourceMetadata> awaitSubscribedResourcesMetadata(
-      Future<Map<String, ResourceMetadata>> future) {
-    try {
-      return future.get(METADATA_SYNC_TIMEOUT_SEC, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      throw new MetadataLoadException(e);
-    } catch (ExecutionException e) {
-      throw new MetadataLoadException(e);
-    } catch (TimeoutException e) {
-      throw new MetadataLoadException(e);
-    }
   }
 
   @Override
