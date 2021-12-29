@@ -1978,8 +1978,9 @@ final class ClientXdsClient extends XdsClient implements XdsResponseHandler, Res
             continue;
           }
           ImmutableMap.Builder<String, ResourceMetadata> metadataMap = ImmutableMap.builder();
-          for (Map.Entry<String, ResourceSubscriber> entry : getSubscribedResourcesMap(type).entrySet()) {
-            metadataMap.put(entry.getKey(), entry.getValue().metadata);
+          for (Map.Entry<String, ResourceSubscriber> resourceEntry
+              : getSubscribedResourcesMap(type).entrySet()) {
+            metadataMap.put(resourceEntry.getKey(), resourceEntry.getValue().metadata);
           }
           metadataSnapshot.put(type, metadataMap.build());
         }
