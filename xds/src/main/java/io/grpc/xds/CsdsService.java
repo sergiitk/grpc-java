@@ -143,11 +143,11 @@ public final class CsdsService extends
   static ClientConfig getClientConfigForXdsClient(XdsClient xdsClient) {
     ClientConfig.Builder builder = ClientConfig.newBuilder()
         .setNode(xdsClient.getBootstrapInfo().node().toEnvoyProtoNode());
-    for (Map.Entry<ResourceType, Map<String, ResourceMetadata>> metadataSnapshotEntry
+    for (Map.Entry<ResourceType, Map<String, ResourceMetadata>> metadataByTypeEntry
         : xdsClient.getSubscribedResourcesMetadataSnapshot().entrySet()) {
-      ResourceType type = metadataSnapshotEntry.getKey();
+      ResourceType type = metadataByTypeEntry.getKey();
       for (Map.Entry<String, ResourceMetadata> metadataEntry
-          : metadataSnapshotEntry.getValue().entrySet()) {
+          : metadataByTypeEntry.getValue().entrySet()) {
         ResourceMetadata metadata = metadataEntry.getValue();
         GenericXdsConfig.Builder genericXdsConfigBuilder = GenericXdsConfig.newBuilder()
             .setTypeUrl(type.typeUrl())
