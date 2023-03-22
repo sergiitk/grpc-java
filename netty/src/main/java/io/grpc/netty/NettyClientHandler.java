@@ -224,6 +224,12 @@ class NettyClientHandler extends AbstractNettyHandler {
 
     Http2Settings settings = new Http2Settings();
     settings.pushEnabled(false);
+    // Netty default, gRPC default: 0x4000 = 16,384 B = 16 KiB
+    // GRPC_CLIENT_MAX_FRAME_SIZE override default: 64 KiB
+    // Absolute maximum (inclusive): 0xFFFFFF = 16,777,215 B = (16 MiB - 1 B)
+    // (defined in https://www.rfc-editor.org/rfc/rfc9113.html#SETTINGS_MAX_FRAME_SIZE)
+    settings.maxFrameSize(
+        Integer.parseInt(System.getenv().getOrDefault("GRPC_CLIENT_MAX_FRAME_SIZE", "64")) * 1024);
     settings.initialWindowSize(flowControlWindow);
     settings.maxConcurrentStreams(0);
     settings.maxHeaderListSize(maxHeaderListSize);

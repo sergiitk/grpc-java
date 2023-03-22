@@ -226,7 +226,18 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     final Http2Connection connection = new DefaultHttp2Connection(true);
     WeightedFairQueueByteDistributor dist = new WeightedFairQueueByteDistributor(connection);
-    dist.allocationQuantum(16 * 1024); // Make benchmarks fast again.
+    // Amount of bytes that will be allocated to each stream.
+    // Netty default: 1 KiB
+    // gRPC default: 16 KiB
+    // gRPC default override: 64 KiB
+    // Env var default: GRPC_CLIENT_MAX_FRAME_SIZE or 64 KiB
+    int aq = 64;
+    if (System.getenv("GRPC_SERVER_STREAM_ALLOCATION_QUANTUM") != null) {
+      aq = Integer.parseInt(System.getenv("GRPC_SERVER_STREAM_ALLOCATION_QUANTUM"));
+    } else if (System.getenv("GRPC_CLIENT_MAX_FRAME_SIZE") != null) {
+      aq = Integer.parseInt(System.getenv("GRPC_CLIENT_MAX_FRAME_SIZE"));
+    }
+    dist.allocationQuantum(aq * 1024); // Make benchmarks fast again.
     DefaultHttp2RemoteFlowController controller =
         new DefaultHttp2RemoteFlowController(connection, dist);
     connection.remote().flowController(controller);
