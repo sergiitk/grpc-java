@@ -231,6 +231,7 @@ class NettyClientHandler extends AbstractNettyHandler {
     return new NettyClientHandler(
         decoder,
         encoder,
+        frameReader,
         settings,
         negotiationLogger,
         lifecycleManager,
@@ -248,6 +249,7 @@ class NettyClientHandler extends AbstractNettyHandler {
   private NettyClientHandler(
       Http2ConnectionDecoder decoder,
       Http2ConnectionEncoder encoder,
+      Http2FrameReader frameReader,
       Http2Settings settings,
       ChannelLogger negotiationLogger,
       ClientTransportLifecycleManager lifecycleManager,
@@ -260,7 +262,7 @@ class NettyClientHandler extends AbstractNettyHandler {
       boolean autoFlowControl,
       PingLimiter pingLimiter,
       Ticker ticker) {
-    super(/* channelUnused= */ null, decoder, encoder, settings,
+    super(/* channelUnused= */ null, decoder, encoder, frameReader, settings,
         negotiationLogger, autoFlowControl, pingLimiter, ticker);
     this.lifecycleManager = lifecycleManager;
     this.keepAliveManager = keepAliveManager;

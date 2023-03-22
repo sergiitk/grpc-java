@@ -29,6 +29,7 @@ import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http2.Http2ConnectionDecoder;
 import io.netty.handler.codec.http2.Http2ConnectionEncoder;
 import io.netty.handler.codec.http2.Http2Exception;
+import io.netty.handler.codec.http2.Http2FrameReader;
 import io.netty.handler.codec.http2.Http2LocalFlowController;
 import io.netty.handler.codec.http2.Http2Settings;
 import io.netty.handler.codec.http2.Http2Stream;
@@ -43,7 +44,7 @@ abstract class AbstractNettyHandler extends GrpcHttp2ConnectionHandler {
 
   private final int initialConnectionWindow;
   private final FlowControlPinger flowControlPing;
-  private final int windowSizeToFrameRatio;
+  private int windowSizeToFrameRatio;
 
   private boolean autoTuneFlowControlOn;
   private ChannelHandlerContext ctx;
@@ -51,17 +52,20 @@ abstract class AbstractNettyHandler extends GrpcHttp2ConnectionHandler {
   private final Ticker ticker;
 
   private static final long BDP_MEASUREMENT_PING = 1234;
+  private final Http2FrameReader frameReader;
 
   AbstractNettyHandler(
       ChannelPromise channelUnused,
       Http2ConnectionDecoder decoder,
       Http2ConnectionEncoder encoder,
+      Http2FrameReader frameReader,
       Http2Settings initialSettings,
       ChannelLogger negotiationLogger,
       boolean autoFlowControl,
       PingLimiter pingLimiter,
       Ticker ticker) {
     super(channelUnused, decoder, encoder, initialSettings, negotiationLogger);
+    this.frameReader = frameReader;
 
     // During a graceful shutdown, wait until all streams are closed.
     gracefulShutdownTimeoutMillis(GRACEFUL_SHUTDOWN_NO_TIMEOUT);
@@ -132,6 +136,11 @@ abstract class AbstractNettyHandler extends GrpcHttp2ConnectionHandler {
   @VisibleForTesting
   void setAutoTuneFlowControl(boolean isOn) {
     autoTuneFlowControlOn = isOn;
+  }
+
+  @VisibleForTesting
+  void setWindowToFrameRatio(int ratio) {
+    windowSizeToFrameRatio = ratio;
   }
 
   /**
@@ -224,8 +233,10 @@ abstract class AbstractNettyHandler extends GrpcHttp2ConnectionHandler {
         // Netty default, gRPC default: 0x4000 = 16,384 B = 16 KiB
         // Absolute maximum (inclusive): 0xFFFFFF = 16,777,215 B = (16 MiB - 1 B)
         // (defined in https://www.rfc-editor.org/rfc/rfc9113.html#SETTINGS_MAX_FRAME_SIZE)
-        settings.maxFrameSize(
-            Math.min(targetWindow / windowSizeToFrameRatio, MAX_FRAME_SIZE_UPPER_BOUND));
+        int frameSize = Math.min(targetWindow / windowSizeToFrameRatio, MAX_FRAME_SIZE_UPPER_BOUND);
+        settings.maxFrameSize(frameSize);
+        frameReader.configuration().frameSizePolicy().maxFrameSize(frameSize);
+
       }
       frameWriter().writeSettings(ctx(), settings, ctx().newPromise());
     }

@@ -829,7 +829,6 @@ public class NettyClientHandlerTest extends NettyHandlerTestBase<NettyClientHand
   public void bdpPingAllowedAfterSendingData() throws Exception {
     // gRPC servers limit PINGs based on what they _send_. Some servers limit PINGs based on what is
     // _received_.
-    flowControlWindow = 64 * 1024;
     manualSetUp();
     createStream();
     handler().setAutoTuneFlowControl(true);

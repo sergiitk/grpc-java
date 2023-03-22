@@ -258,7 +258,7 @@ class NettyServerHandler extends AbstractNettyHandler {
         transportListener,
         streamTracerFactories,
         transportTracer,
-        decoder, encoder, settings,
+        decoder, encoder, frameReader, settings,
         maxMessageSize,
         keepAliveTimeInNanos, keepAliveTimeoutInNanos,
         maxConnectionIdleInNanos,
@@ -276,6 +276,7 @@ class NettyServerHandler extends AbstractNettyHandler {
       TransportTracer transportTracer,
       Http2ConnectionDecoder decoder,
       Http2ConnectionEncoder encoder,
+      Http2FrameReader frameReader,
       Http2Settings settings,
       int maxMessageSize,
       long keepAliveTimeInNanos,
@@ -287,7 +288,7 @@ class NettyServerHandler extends AbstractNettyHandler {
       boolean autoFlowControl,
       Attributes eagAttributes,
       Ticker ticker) {
-    super(channelUnused, decoder, encoder, settings, new ServerChannelLogger(),
+    super(channelUnused, decoder, encoder, frameReader, settings, new ServerChannelLogger(),
         autoFlowControl, null, ticker);
 
     final MaxConnectionIdleManager maxConnectionIdleManager;
