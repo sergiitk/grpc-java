@@ -17,6 +17,7 @@
 package io.grpc.netty;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static io.netty.handler.codec.http2.Http2CodecUtil.MAX_FRAME_SIZE_UPPER_BOUND;
 import static io.netty.handler.codec.http2.Http2CodecUtil.getEmbeddedHttp2Exception;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -42,6 +43,7 @@ abstract class AbstractNettyHandler extends GrpcHttp2ConnectionHandler {
 
   private final int initialConnectionWindow;
   private final FlowControlPinger flowControlPing;
+  private final int windowSizeToFrameRatio;
 
   private boolean autoTuneFlowControlOn;
   private ChannelHandlerContext ctx;
@@ -73,6 +75,8 @@ abstract class AbstractNettyHandler extends GrpcHttp2ConnectionHandler {
     }
     this.flowControlPing = new FlowControlPinger(pingLimiter);
     this.ticker = checkNotNull(ticker, "ticker");
+    this.windowSizeToFrameRatio =
+        Integer.parseInt(System.getenv().getOrDefault("GRPC_WINDOW_TO_FRAME_RATIO", "0"));
   }
 
   @Override
@@ -216,6 +220,13 @@ abstract class AbstractNettyHandler extends GrpcHttp2ConnectionHandler {
       fc.initialWindowSize(targetWindow);
       Http2Settings settings = new Http2Settings();
       settings.initialWindowSize(targetWindow);
+      if (windowSizeToFrameRatio > 0) {
+        // Netty default, gRPC default: 0x4000 = 16,384 B = 16 KiB
+        // Absolute maximum (inclusive): 0xFFFFFF = 16,777,215 B = (16 MiB - 1 B)
+        // (defined in https://www.rfc-editor.org/rfc/rfc9113.html#SETTINGS_MAX_FRAME_SIZE)
+        settings.maxFrameSize(
+            Math.min(targetWindow / windowSizeToFrameRatio, MAX_FRAME_SIZE_UPPER_BOUND));
+      }
       frameWriter().writeSettings(ctx(), settings, ctx().newPromise());
     }
 
