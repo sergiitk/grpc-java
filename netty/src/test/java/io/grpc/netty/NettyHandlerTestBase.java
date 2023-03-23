@@ -575,14 +575,12 @@ public abstract class NettyHandlerTestBase<T extends Http2ConnectionHandler> {
   public void bdpPingWindowResizing() throws Exception {
     int windowToFrameRatio = 4;
     flowControlWindow = 1024 * 32;
-    // frameReader.configuration().frameSizePolicy().maxFrameSize(1024 * 2);
     manualSetUp();
     makeStream();
 
     AbstractNettyHandler handler = (AbstractNettyHandler) handler();
     handler.setAutoTuneFlowControl(true);
     handler.setWindowToFrameRatio(windowToFrameRatio);
-    // Http2Stream connectionStream = connection().connectionStream();
     Http2LocalFlowController localFlowController = connection().local().flowController();
 
     long pingData = handler.flowControlPing().payload();
