@@ -17,6 +17,7 @@
 package io.grpc.netty;
 
 import static com.google.common.base.Charsets.UTF_8;
+import static io.netty.handler.codec.http2.Http2CodecUtil.DEFAULT_MAX_FRAME_SIZE;
 import static io.netty.handler.codec.http2.Http2CodecUtil.DEFAULT_WINDOW_SIZE;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.AdditionalAnswers.delegatesTo;
@@ -55,6 +56,7 @@ import io.netty.handler.codec.http2.Http2Connection;
 import io.netty.handler.codec.http2.Http2ConnectionHandler;
 import io.netty.handler.codec.http2.Http2Exception;
 import io.netty.handler.codec.http2.Http2FrameReader;
+import io.netty.handler.codec.http2.Http2FrameSizePolicy;
 import io.netty.handler.codec.http2.Http2FrameWriter;
 import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.handler.codec.http2.Http2HeadersDecoder;
@@ -571,39 +573,47 @@ public abstract class NettyHandlerTestBase<T extends Http2ConnectionHandler> {
 
   @Test
   public void bdpPingWindowResizing() throws Exception {
-    this.flowControlWindow = 1024 * 8;
+    int windowToFrameRatio = 4;
+    flowControlWindow = 1024 * 32;
     manualSetUp();
     makeStream();
 
     AbstractNettyHandler handler = (AbstractNettyHandler) handler();
     handler.setAutoTuneFlowControl(true);
+    handler.setWindowToFrameRatio(windowToFrameRatio);
     Http2LocalFlowController localFlowController = connection().local().flowController();
+
     long pingData = handler.flowControlPing().payload();
     int initialWindowSize = localFlowController.initialWindowSize();
     byte[] data1Kb = initXkbBuffer(1);
-    byte[] data10Kb = initXkbBuffer(10);
+    byte[] data40Kb = initXkbBuffer(40);
+    Http2FrameSizePolicy frameSizePolicy = frameReader.configuration().frameSizePolicy();
 
     readXCopies(1, data1Kb); // initiate ping
     fakeClock().forwardNanos(2);
     readPingAck(pingData); // should not resize window because of small target window
     assertEquals(initialWindowSize, localFlowController.initialWindowSize());
+    assertEquals(DEFAULT_MAX_FRAME_SIZE, frameSizePolicy.maxFrameSize());
 
-    readXCopies(2, data10Kb); // initiate ping on first
+    readXCopies(2, data40Kb); // initiate ping on first
     fakeClock().forwardNanos(200);
     readPingAck(pingData); // should resize window
     int windowSizeA = localFlowController.initialWindowSize();
     Assert.assertNotEquals(initialWindowSize, windowSizeA);
+    assertEquals(windowSizeA / windowToFrameRatio, frameSizePolicy.maxFrameSize());
 
-    readXCopies(3, data10Kb); // initiate ping w/ first 10K packet
+    readXCopies(3, data40Kb); // initiate ping w/ first 10K packet
     fakeClock().forwardNanos(5000);
     readPingAck(pingData); // should not resize window as bandwidth didn't increase
     Assert.assertEquals(windowSizeA, localFlowController.initialWindowSize());
+    assertEquals(windowSizeA / windowToFrameRatio, frameSizePolicy.maxFrameSize());
 
-    readXCopies(6, data10Kb); // initiate ping with fist packet
+    readXCopies(6, data40Kb); // initiate ping with fist packet
     fakeClock().forwardNanos(100);
     readPingAck(pingData); // should resize window
     int windowSizeB = localFlowController.initialWindowSize();
     Assert.assertNotEquals(windowSizeA, windowSizeB);
+    assertEquals(windowSizeB / windowToFrameRatio, frameSizePolicy.maxFrameSize());
   }
 
   private void readPingAck(long pingData) throws Exception {
