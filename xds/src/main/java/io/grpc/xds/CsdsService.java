@@ -123,7 +123,7 @@ public final class CsdsService extends
           Status.INTERNAL.withDescription("Unexpected internal error").withCause(e).asException();
     }
     responseObserver.onError(error);
-    return false;
+    return true;
   }
 
   private ClientStatusResponse getConfigDumpForRequest(ClientStatusRequest request)
