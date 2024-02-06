@@ -103,6 +103,7 @@ envoy/config/listener/v3/quic_config.proto
 envoy/config/listener/v3/udp_listener_config.proto
 envoy/config/metrics/v3/stats.proto
 envoy/config/overload/v3/overload.proto
+envoy/config/ratelimit/v3/rls.proto
 envoy/config/rbac/v2/rbac.proto
 envoy/config/rbac/v3/rbac.proto
 envoy/config/route/v3/route.proto
@@ -127,8 +128,10 @@ envoy/config/trace/v3/trace.proto
 envoy/config/trace/v3/zipkin.proto
 envoy/data/accesslog/v3/accesslog.proto
 envoy/extensions/clusters/aggregate/v3/cluster.proto
+envoy/extensions/common/ratelimit/v3/ratelimit.proto
 envoy/extensions/filters/common/fault/v3/fault.proto
 envoy/extensions/filters/http/fault/v3/fault.proto
+envoy/extensions/filters/http/ratelimit/v3/rate_limit.proto
 envoy/extensions/filters/http/rbac/v3/rbac.proto
 envoy/extensions/filters/http/router/v3/router.proto
 envoy/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto
@@ -149,6 +152,7 @@ envoy/service/discovery/v3/ads.proto
 envoy/service/discovery/v3/discovery.proto
 envoy/service/load_stats/v2/lrs.proto
 envoy/service/load_stats/v3/lrs.proto
+envoy/service/ratelimit/v3/rls.proto
 envoy/service/status/v3/csds.proto
 envoy/type/http.proto
 envoy/type/http/v3/path_transformation.proto
@@ -177,7 +181,9 @@ envoy/type/tracing/v3/custom_tag.proto
 envoy/type/v3/http.proto
 envoy/type/v3/percent.proto
 envoy/type/v3/range.proto
+envoy/type/v3/ratelimit_unit.proto
 envoy/type/v3/semantic_version.proto
+envoy/type/v3/token_bucket.proto
 )
 
 pushd `git rev-parse --show-toplevel`/xds/third_party/envoy

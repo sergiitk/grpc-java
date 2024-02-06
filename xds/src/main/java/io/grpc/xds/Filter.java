@@ -68,6 +68,8 @@ interface Filter {
     @Nullable
     ServerInterceptor buildServerInterceptor(
         FilterConfig config, @Nullable FilterConfig overrideConfig);
+
+    // shutdown/close
   }
 
   /** Filter config with instance name. */
