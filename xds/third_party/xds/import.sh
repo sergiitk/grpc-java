@@ -17,7 +17,7 @@
 
 set -e
 # import VERSION from one of the google internal CLs
-VERSION=e9ce68804cb4e64cab5a52e3c8baf840d4ff87b7
+VERSION=0f5e0d9dbc1270b5eddd1be47fa8b2aea72f9a1f
 DOWNLOAD_URL="https://github.com/cncf/xds/archive/${VERSION}.tar.gz"
 DOWNLOAD_BASE_DIR="xds-${VERSION}"
 SOURCE_PROTO_BASE_DIR="${DOWNLOAD_BASE_DIR}"
@@ -45,9 +45,11 @@ xds/core/v3/resource_locator.proto
 xds/core/v3/resource_name.proto
 xds/data/orca/v3/orca_load_report.proto
 xds/service/orca/v3/orca.proto
+xds/type/matcher/v3/cel.proto
 xds/type/matcher/v3/matcher.proto
 xds/type/matcher/v3/regex.proto
 xds/type/matcher/v3/string.proto
+xds/type/v3/cel.proto
 xds/type/v3/typed_struct.proto
 )
 
