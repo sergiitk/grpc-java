@@ -46,6 +46,7 @@ xds/core/v3/resource_name.proto
 xds/data/orca/v3/orca_load_report.proto
 xds/service/orca/v3/orca.proto
 xds/type/matcher/v3/cel.proto
+xds/type/matcher/v3/http_inputs.proto
 xds/type/matcher/v3/matcher.proto
 xds/type/matcher/v3/regex.proto
 xds/type/matcher/v3/string.proto
