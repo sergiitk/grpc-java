@@ -98,6 +98,7 @@ envoy/service/rate_limit_quota/v3/rlqs.proto
 envoy/service/status/v3/csds.proto
 envoy/type/http/v3/path_transformation.proto
 envoy/type/matcher/v3/filter_state.proto
+envoy/type/matcher/v3/http_inputs.proto
 envoy/type/matcher/v3/metadata.proto
 envoy/type/matcher/v3/node.proto
 envoy/type/matcher/v3/number.proto
