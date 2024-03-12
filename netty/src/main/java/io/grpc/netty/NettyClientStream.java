@@ -208,6 +208,12 @@ class NettyClientStream extends AbstractClientStream {
               //    flag to see if not already closed
 
               // edge case is only when it's failed not because of the IO.
+              // // Future failed, release blocking.
+              // transportState().http2ProcessingFailed(
+              //     Status.INTERNAL.withDescription("Write frame failed."),
+              //     false,
+              //     new Metadata());
+
               logger.info("Hello there");
             }
           }
