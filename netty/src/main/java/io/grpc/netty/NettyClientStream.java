@@ -47,6 +47,7 @@ import io.netty.util.AsciiString;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
 import io.perfmark.TaskCloseable;
+import java.util.logging.Logger;
 import javax.annotation.Nullable;
 
 /**
@@ -54,6 +55,7 @@ import javax.annotation.Nullable;
  * thread.
  */
 class NettyClientStream extends AbstractClientStream {
+  private static final Logger logger = Logger.getLogger(NettyClientStream.class.getName());
   private static final InternalMethodDescriptor methodDescriptorAccessor =
       new InternalMethodDescriptor(
           NettyClientTransport.class.getName().contains("grpc.netty.shaded")
@@ -182,20 +184,32 @@ class NettyClientStream extends AbstractClientStream {
       if (numBytes > 0) {
         // Add the bytes to outbound flow control.
         onSendingBytes(numBytes);
-        writeQueue.enqueue(new SendGrpcFrameCommand(transportState(), bytebuf, endOfStream), flush)
-            .addListener(new ChannelFutureListener() {
-              @Override
-              public void operationComplete(ChannelFuture future) throws Exception {
-                // If the future succeeds when http2stream is null, the stream has been cancelled
-                // before it began and Netty is purging pending writes from the flow-controller.
-                if (future.isSuccess() && transportState().http2Stream() != null) {
-                  // Remove the bytes from outbound flow control, optionally notifying
-                  // the client that they can send more bytes.
-                  transportState().onSentBytes(numBytes);
-                  NettyClientStream.this.getTransportTracer().reportMessageSent(numMessages);
-                }
-              }
-            });
+
+        final class MyListener implements ChannelFutureListener {
+          @Override
+          public void operationComplete(ChannelFuture future) {
+            // If the future succeeds when http2stream is null, the stream has been cancelled
+            // before it began and Netty is purging pending writes from the flow-controller.
+            if (future.isSuccess() && transportState().http2Stream() == null) {
+              return;
+            }
+
+            if (future.isSuccess()) {
+              // Remove the bytes from outbound flow control, optionally notifying
+              // the client that they can send more bytes.
+              transportState().onSentBytes(numBytes);
+              NettyClientStream.this.getTransportTracer().reportMessageSent(numMessages);
+            } else {
+              // Future failed, release blocking.
+              logger.info("Hello there");
+            }
+          }
+        }
+
+        ChannelFuture enqueue =  writeQueue.enqueue(
+            new SendGrpcFrameCommand(transportState(), bytebuf, endOfStream),
+            flush);
+        enqueue.addListener(new MyListener());
       } else {
         // The frame is empty and will not impact outbound flow control. Just send it.
         writeQueue.enqueue(

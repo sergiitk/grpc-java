@@ -409,6 +409,31 @@ public class NettyClientStreamTest extends NettyStreamTestBase<NettyClientStream
     assertEquals(Status.Code.INTERNAL, captor.getValue().getCode());
   }
 
+
+  // @Test
+  // public void writeMessageFailRelease() throws Exception {
+  //   // Force stream creation.
+  //   int streamId = Integer.MAX_VALUE;
+  //   ByteArrayInputStream msg = new ByteArrayInputStream(smallMessage());
+  //
+  //   Http2Exception connectionError = Http2Exception.connectionError(
+  //       io.netty.handler.codec.http2.Http2Error.PROTOCOL_ERROR,
+  //       "Stream does not exist %d",
+  //       streamId);
+  //   ChannelPromise failedPromise = new DefaultChannelPromise(channel).setFailure(connectionError);
+  //
+  //   when(writeQueue.enqueue(any(QueuedCommand.class), anyBoolean())).thenReturn(failedPromise);
+  //
+  //   // when(channel.newPromise()).thenReturn(failedPromise);
+  //   stream().transportState().setId(streamId);
+  //
+  //   stream.writeMessage(msg);
+  //   // stream.flush();
+  //   // verify(writeQueue).enqueue(
+  //   //     eq(new SendGrpcFrameCommand(stream.transportState(), messageFrame(MESSAGE), false)),
+  //   //     eq(true));
+  // }
+
   @Test
   public void setHttp2StreamShouldNotifyReady() {
     listener = mock(ClientStreamListener.class);
