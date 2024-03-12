@@ -120,6 +120,7 @@ class NettyServerStream extends AbstractServerStream {
               if (future.isSuccess()) {
                 transportTracer.reportMessageSent(numMessages);
               }
+              // TODO(sergiitk): same logic for headers, trailers, data.
             }
           });
     }

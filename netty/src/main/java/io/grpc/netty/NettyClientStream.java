@@ -201,6 +201,13 @@ class NettyClientStream extends AbstractClientStream {
               NettyClientStream.this.getTransportTracer().reportMessageSent(numMessages);
             } else {
               // Future failed, release blocking.
+              // future.cause()
+              // transportState().http2ProcessingFailed();
+              // todo: double check this doesn't cause too many reset streams
+              // todo: check transport report statusreported (see abstraxt client streem)
+              //    flag to see if not already closed
+
+              // edge case is only when it's failed not because of the IO.
               logger.info("Hello there");
             }
           }
