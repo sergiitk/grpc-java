@@ -119,6 +119,19 @@ class NettyServerStream extends AbstractServerStream {
               transportState().onSentBytes(numBytes);
               if (future.isSuccess()) {
                 transportTracer.reportMessageSent(numMessages);
+              } else if (isReady()) {
+                // Future failed, release blocking.
+                // Normally we don't need to do anything here because the cause of a failed future
+                // while writing DATA frames would be an IO error and the stream is already closed.
+                // However, we still need to handle this case to cover for any issues in Netty
+                // that may lead to the "Stream does not exist" protocol error.
+                // See io.netty.handler.codec.http2.StreamBufferingEncoder#writeData.
+                // Note: isReady() check protects from spamming stream resets by scheduling multiple
+                //   CancelServerStreamCommand commands. Initial transportReportStatus()
+                //   calls onStreamDeallocated() which makes the transport not ready.
+                // TODO(sergiitk): check if something similar to
+                //    io.grpc.netty.NettyClientTransport#statusFromFailedFuture is needed.
+                transportState().http2ProcessingFailed(Utils.statusFromThrowable(future.cause()));
               }
               // TODO(sergiitk): same logic for headers, trailers, data.
             }
@@ -203,6 +216,14 @@ class NettyServerStream extends AbstractServerStream {
     public void deframeFailed(Throwable cause) {
       log.log(Level.WARNING, "Exception processing message", cause);
       Status status = Status.fromThrowable(cause);
+      transportReportStatus(status);
+      handler.getWriteQueue().enqueue(new CancelServerStreamCommand(this, status), true);
+    }
+
+    /**
+     * Called to process a failure in HTTP/2 processing.
+     */
+    protected void http2ProcessingFailed(Status status) {
       transportReportStatus(status);
       handler.getWriteQueue().enqueue(new CancelServerStreamCommand(this, status), true);
     }

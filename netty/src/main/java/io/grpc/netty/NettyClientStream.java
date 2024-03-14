@@ -197,6 +197,7 @@ class NettyClientStream extends AbstractClientStream {
               // the client that they can send more bytes.
               transportState().onSentBytes(numBytes);
               NettyClientStream.this.getTransportTracer().reportMessageSent(numMessages);
+            // } else {
             } else if (isReady()) {
               // Future failed, release blocking.
               // Normally we don't need to do anything here because the cause of a failed future
@@ -205,8 +206,8 @@ class NettyClientStream extends AbstractClientStream {
               // that may lead to the "Stream does not exist" protocol error.
               // See io.netty.handler.codec.http2.StreamBufferingEncoder#writeData.
               // Note: isReady() check protects from spamming stream resets by scheduling multiple
-              // CancelClientStreamCommand commands. Initial transportReportStatus() with
-              // stopDelivery=true calls onStreamDeallocated() which makes the transport not ready.
+              //   CancelClientStreamCommand commands. Initial transportReportStatus() with
+              //   stopDelivery=true calls onStreamDeallocated() which makes the transport not ready.
               transportState().http2ProcessingFailed(
                   transportState().statusFromFailedFuture(future), true, new Metadata());
             }
