@@ -47,7 +47,6 @@ import io.netty.util.AsciiString;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
 import io.perfmark.TaskCloseable;
-import java.util.logging.Logger;
 import javax.annotation.Nullable;
 
 /**
@@ -55,7 +54,6 @@ import javax.annotation.Nullable;
  * thread.
  */
 class NettyClientStream extends AbstractClientStream {
-  private static final Logger logger = Logger.getLogger(NettyClientStream.class.getName());
   private static final InternalMethodDescriptor methodDescriptorAccessor =
       new InternalMethodDescriptor(
           NettyClientTransport.class.getName().contains("grpc.netty.shaded")
@@ -199,22 +197,18 @@ class NettyClientStream extends AbstractClientStream {
               // the client that they can send more bytes.
               transportState().onSentBytes(numBytes);
               NettyClientStream.this.getTransportTracer().reportMessageSent(numMessages);
-            } else {
+            } else if (isReady()) {
               // Future failed, release blocking.
-              // future.cause()
-              // transportState().http2ProcessingFailed();
-              // todo: double check this doesn't cause too many reset streams
-              // todo: check transport report statusreported (see abstraxt client streem)
-              //    flag to see if not already closed
-
-              // edge case is only when it's failed not because of the IO.
-              // // Future failed, release blocking.
-              // transportState().http2ProcessingFailed(
-              //     Status.INTERNAL.withDescription("Write frame failed."),
-              //     false,
-              //     new Metadata());
-
-              logger.info("Hello there");
+              // Normally we don't need to do anything here because the cause of a failed future
+              // while writing DATA frames would be an IO error and the stream is already closed.
+              // However, we still need to handle this case to cover for any issues in Netty
+              // that may lead to the "Stream does not exist" protocol error.
+              // See io.netty.handler.codec.http2.StreamBufferingEncoder#writeData.
+              // Note: isReady() check protects from spamming stream resets by scheduling multiple
+              // CancelClientStreamCommand commands. Initial transportReportStatus() with
+              // stopDelivery=true calls onStreamDeallocated() which makes the transport not ready.
+              transportState().http2ProcessingFailed(
+                  transportState().statusFromFailedFuture(future), true, new Metadata());
             }
           }
         }
