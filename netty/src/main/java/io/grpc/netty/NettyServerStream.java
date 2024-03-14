@@ -127,8 +127,8 @@ class NettyServerStream extends AbstractServerStream {
                 // that may lead to the "Stream does not exist" protocol error.
                 // See io.netty.handler.codec.http2.StreamBufferingEncoder#writeData.
                 // Note: isReady() check protects from spamming stream resets by scheduling multiple
-                //   CancelServerStreamCommand commands. Initial transportReportStatus()
-                //   calls onStreamDeallocated() which makes the transport not ready.
+                // CancelServerStreamCommand commands. Initial transportReportStatus()
+                // calls onStreamDeallocated() which makes the transport not ready.
                 // TODO(sergiitk): check if something similar to
                 //    io.grpc.netty.NettyClientTransport#statusFromFailedFuture is needed.
                 transportState().http2ProcessingFailed(Utils.statusFromThrowable(future.cause()));
