@@ -422,8 +422,7 @@ public class NettyClientStreamTest extends NettyStreamTestBase<NettyClientStream
         io.netty.handler.codec.http2.Http2Error.PROTOCOL_ERROR,
         "Stream does not exist %d",
         streamId);
-    ChannelPromise failedPromise = new DefaultChannelPromise(channel)
-    .setFailure(connectionError);
+    ChannelPromise failedPromise = new DefaultChannelPromise(channel).setFailure(connectionError);
 
     when(writeQueue.enqueue(any(QueuedCommand.class), anyBoolean())).thenReturn(failedPromise);
 

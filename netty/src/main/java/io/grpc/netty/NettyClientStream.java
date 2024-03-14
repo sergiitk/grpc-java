@@ -205,7 +205,8 @@ class NettyClientStream extends AbstractClientStream {
                 // See io.netty.handler.codec.http2.StreamBufferingEncoder#writeData.
                 // Note: isReady() check protects from spamming stream resets by scheduling multiple
                 // CancelClientStreamCommand commands. Initial transportReportStatus() with
-                // stopDelivery=true calls onStreamDeallocated() which makes the transport not ready.
+                // stopDelivery=true calls onStreamDeallocated(), which sets a flag to make
+                // the transport state not ready.
                 transportState().http2ProcessingFailed(
                     transportState().statusFromFailedFuture(future), true, new Metadata());
               }
