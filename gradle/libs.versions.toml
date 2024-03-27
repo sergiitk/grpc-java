@@ -27,6 +27,7 @@ conscrypt = "org.conscrypt:conscrypt-openjdk-uber:2.5.2"
 #     Cronet (API and Embedded) upgrade is blocked by https://github.com/grpc/grpc-java/issues/10396.
 cronet-api = "org.chromium.net:cronet-api:108.5359.79"
 cronet-embedded = "org.chromium.net:cronet-embedded:108.5359.79"
+dev-cel = "dev.cel:cel:0.4.1"
 errorprone-annotations = "com.google.errorprone:error_prone_annotations:2.23.0"
 errorprone-core = "com.google.errorprone:error_prone_core:2.23.0"
 google-api-protos = "com.google.api.grpc:proto-google-common-protos:2.29.0"
