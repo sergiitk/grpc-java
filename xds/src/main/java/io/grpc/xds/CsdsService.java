@@ -158,7 +158,7 @@ public final class CsdsService implements BindableService {
       return true; // All clients reported without error
     }
     responseObserver.onError(error);
-    return false;
+    return true;
   }
 
   private ClientConfig getConfigForRequest(String target) throws InterruptedException {

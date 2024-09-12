@@ -34,11 +34,19 @@ import io.envoyproxy.envoy.config.route.v3.RouteConfiguration;
 import io.envoyproxy.envoy.service.status.v3.ClientConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientConfig.GenericXdsConfig;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc;
+import io.envoyproxy.envoy.service.status.v3.ClientStatusDiscoveryServiceGrpc.ClientStatusDiscoveryServiceFutureStub;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusRequest;
 import io.envoyproxy.envoy.service.status.v3.ClientStatusResponse;
 import io.envoyproxy.envoy.type.matcher.v3.NodeMatcher;
+import io.grpc.CallOptions;
+import io.grpc.Channel;
+import io.grpc.ClientCall;
+import io.grpc.ClientInterceptor;
+import io.grpc.ClientInterceptors;
 import io.grpc.Deadline;
 import io.grpc.InsecureChannelCredentials;
+import io.grpc.Metadata;
+import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.Status.Code;
 import io.grpc.StatusRuntimeException;
@@ -117,6 +125,58 @@ public class CsdsServiceTest {
       grpcServerRule.getServiceRegistry().addService(CsdsService.newInstance());
       ClientStatusResponse response = csdsStub.fetchClientStatus(REQUEST);
       assertThat(response).isEqualTo(ClientStatusResponse.getDefaultInstance());
+    }
+
+    /** Status.INVALID_ARGUMENT on unexpected request fields. */
+    @Test
+    public void fetchClientConfig_onCompleted() {
+      grpcServerRule.getServiceRegistry().addService(CSDS_SERVICE_MINIMAL);
+
+      CallOptions co = CallOptions.DEFAULT.withDeadline(Deadline.after(3, TimeUnit.SECONDS));
+      final ClientCall<ClientStatusRequest, ClientStatusResponse> call = grpcServerRule.getChannel()
+          .newCall(ClientStatusDiscoveryServiceGrpc.getFetchClientStatusMethod(), co);
+
+      call.start(new ClientCall.Listener<ClientStatusResponse>() {
+        @Override public void onMessage(ClientStatusResponse message) {
+          super.onMessage(message);
+        }
+
+        @Override public void onClose(Status status, Metadata trailers) {
+          super.onClose(status, trailers);
+        }
+
+        @Override public void onReady() {
+          super.onReady();
+        }
+
+        @Override public void onHeaders(Metadata headers) {
+          super.onHeaders(headers);
+        }
+      }, new Metadata());
+      call.sendMessage(REQUEST_INVALID);
+      call.halfClose();
+      call.request(1);
+       // call = channel.newCall(unaryMethod, callOptions);
+       // call.start(listener, headers);
+       // call.sendMessage(message);
+       // call.halfClose();
+       // call.request(1);
+
+      // ClientStatusDiscoveryServiceFutureStub clientStatusDiscoveryServiceFutureStub =
+      //     ClientStatusDiscoveryServiceGrpc.newFutureStub(grpcServerRule.getChannel());
+      // ListenableFuture<ClientStatusResponse> clientStatusResponseListenableFuture =
+      //     clientStatusDiscoveryServiceFutureStub.fetchClientStatus(REQUEST_INVALID);
+      //
+      // grpcServerRule.getServiceRegistry().addService(CSDS_SERVICE_MINIMAL);
+      // StreamRecorder<ClientStatusResponse> responseObserver = StreamRecorder.create();
+      // csdsAsyncStub
+      //     .withDeadline(Deadline.after(3, TimeUnit.SECONDS))
+      //     .fetchClientStatus(REQUEST_INVALID, responseObserver);
+      //
+      // // assertThat(responseObserver.onNext();)
+      // assertThat(responseObserver.getValues()).isEmpty();
+      // assertThat(responseObserver.getError()).isNotNull();
+      // verifyRequestInvalidResponseStatus(Status.fromThrowable(responseObserver.getError()));
     }
 
     /** Status.INVALID_ARGUMENT on unexpected request fields. */
