@@ -49,7 +49,6 @@ import io.grpc.SynchronizationContext;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.ObjectPool;
 import io.grpc.xds.ClusterSpecifierPlugin.PluginConfig;
-import io.grpc.xds.Filter.ClientInterceptorBuilder;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.Filter.NamedFilterConfig;
 import io.grpc.xds.RouteLookupServiceClusterSpecifierPlugin.RlsPluginConfig;
@@ -827,26 +826,43 @@ final class XdsNameResolver extends NameResolver {
       if (filterConfigs == null) {
         return new PassthroughClientInterceptor();
       }
+
+      // TODO(sergiitk): immutable map?
       Map<String, FilterConfig> selectedOverrideConfigs =
           new HashMap<>(virtualHost.filterConfigOverrides());
       selectedOverrideConfigs.putAll(route.filterConfigOverrides());
       if (weightedCluster != null) {
         selectedOverrideConfigs.putAll(weightedCluster.filterConfigOverrides());
       }
+
       ImmutableList.Builder<ClientInterceptor> filterInterceptors = ImmutableList.builder();
       for (NamedFilterConfig namedFilter : filterConfigs) {
-        FilterConfig filterConfig = namedFilter.filterConfig;
-        Filter filter = filterRegistry.get(filterConfig.typeUrl());
-        if (filter instanceof ClientInterceptorBuilder) {
-          ClientInterceptor interceptor = ((ClientInterceptorBuilder) filter)
-              .buildClientInterceptor(
-                  filterConfig, selectedOverrideConfigs.get(namedFilter.name),
-                  scheduler);
-          if (interceptor != null) {
-            filterInterceptors.add(interceptor);
-          }
+        FilterConfig config = namedFilter.filterConfig;
+        String name = namedFilter.name;
+        String typeUrl = config.typeUrl();
+
+        Filter.Provider provider = filterRegistry.get(typeUrl);
+        if (provider == null || !provider.isClientFilter()) {
+          continue;
+        }
+        // TODO(sergiitk): [IMPL] track shutdown
+        // filtersToShutdown.remove(name);
+
+        // TODO(sergiitk): [IMPL]  Upsert filter to the active filters map.
+        // Filter filter = activeFilters.computeIfAbsent(name, k -> provider.newInstance());
+        Filter filter = provider.newInstance();
+
+        ClientInterceptor interceptor =
+            filter.buildClientInterceptor(config, selectedOverrideConfigs.get(name), scheduler);
+        if (interceptor != null) {
+          filterInterceptors.add(interceptor);
         }
       }
+
+      // TODO(sergiitk): [IMPL]  Shutdown filters not present in the current chain.
+
+      // Combine interceptors produced by different filters into a single one that executes
+      // them sequentially. The order is preserved.
       return combineInterceptors(filterInterceptors.build());
     }
 
