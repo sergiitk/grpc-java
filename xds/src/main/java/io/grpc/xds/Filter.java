@@ -33,12 +33,6 @@ import javax.annotation.Nullable;
 interface Filter {
 
   /**
-   * The proto message types supported by this filter. A filter will be registered by each of its
-   * supported message types.
-   */
-  String[] typeUrls();
-
-  /**
    * Parses the top-level filter config from raw proto message. The message may be either a {@link
    * com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
    */
