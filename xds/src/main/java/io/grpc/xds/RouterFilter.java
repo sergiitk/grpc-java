@@ -29,15 +29,14 @@ import javax.annotation.Nullable;
  * Router filter implementation. Currently this filter does not parse any field in the config.
  */
 final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInterceptorBuilder {
+  private static final RouterFilter INSTANCE = new RouterFilter();
 
   static final String TYPE_URL =
       "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router";
 
   private RouterFilter() {}
 
-  static final class Provider implements Filter.Provider {
-    static final RouterFilter DEFAULT_INSTANCE = new RouterFilter();
-
+  static final Filter.Provider PROVIDER = new Filter.Provider() {
     @Override
     public String[] typeUrls() {
       return new String[] { TYPE_URL };
@@ -45,9 +44,9 @@ final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInte
 
     @Override
     public RouterFilter newInstance() {
-      return DEFAULT_INSTANCE;
+      return INSTANCE;
     }
-  }
+  };
 
   static final FilterConfig ROUTER_CONFIG = new FilterConfig() {
     @Override
