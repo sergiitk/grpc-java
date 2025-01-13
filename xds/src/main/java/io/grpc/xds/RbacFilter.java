@@ -79,7 +79,7 @@ final class RbacFilter implements Filter, ServerInterceptorBuilder {
   // TODO(sergiitk): replace with provider in tests?
   // private RbacFilter() {}
 
-  static final class Provider implements FilterProvider {
+  static final class Provider implements Filter.Provider {
     @Override
     public String[] typeUrls() {
       return new String[] { TYPE_URL, TYPE_URL_OVERRIDE_CONFIG };

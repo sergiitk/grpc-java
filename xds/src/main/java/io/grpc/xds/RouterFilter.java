@@ -22,9 +22,7 @@ import io.grpc.LoadBalancer.PickSubchannelArgs;
 import io.grpc.ServerInterceptor;
 import io.grpc.xds.Filter.ClientInterceptorBuilder;
 import io.grpc.xds.Filter.ServerInterceptorBuilder;
-import io.grpc.xds.ThreadSafeRandom.ThreadSafeRandomImpl;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nullable;
 
 /**
@@ -37,7 +35,9 @@ final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInte
 
   private RouterFilter() {}
 
-  static final class Provider implements FilterProvider {
+  static final class Provider implements Filter.Provider {
+    static final RouterFilter DEFAULT_INSTANCE = new RouterFilter();
+
     @Override
     public String[] typeUrls() {
       return new String[] { TYPE_URL };
@@ -45,14 +45,14 @@ final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInte
 
     @Override
     public RouterFilter newInstance() {
-      return new RouterFilter();
+      return DEFAULT_INSTANCE;
     }
   }
 
   static final FilterConfig ROUTER_CONFIG = new FilterConfig() {
     @Override
     public String typeUrl() {
-      return RouterFilter.TYPE_URL;
+      return TYPE_URL;
     }
 
     @Override
