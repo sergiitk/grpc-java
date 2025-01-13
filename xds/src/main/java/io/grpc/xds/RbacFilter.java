@@ -69,19 +69,26 @@ import javax.annotation.Nullable;
 final class RbacFilter implements Filter, ServerInterceptorBuilder {
   private static final Logger logger = Logger.getLogger(RbacFilter.class.getName());
 
-  static final RbacFilter INSTANCE = new RbacFilter();
-
   static final String TYPE_URL =
           "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC";
 
   private static final String TYPE_URL_OVERRIDE_CONFIG =
           "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBACPerRoute";
 
-  RbacFilter() {}
+  // Why is it public in authz?
+  // TODO(sergiitk): replace with provider in tests?
+  // private RbacFilter() {}
 
-  @Override
-  public String[] typeUrls() {
-    return new String[] { TYPE_URL, TYPE_URL_OVERRIDE_CONFIG };
+  static final class Provider implements FilterProvider {
+    @Override
+    public String[] typeUrls() {
+      return new String[] { TYPE_URL, TYPE_URL_OVERRIDE_CONFIG };
+    }
+
+    @Override
+    public RbacFilter newInstance() {
+      return new RbacFilter();
+    }
   }
 
   @Override

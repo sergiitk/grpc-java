@@ -22,17 +22,32 @@ import io.grpc.LoadBalancer.PickSubchannelArgs;
 import io.grpc.ServerInterceptor;
 import io.grpc.xds.Filter.ClientInterceptorBuilder;
 import io.grpc.xds.Filter.ServerInterceptorBuilder;
+import io.grpc.xds.ThreadSafeRandom.ThreadSafeRandomImpl;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nullable;
 
 /**
  * Router filter implementation. Currently this filter does not parse any field in the config.
  */
-enum RouterFilter implements Filter, ClientInterceptorBuilder, ServerInterceptorBuilder {
-  INSTANCE;
+final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInterceptorBuilder {
 
   static final String TYPE_URL =
       "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router";
+
+  private RouterFilter() {}
+
+  static final class Provider implements FilterProvider {
+    @Override
+    public String[] typeUrls() {
+      return new String[] { TYPE_URL };
+    }
+
+    @Override
+    public RouterFilter newInstance() {
+      return new RouterFilter();
+    }
+  }
 
   static final FilterConfig ROUTER_CONFIG = new FilterConfig() {
     @Override
@@ -45,11 +60,6 @@ enum RouterFilter implements Filter, ClientInterceptorBuilder, ServerInterceptor
       return "ROUTER_CONFIG";
     }
   };
-
-  @Override
-  public String[] typeUrls() {
-    return new String[] { TYPE_URL };
-  }
 
   @Override
   public ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage) {
