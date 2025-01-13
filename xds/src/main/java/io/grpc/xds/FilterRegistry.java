@@ -35,9 +35,9 @@ final class FilterRegistry {
   static synchronized FilterRegistry getDefaultRegistry() {
     if (instance == null) {
       instance = newRegistry().register(
-              new FaultFilter.Provider(),
-              new RouterFilter.Provider(),
-              new RbacFilter.Provider());
+              FaultFilter.PROVIDER,
+              RouterFilter.PROVIDER,
+              RbacFilter.PROVIDER);
     }
     return instance;
   }
