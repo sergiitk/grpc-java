@@ -44,6 +44,21 @@ interface Filter {
    */
   ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage);
 
+  /**
+   * Common interface for filter providers.
+   */
+  interface Provider {
+    /**
+     * The proto message types supported by this filter. A filter will be registered by each of its
+     * supported message types.
+     */
+    String[] typeUrls();
+
+
+    Filter newInstance();
+  }
+
+
   /** Represents an opaque data structure holding configuration for a filter. */
   interface FilterConfig {
     String typeUrl();

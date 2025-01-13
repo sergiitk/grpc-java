@@ -185,8 +185,8 @@ public class XdsNameResolverTest {
     originalEnableTimeout = XdsNameResolver.enableTimeout;
     XdsNameResolver.enableTimeout = true;
     FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
-        new FaultFilter(mockRandom, new AtomicLong()),
-        RouterFilter.INSTANCE);
+        (new FaultFilter.Provider()).newInstance(mockRandom, new AtomicLong()),
+        RouterFilter.Provider.DEFAULT_INSTANCE);
     resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null,
         serviceConfigParser, syncContext, scheduler,
         xdsClientPoolFactory, mockRandom, filterRegistry, null, metricRecorder);
