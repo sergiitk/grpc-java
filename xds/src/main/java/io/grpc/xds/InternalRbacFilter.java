@@ -35,7 +35,6 @@ public final class InternalRbacFilter {
       throw new IllegalArgumentException(
         String.format("Failed to parse Rbac policy: %s", filterConfig.errorDetail));
     }
-    return new RbacFilter.Provider().newInstance()
-        .buildServerInterceptor(filterConfig.config, null);
+    return new RbacFilter().buildServerInterceptor(filterConfig.config, null);
   }
 }
