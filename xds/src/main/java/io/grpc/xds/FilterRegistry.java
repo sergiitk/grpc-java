@@ -59,7 +59,10 @@ final class FilterRegistry {
 
   @Nullable
   Filter get(String typeUrl) {
-    // TODO(sergiitk): npe
-    return supportedFilters.get(typeUrl).newInstance();
+    Filter.Provider provider = supportedFilters.get(typeUrl);
+    if (provider == null) {
+      return null;
+    }
+    return provider.newInstance();
   }
 }
