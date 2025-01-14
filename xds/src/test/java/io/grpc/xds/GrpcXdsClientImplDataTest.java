@@ -128,6 +128,7 @@ import io.grpc.xds.ClusterSpecifierPlugin.NamedPluginConfig;
 import io.grpc.xds.ClusterSpecifierPlugin.PluginConfig;
 import io.grpc.xds.Endpoints.LbEndpoint;
 import io.grpc.xds.Endpoints.LocalityLbEndpoints;
+import io.grpc.xds.Filter.ClientInterceptorBuilder;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.MetadataRegistry.MetadataValueParser;
 import io.grpc.xds.RouteLookupServiceClusterSpecifierPlugin.RlsPluginConfig;
@@ -1244,12 +1245,19 @@ public class GrpcXdsClientImplDataTest {
     }
   }
 
-  private static class TestFilter implements io.grpc.xds.Filter,
-      io.grpc.xds.Filter.ClientInterceptorBuilder {
-    @Override
-    public String[] typeUrls() {
-      return new String[]{"test-url"};
-    }
+  private static class TestFilter implements io.grpc.xds.Filter, ClientInterceptorBuilder {
+
+    static final io.grpc.xds.Filter.Provider PROVIDER = new io.grpc.xds.Filter.Provider() {
+      @Override
+      public String[] typeUrls() {
+        return new String[]{"test-url"};
+      }
+
+      @Override
+      public TestFilter newInstance() {
+        return new TestFilter();
+      }
+    };
 
     @Override
     public ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage) {
@@ -1274,7 +1282,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_typedStructMigration() {
-    filterRegistry.register(new TestFilter());
+    filterRegistry.register(TestFilter.PROVIDER);
     Struct rawStruct = Struct.newBuilder()
         .putFields("name", Value.newBuilder().setStringValue("default").build())
         .build();
@@ -1303,7 +1311,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseOverrideHttpFilter_typedStructMigration() {
-    filterRegistry.register(new TestFilter());
+    filterRegistry.register(TestFilter.PROVIDER);
     Struct rawStruct0 = Struct.newBuilder()
         .putFields("name", Value.newBuilder().setStringValue("default0").build())
         .build();
@@ -1344,7 +1352,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_routerFilterForClient() {
-    filterRegistry.register(RouterFilter.INSTANCE);
+    filterRegistry.register(RouterFilter.PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1358,7 +1366,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_routerFilterForServer() {
-    filterRegistry.register(RouterFilter.INSTANCE);
+    filterRegistry.register(RouterFilter.PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1372,7 +1380,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_faultConfigForClient() {
-    filterRegistry.register(FaultFilter.INSTANCE);
+    filterRegistry.register(FaultFilter.PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1399,7 +1407,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_faultConfigUnsupportedForServer() {
-    filterRegistry.register(FaultFilter.INSTANCE);
+    filterRegistry.register(FaultFilter.PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1428,7 +1436,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_rbacConfigForServer() {
-    filterRegistry.register(RbacFilter.INSTANCE);
+    filterRegistry.register(RbacFilter.PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1455,7 +1463,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_rbacConfigUnsupportedForClient() {
-    filterRegistry.register(RbacFilter.INSTANCE);
+    filterRegistry.register(RbacFilter.PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1484,7 +1492,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseOverrideRbacFilterConfig() {
-    filterRegistry.register(RbacFilter.INSTANCE);
+    filterRegistry.register(RbacFilter.PROVIDER);
     RBACPerRoute rbacPerRoute =
         RBACPerRoute.newBuilder()
             .setRbac(
@@ -1510,7 +1518,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseOverrideFilterConfigs_unsupportedButOptional() {
-    filterRegistry.register(FaultFilter.INSTANCE);
+    filterRegistry.register(FaultFilter.PROVIDER);
     HTTPFault httpFault = HTTPFault.newBuilder()
         .setDelay(FaultDelay.newBuilder().setFixedDelay(Durations.fromNanos(3000)))
         .build();
@@ -1530,7 +1538,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseOverrideFilterConfigs_unsupportedAndRequired() {
-    filterRegistry.register(FaultFilter.INSTANCE);
+    filterRegistry.register(FaultFilter.PROVIDER);
     HTTPFault httpFault = HTTPFault.newBuilder()
         .setDelay(FaultDelay.newBuilder().setFixedDelay(Durations.fromNanos(3000)))
         .build();
@@ -1622,7 +1630,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpConnectionManager_lastNotTerminal() throws ResourceInvalidException {
-    filterRegistry.register(FaultFilter.INSTANCE);
+    filterRegistry.register(FaultFilter.PROVIDER);
     HttpConnectionManager hcm =
           HttpConnectionManager.newBuilder()
               .addHttpFilters(
@@ -1640,7 +1648,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpConnectionManager_terminalNotLast() throws ResourceInvalidException {
-    filterRegistry.register(RouterFilter.INSTANCE);
+    filterRegistry.register(RouterFilter.PROVIDER);
     HttpConnectionManager hcm =
             HttpConnectionManager.newBuilder()
                     .addHttpFilters(

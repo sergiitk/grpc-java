@@ -53,10 +53,17 @@ final class GcpAuthenticationFilter implements Filter, ClientInterceptorBuilder 
   static final String TYPE_URL =
       "type.googleapis.com/envoy.extensions.filters.http.gcp_authn.v3.GcpAuthnFilterConfig";
 
-  @Override
-  public String[] typeUrls() {
-    return new String[] { TYPE_URL };
-  }
+  static final Filter.Provider PROVIDER = new Filter.Provider() {
+    @Override
+    public String[] typeUrls() {
+      return new String[]{TYPE_URL};
+    }
+
+    @Override
+    public GcpAuthenticationFilter newInstance() {
+      return new GcpAuthenticationFilter();
+    }
+  };
 
   @Override
   public ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage) {
