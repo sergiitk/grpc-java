@@ -58,7 +58,14 @@ final class FilterRegistry {
   }
 
   @Nullable
+  Filter.Provider getProvider(String typeUrl) {
+    // TODO(sergiitk): rename this to get after refactoring done.
+    return supportedFilters.get(typeUrl);
+  }
+
+  @Nullable
   Filter get(String typeUrl) {
+    // TODO(sergiitk): remove this method after refactoring done
     Filter.Provider provider = supportedFilters.get(typeUrl);
     if (provider == null) {
       return null;
