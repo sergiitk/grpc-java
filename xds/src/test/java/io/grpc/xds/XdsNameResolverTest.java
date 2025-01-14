@@ -184,9 +184,23 @@ public class XdsNameResolverTest {
 
     originalEnableTimeout = XdsNameResolver.enableTimeout;
     XdsNameResolver.enableTimeout = true;
+    final FaultFilter mockedFaultFilter = new FaultFilter(mockRandom, new AtomicLong());
     FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
-        new FaultFilter(mockRandom, new AtomicLong()),
-        RouterFilter.INSTANCE);
+        RouterFilter.PROVIDER,
+        // Mocked FaultFilter provider.
+        new Filter.Provider() {
+          @Override
+          public String[] typeUrls() {
+            return new String[]{ FaultFilter.TYPE_URL };
+          }
+
+          @Override
+          public FaultFilter newInstance() {
+            return mockedFaultFilter;
+          }
+        }
+    );
+
     resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null,
         serviceConfigParser, syncContext, scheduler,
         xdsClientPoolFactory, mockRandom, filterRegistry, null, metricRecorder);

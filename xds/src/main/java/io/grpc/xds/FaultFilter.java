@@ -59,6 +59,7 @@ import javax.annotation.Nullable;
 /** HttpFault filter implementation. */
 final class FaultFilter implements Filter, ClientInterceptorBuilder {
 
+  @VisibleForTesting
   static final FaultFilter INSTANCE =
       new FaultFilter(ThreadSafeRandomImpl.instance, new AtomicLong());
   @VisibleForTesting
@@ -82,15 +83,22 @@ final class FaultFilter implements Filter, ClientInterceptorBuilder {
   private final ThreadSafeRandom random;
   private final AtomicLong activeFaultCounter;
 
+  static final Filter.Provider PROVIDER = new Filter.Provider() {
+    @Override
+    public String[] typeUrls() {
+      return new String[] { TYPE_URL };
+    }
+
+    @Override
+    public FaultFilter newInstance() {
+      return INSTANCE;
+    }
+  };
+
   @VisibleForTesting
   FaultFilter(ThreadSafeRandom random, AtomicLong activeFaultCounter) {
     this.random = random;
     this.activeFaultCounter = activeFaultCounter;
-  }
-
-  @Override
-  public String[] typeUrls() {
-    return new String[] { TYPE_URL };
   }
 
   @Override

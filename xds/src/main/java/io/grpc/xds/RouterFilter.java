@@ -28,16 +28,30 @@ import javax.annotation.Nullable;
 /**
  * Router filter implementation. Currently this filter does not parse any field in the config.
  */
-enum RouterFilter implements Filter, ClientInterceptorBuilder, ServerInterceptorBuilder {
-  INSTANCE;
+final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInterceptorBuilder {
+  private static final RouterFilter INSTANCE = new RouterFilter();
 
   static final String TYPE_URL =
       "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router";
 
+  private RouterFilter() {}
+
+  static final Filter.Provider PROVIDER = new Filter.Provider() {
+    @Override
+    public String[] typeUrls() {
+      return new String[] { TYPE_URL };
+    }
+
+    @Override
+    public RouterFilter newInstance() {
+      return INSTANCE;
+    }
+  };
+
   static final FilterConfig ROUTER_CONFIG = new FilterConfig() {
     @Override
     public String typeUrl() {
-      return RouterFilter.TYPE_URL;
+      return TYPE_URL;
     }
 
     @Override
@@ -45,11 +59,6 @@ enum RouterFilter implements Filter, ClientInterceptorBuilder, ServerInterceptor
       return "ROUTER_CONFIG";
     }
   };
-
-  @Override
-  public String[] typeUrls() {
-    return new String[] { TYPE_URL };
-  }
 
   @Override
   public ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage) {

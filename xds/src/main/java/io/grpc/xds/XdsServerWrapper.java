@@ -54,6 +54,8 @@ import io.grpc.xds.VirtualHost.Route;
 import io.grpc.xds.XdsListenerResource.LdsUpdate;
 import io.grpc.xds.XdsRouteConfigureResource.RdsUpdate;
 import io.grpc.xds.XdsServerBuilder.XdsServingStatusListener;
+import io.grpc.xds.XdsServerWrapper.DiscoveryState.ConfigApplyingInterceptor;
+import io.grpc.xds.XdsServerWrapper.DiscoveryState.ServerRoutingConfig;
 import io.grpc.xds.client.XdsClient;
 import io.grpc.xds.client.XdsClient.ResourceWatcher;
 import io.grpc.xds.internal.security.SslContextProviderSupplier;
@@ -66,6 +68,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -114,6 +117,9 @@ final class XdsServerWrapper extends Server {
   private XdsClient xdsClient;
   private DiscoveryState discoveryState;
   private volatile Server delegate;
+
+
+  private ConcurrentHashMap<String, Filter> activeFilters = new ConcurrentHashMap<>();
 
   XdsServerWrapper(
       String listenerAddress,
@@ -504,37 +510,69 @@ final class XdsServerWrapper extends Server {
 
     private ImmutableMap<Route, ServerInterceptor> generatePerRouteInterceptors(
         List<NamedFilterConfig> namedFilterConfigs, List<VirtualHost> virtualHosts) {
+
       ImmutableMap.Builder<Route, ServerInterceptor> perRouteInterceptors =
           new ImmutableMap.Builder<>();
+
       for (VirtualHost virtualHost : virtualHosts) {
         for (Route route : virtualHost.routes()) {
-          List<ServerInterceptor> filterInterceptors = new ArrayList<>();
-          Map<String, FilterConfig> selectedOverrideConfigs =
-              new HashMap<>(virtualHost.filterConfigOverrides());
-          selectedOverrideConfigs.putAll(route.filterConfigOverrides());
-          if (namedFilterConfigs != null) {
-            for (NamedFilterConfig namedFilterConfig : namedFilterConfigs) {
-              FilterConfig filterConfig = namedFilterConfig.filterConfig;
-              Filter filter = filterRegistry.get(filterConfig.typeUrl());
-              if (filter instanceof ServerInterceptorBuilder) {
-                ServerInterceptor interceptor =
-                    ((ServerInterceptorBuilder) filter).buildServerInterceptor(
-                        filterConfig, selectedOverrideConfigs.get(namedFilterConfig.name));
-                if (interceptor != null) {
-                  filterInterceptors.add(interceptor);
-                }
-              } else {
-                logger.log(Level.WARNING, "HttpFilterConfig(type URL: "
-                    + filterConfig.typeUrl() + ") is not supported on server-side. "
-                    + "Probably a bug at ClientXdsClient verification.");
-              }
+          // Short circuit.
+          if (namedFilterConfigs == null) {
+            perRouteInterceptors.put(route, noopInterceptor);
+            continue;
+          }
+
+          // Override vhost filter configs with more specific per-route configs.
+          Map<String, FilterConfig> perRouteOverrides = ImmutableMap.<String, FilterConfig>builder()
+              .putAll(virtualHost.filterConfigOverrides())
+              .putAll(route.filterConfigOverrides())
+              .buildKeepingLast();
+
+          List<ServerInterceptor> interceptors = new ArrayList<>();
+
+          for (NamedFilterConfig namedFilter : namedFilterConfigs) {
+            FilterConfig config = namedFilter.filterConfig;
+            String name = namedFilter.name;
+            String typeUrl = config.typeUrl();
+
+            Filter filter = activeFilters.computeIfAbsent(name, k -> makeFilter(typeUrl));
+
+            if (filter == null) {
+              logger.log(Level.WARNING,
+                  "HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
+              continue;
+            }
+
+            ServerInterceptor interceptor = ((ServerInterceptorBuilder) filter)
+                .buildServerInterceptor(config, perRouteOverrides.get(name));
+
+            if (interceptor != null) {
+              interceptors.add(interceptor);
             }
           }
-          ServerInterceptor interceptor = combineInterceptors(filterInterceptors);
-          perRouteInterceptors.put(route, interceptor);
+
+          // Merge all interceptors for this route.
+          perRouteInterceptors.put(route, combineInterceptors(interceptors));
         }
       }
+
+      // TODO(sergiitk): [question] replace activeFilters concurrent map with atomic reference,
+      //   and swap at the end?
+
       return perRouteInterceptors.buildOrThrow();
+    }
+
+    // Sync?
+    private Filter makeFilter(String typeUrl) {
+      Filter.Provider provider = filterRegistry.getProvider(typeUrl);
+      if (provider == null) {
+        return null;
+      }
+      Filter filter = provider.newInstance();
+      if (!(filter instanceof ServerInterceptorBuilder)) {
+        return null;
+      }
+      return filter;
     }
 
     private ServerInterceptor combineInterceptors(final List<ServerInterceptor> interceptors) {

@@ -69,7 +69,7 @@ import javax.annotation.Nullable;
 final class RbacFilter implements Filter, ServerInterceptorBuilder {
   private static final Logger logger = Logger.getLogger(RbacFilter.class.getName());
 
-  static final RbacFilter INSTANCE = new RbacFilter();
+  private static final RbacFilter INSTANCE = new RbacFilter();
 
   static final String TYPE_URL =
           "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC";
@@ -77,12 +77,21 @@ final class RbacFilter implements Filter, ServerInterceptorBuilder {
   private static final String TYPE_URL_OVERRIDE_CONFIG =
           "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBACPerRoute";
 
-  RbacFilter() {}
+  static final Filter.Provider PROVIDER = new Filter.Provider() {
+    @Override
+    public String[] typeUrls() {
+      return new String[] { TYPE_URL, TYPE_URL_OVERRIDE_CONFIG };
+    }
 
-  @Override
-  public String[] typeUrls() {
-    return new String[] { TYPE_URL, TYPE_URL_OVERRIDE_CONFIG };
-  }
+    @Override
+    public RbacFilter newInstance() {
+      return INSTANCE;
+    }
+  };
+
+  // Why is it public in authz?
+  // TODO(sergiitk): replace with provider in tests?
+  // private RbacFilter() {}
 
   @Override
   public ConfigOrError<RbacConfig> parseFilterConfig(Message rawProtoMessage) {
