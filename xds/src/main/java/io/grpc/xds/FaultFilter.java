@@ -101,7 +101,6 @@ final class FaultFilter implements Filter, ClientInterceptorBuilder {
     this.activeFaultCounter = activeFaultCounter;
   }
 
-
   @Override
   public ConfigOrError<FaultConfig> parseFilterConfig(Message rawProtoMessage) {
     HTTPFault httpFaultProto;

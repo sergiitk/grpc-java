@@ -108,6 +108,7 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nullable;
 import org.junit.After;
 import org.junit.Before;
@@ -183,12 +184,23 @@ public class XdsNameResolverTest {
 
     originalEnableTimeout = XdsNameResolver.enableTimeout;
     XdsNameResolver.enableTimeout = true;
-    FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(RouterFilter.PROVIDER);
-    // TODO(sergiitk): fix
-    // (new FaultFilter.Provider()).newInstance(mockRandom, new AtomicLong()),
-    // FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
-    //     (new FaultFilter.Provider()).newInstance(mockRandom, new AtomicLong()),
-    //     RouterFilter.PROVIDER.newInstance());
+    final FaultFilter mockedFaultFilter = new FaultFilter(mockRandom, new AtomicLong());
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
+        RouterFilter.PROVIDER,
+        // Mocked FaultFilter provider.
+        new Filter.Provider() {
+          @Override
+          public String[] typeUrls() {
+            return new String[]{ FaultFilter.TYPE_URL };
+          }
+
+          @Override
+          public FaultFilter newInstance() {
+            return mockedFaultFilter;
+          }
+        }
+    );
+
     resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null,
         serviceConfigParser, syncContext, scheduler,
         xdsClientPoolFactory, mockRandom, filterRegistry, null, metricRecorder);
