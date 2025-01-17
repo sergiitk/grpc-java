@@ -54,8 +54,6 @@ import io.grpc.xds.VirtualHost.Route;
 import io.grpc.xds.XdsListenerResource.LdsUpdate;
 import io.grpc.xds.XdsRouteConfigureResource.RdsUpdate;
 import io.grpc.xds.XdsServerBuilder.XdsServingStatusListener;
-import io.grpc.xds.XdsServerWrapper.DiscoveryState.ConfigApplyingInterceptor;
-import io.grpc.xds.XdsServerWrapper.DiscoveryState.ServerRoutingConfig;
 import io.grpc.xds.client.XdsClient;
 import io.grpc.xds.client.XdsClient.ResourceWatcher;
 import io.grpc.xds.internal.security.SslContextProviderSupplier;
@@ -510,6 +508,7 @@ final class XdsServerWrapper extends Server {
 
     private ImmutableMap<Route, ServerInterceptor> generatePerRouteInterceptors(
         List<NamedFilterConfig> namedFilterConfigs, List<VirtualHost> virtualHosts) {
+      // This should always be called from the sync context.
 
       ImmutableMap.Builder<Route, ServerInterceptor> perRouteInterceptors =
           new ImmutableMap.Builder<>();
@@ -535,11 +534,11 @@ final class XdsServerWrapper extends Server {
             String name = namedFilter.name;
             String typeUrl = config.typeUrl();
 
+            // TODO(sergiitk): [IMPL] replace with a regular map.
             Filter filter = activeFilters.computeIfAbsent(name, k -> makeFilter(typeUrl));
 
             if (filter == null) {
-              logger.log(Level.WARNING,
-                  "HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
+              logger.warning("HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
               continue;
             }
 
@@ -556,8 +555,7 @@ final class XdsServerWrapper extends Server {
         }
       }
 
-      // TODO(sergiitk): [question] replace activeFilters concurrent map with atomic reference,
-      //   and swap at the end?
+      // TODO(sergiitk): [IMPL] close filters here.
 
       return perRouteInterceptors.buildOrThrow();
     }
