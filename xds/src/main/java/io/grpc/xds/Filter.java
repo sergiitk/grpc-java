@@ -21,6 +21,7 @@ import com.google.protobuf.Message;
 import io.grpc.ClientInterceptor;
 import io.grpc.LoadBalancer.PickSubchannelArgs;
 import io.grpc.ServerInterceptor;
+import java.io.Closeable;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.annotation.Nullable;
@@ -30,7 +31,7 @@ import javax.annotation.Nullable;
  * {@link ClientInterceptorBuilder} or {@link ServerInterceptorBuilder} or both, indicating it is
  * capable of working on the client side or server side or both, respectively.
  */
-interface Filter {
+interface Filter extends Closeable {
 
   /**
    * Parses the top-level filter config from raw proto message. The message may be either a {@link
@@ -43,6 +44,11 @@ interface Filter {
    * a {@link com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
    */
   ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage);
+
+  @Override
+  default void close() {
+    // Optional cleanup on filter shutdown.
+  }
 
   /**
    * Common interface for filter providers.

@@ -61,12 +61,12 @@ import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -116,8 +116,8 @@ final class XdsServerWrapper extends Server {
   private DiscoveryState discoveryState;
   private volatile Server delegate;
 
-
-  private ConcurrentHashMap<String, Filter> activeFilters = new ConcurrentHashMap<>();
+  // Must be updated in the sync context.
+  private final HashMap<String, Filter> activeFilters = new HashMap<>();
 
   XdsServerWrapper(
       String listenerAddress,
@@ -507,11 +507,13 @@ final class XdsServerWrapper extends Server {
     }
 
     private ImmutableMap<Route, ServerInterceptor> generatePerRouteInterceptors(
-        List<NamedFilterConfig> namedFilterConfigs, List<VirtualHost> virtualHosts) {
+        @Nullable List<NamedFilterConfig> namedFilterConfigs, List<VirtualHost> virtualHosts) {
       // This should always be called from the sync context.
+      // syncContext.throwIfNotInThisSynchronizationContext();
 
       ImmutableMap.Builder<Route, ServerInterceptor> perRouteInterceptors =
           new ImmutableMap.Builder<>();
+      Set<String> filtersToShutdown = new HashSet<>(activeFilters.keySet());
 
       for (VirtualHost virtualHost : virtualHosts) {
         for (Route route : virtualHost.routes()) {
@@ -527,20 +529,21 @@ final class XdsServerWrapper extends Server {
               .putAll(route.filterConfigOverrides())
               .buildKeepingLast();
 
-          List<ServerInterceptor> interceptors = new ArrayList<>();
+          // Interceptors for this vhost/route combo.
+          List<ServerInterceptor> interceptors = new ArrayList<>(namedFilterConfigs.size());
 
           for (NamedFilterConfig namedFilter : namedFilterConfigs) {
             FilterConfig config = namedFilter.filterConfig;
             String name = namedFilter.name;
             String typeUrl = config.typeUrl();
 
-            // TODO(sergiitk): [IMPL] replace with a regular map.
-            Filter filter = activeFilters.computeIfAbsent(name, k -> makeFilter(typeUrl));
-
+            Filter filter = activeFilters.computeIfAbsent(name, k -> makeServerFilter(typeUrl));
             if (filter == null) {
               logger.warning("HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
               continue;
             }
+            // Filter looks good; remove from the chopping block.
+            filtersToShutdown.remove(name);
 
             ServerInterceptor interceptor = ((ServerInterceptorBuilder) filter)
                 .buildServerInterceptor(config, perRouteOverrides.get(name));
@@ -550,18 +553,27 @@ final class XdsServerWrapper extends Server {
             }
           }
 
-          // Merge all interceptors for this route.
+          // Combine interceptors produced by different filters into a single one that executes
+          // them sequentially. The order is preserved.
           perRouteInterceptors.put(route, combineInterceptors(interceptors));
         }
       }
 
-      // TODO(sergiitk): [IMPL] close filters here.
+      // Shutdown filters not present in the current chain.
+      for (String name : filtersToShutdown) {
+        Filter filterToShutdown = activeFilters.remove(name);
+        if (filterToShutdown == null) {
+          // Shouldn't happen.
+          throw new ConcurrentModificationException("Filter to shutdown '" + name
+              + "' was removed from the active filters outside of the syncContext");
+        }
+        filterToShutdown.close();
+      }
 
       return perRouteInterceptors.buildOrThrow();
     }
 
-    // Sync?
-    private Filter makeFilter(String typeUrl) {
+    private Filter makeServerFilter(String typeUrl) {
       Filter.Provider provider = filterRegistry.getProvider(typeUrl);
       if (provider == null) {
         return null;
