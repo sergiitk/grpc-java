@@ -89,9 +89,10 @@ final class RbacFilter implements Filter, ServerInterceptorBuilder {
     }
   };
 
-  // Why is it public in authz?
-  // TODO(sergiitk): replace with provider in tests?
-  // private RbacFilter() {}
+  @VisibleForTesting
+  RbacFilter() {
+    // TODO(sergiitk): replace direct calls to constructor with RbacFilter.PROVIDER.newInstance()?
+  }
 
   @Override
   public ConfigOrError<RbacConfig> parseFilterConfig(Message rawProtoMessage) {

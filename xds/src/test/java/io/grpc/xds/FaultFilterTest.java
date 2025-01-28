@@ -35,6 +35,13 @@ import org.junit.runners.JUnit4;
 public class FaultFilterTest {
 
   @Test
+  public void filterType_clientOnly() {
+    Filter faultFilter = FaultFilter.PROVIDER.newInstance();
+    assertThat(faultFilter.isClientFilter()).isTrue();
+    assertThat(faultFilter.isServerFilter()).isFalse();
+  }
+
+  @Test
   public void parseFaultAbort_convertHttpStatus() {
     Any rawConfig = Any.pack(
         HTTPFault.newBuilder().setAbort(FaultAbort.newBuilder().setHttpStatus(404)).build());

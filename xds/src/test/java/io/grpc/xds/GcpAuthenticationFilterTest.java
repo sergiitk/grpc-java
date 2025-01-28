@@ -45,6 +45,13 @@ import org.mockito.Mockito;
 public class GcpAuthenticationFilterTest {
 
   @Test
+  public void filterType_clientOnly() {
+    Filter gcpAuthFilter = GcpAuthenticationFilter.PROVIDER.newInstance();
+    assertThat(gcpAuthFilter.isClientFilter()).isTrue();
+    assertThat(gcpAuthFilter.isServerFilter()).isFalse();
+  }
+
+  @Test
   public void testParseFilterConfig_withValidConfig() {
     GcpAuthnFilterConfig config = GcpAuthnFilterConfig.newBuilder()
         .setCacheConfig(TokenCacheConfig.newBuilder().setCacheSize(UInt64Value.of(20)))

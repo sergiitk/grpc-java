@@ -80,6 +80,13 @@ public class RbacFilterTest {
           StringMatcher.newBuilder().setExact("/" + PATH).setIgnoreCase(true).build();
 
   @Test
+  public void filterType_serverOnly() {
+    Filter rbacFilter = RbacFilter.PROVIDER.newInstance();
+    assertThat(rbacFilter.isClientFilter()).isFalse();
+    assertThat(rbacFilter.isServerFilter()).isTrue();
+  }
+
+  @Test
   @SuppressWarnings({"unchecked", "deprecation"})
   public void ipPortParser() {
     CidrRange cidrRange = CidrRange.newBuilder().setAddressPrefix("10.10.10.0")
