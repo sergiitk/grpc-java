@@ -573,13 +573,14 @@ final class XdsServerWrapper extends Server {
       return perRouteInterceptors.buildOrThrow();
     }
 
+    @Nullable
     private Filter makeServerFilter(String typeUrl) {
       Filter.Provider provider = filterRegistry.getProvider(typeUrl);
       if (provider == null) {
         return null;
       }
       Filter filter = provider.newInstance();
-      if (!(filter instanceof ServerInterceptorBuilder)) {
+      if (!filter.isServerFilter()) {
         return null;
       }
       return filter;

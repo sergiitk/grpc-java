@@ -549,12 +549,8 @@ class XdsListenerResource extends XdsResourceType<LdsUpdate> {
     String filterName = httpFilter.getName();
     boolean isOptional = httpFilter.getIsOptional();
     if (!httpFilter.hasTypedConfig()) {
-      if (isOptional) {
-        return null;
-      } else {
-        return StructOrError.fromError(
-            "HttpFilter [" + filterName + "] is not optional and has no typed config");
-      }
+      return isOptional ? null : StructOrError.fromError(
+          "HttpFilter [" + filterName + "] is not optional and has no typed config");
     }
     Message rawConfig = httpFilter.getTypedConfig();
     String typeUrl = httpFilter.getTypedConfig().getTypeUrl();
@@ -574,16 +570,13 @@ class XdsListenerResource extends XdsResourceType<LdsUpdate> {
       return StructOrError.fromError(
           "HttpFilter [" + filterName + "] contains invalid proto: " + e);
     }
-    Filter filter = filterRegistry.get(typeUrl);
-    if ((isForClient && !(filter instanceof Filter.ClientInterceptorBuilder))
-        || (!isForClient && !(filter instanceof Filter.ServerInterceptorBuilder))) {
-      if (isOptional) {
-        return null;
-      } else {
-        return StructOrError.fromError(
-            "HttpFilter [" + filterName + "](" + typeUrl + ") is required but unsupported for "
-                + (isForClient ? "client" : "server"));
-      }
+
+    Filter filter = makeHttpFilter(filterRegistry, typeUrl, isForClient);
+    if (filter == null) {
+      // Filter type not supported.
+      return isOptional ? null : StructOrError.fromError(
+          "HttpFilter [" + filterName + "](" + typeUrl + ") is required but unsupported for " + (
+              isForClient ? "client" : "server"));
     }
     ConfigOrError<? extends FilterConfig> filterConfig = filter.parseFilterConfig(rawConfig);
     if (filterConfig.errorDetail != null) {
@@ -591,6 +584,26 @@ class XdsListenerResource extends XdsResourceType<LdsUpdate> {
           "Invalid filter config for HttpFilter [" + filterName + "]: " + filterConfig.errorDetail);
     }
     return StructOrError.fromStruct(filterConfig.config);
+  }
+
+  @Nullable
+  private static Filter makeHttpFilter(
+      FilterRegistry filterRegistry, String typeUrl, boolean isForClient) {
+    Filter.Provider provider = filterRegistry.getProvider(typeUrl);
+    // Filter for type not found.
+    if (provider == null) {
+      return null;
+    }
+    Filter filter = provider.newInstance();
+    // Wanted a client filter, but the filter doesn't support client mode.
+    if (isForClient && !filter.isClientFilter()) {
+      return null;
+    }
+    // Wanted a server filter, but the filter doesn't support server mode.
+    if (!isForClient && !filter.isServerFilter()) {
+      return null;
+    }
+    return filter;
   }
 
   @AutoValue
