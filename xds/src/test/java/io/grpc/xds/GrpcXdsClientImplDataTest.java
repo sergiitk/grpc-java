@@ -167,6 +167,7 @@ import org.junit.runners.JUnit4;
 @RunWith(JUnit4.class)
 public class GrpcXdsClientImplDataTest {
 
+  private static final FaultFilter.Provider FAULT_FILTER_PROVIDER = new FaultFilter.Provider();
   private static final ServerInfo LRS_SERVER_INFO =
       ServerInfo.create("lrs.googleapis.com", InsecureChannelCredentials.create());
   private static final String GRPC_EXPERIMENTAL_XDS_AUTHORITY_REWRITE =
@@ -1380,7 +1381,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_faultConfigForClient() {
-    filterRegistry.register(FaultFilter.PROVIDER);
+    filterRegistry.register(FAULT_FILTER_PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1407,7 +1408,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_faultConfigUnsupportedForServer() {
-    filterRegistry.register(FaultFilter.PROVIDER);
+    filterRegistry.register(FAULT_FILTER_PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1518,7 +1519,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseOverrideFilterConfigs_unsupportedButOptional() {
-    filterRegistry.register(FaultFilter.PROVIDER);
+    filterRegistry.register(FAULT_FILTER_PROVIDER);
     HTTPFault httpFault = HTTPFault.newBuilder()
         .setDelay(FaultDelay.newBuilder().setFixedDelay(Durations.fromNanos(3000)))
         .build();
@@ -1538,7 +1539,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseOverrideFilterConfigs_unsupportedAndRequired() {
-    filterRegistry.register(FaultFilter.PROVIDER);
+    filterRegistry.register(FAULT_FILTER_PROVIDER);
     HTTPFault httpFault = HTTPFault.newBuilder()
         .setDelay(FaultDelay.newBuilder().setFixedDelay(Durations.fromNanos(3000)))
         .build();
@@ -1630,7 +1631,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpConnectionManager_lastNotTerminal() throws ResourceInvalidException {
-    filterRegistry.register(FaultFilter.PROVIDER);
+    filterRegistry.register(FAULT_FILTER_PROVIDER);
     HttpConnectionManager hcm =
           HttpConnectionManager.newBuilder()
               .addHttpFilters(

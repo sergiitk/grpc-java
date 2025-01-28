@@ -33,10 +33,11 @@ import org.junit.runners.JUnit4;
 /** Tests for {@link FaultFilter}. */
 @RunWith(JUnit4.class)
 public class FaultFilterTest {
+  private static final FaultFilter.Provider FILTER_PROVIDER = new FaultFilter.Provider();
 
   @Test
   public void filterType_clientOnly() {
-    Filter faultFilter = FaultFilter.PROVIDER.newInstance();
+    Filter faultFilter = FILTER_PROVIDER.newInstance();
     assertThat(faultFilter.isClientFilter()).isTrue();
     assertThat(faultFilter.isServerFilter()).isFalse();
   }
@@ -45,11 +46,12 @@ public class FaultFilterTest {
   public void parseFaultAbort_convertHttpStatus() {
     Any rawConfig = Any.pack(
         HTTPFault.newBuilder().setAbort(FaultAbort.newBuilder().setHttpStatus(404)).build());
-    FaultConfig faultConfig = FaultFilter.INSTANCE.parseFilterConfig(rawConfig).config;
+    FaultConfig faultConfig = FILTER_PROVIDER.newInstance().parseFilterConfig(rawConfig).config;
     assertThat(faultConfig.faultAbort().status().getCode())
         .isEqualTo(GrpcUtil.httpStatusToGrpcStatus(404).getCode());
+
     FaultConfig faultConfigOverride =
-        FaultFilter.INSTANCE.parseFilterConfigOverride(rawConfig).config;
+        FILTER_PROVIDER.newInstance().parseFilterConfigOverride(rawConfig).config;
     assertThat(faultConfigOverride.faultAbort().status().getCode())
         .isEqualTo(GrpcUtil.httpStatusToGrpcStatus(404).getCode());
   }

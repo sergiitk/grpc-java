@@ -59,9 +59,9 @@ import javax.annotation.Nullable;
 /** HttpFault filter implementation. */
 final class FaultFilter implements Filter, ClientInterceptorBuilder {
 
-  @VisibleForTesting
-  static final FaultFilter INSTANCE =
+  private static final FaultFilter INSTANCE =
       new FaultFilter(ThreadSafeRandomImpl.instance, new AtomicLong());
+
   @VisibleForTesting
   static final Metadata.Key<String> HEADER_DELAY_KEY =
       Metadata.Key.of("x-envoy-fault-delay-request", Metadata.ASCII_STRING_MARSHALLER);
@@ -83,17 +83,17 @@ final class FaultFilter implements Filter, ClientInterceptorBuilder {
   private final ThreadSafeRandom random;
   private final AtomicLong activeFaultCounter;
 
-  static final Filter.Provider PROVIDER = new Filter.Provider() {
+  static final class Provider implements Filter.Provider {
     @Override
     public String[] typeUrls() {
-      return new String[] { TYPE_URL };
+      return new String[]{TYPE_URL};
     }
 
     @Override
     public FaultFilter newInstance() {
       return INSTANCE;
     }
-  };
+  }
 
   @VisibleForTesting
   FaultFilter(ThreadSafeRandom random, AtomicLong activeFaultCounter) {

@@ -68,8 +68,6 @@ interface Filter extends Closeable {
    * Common interface for filter providers.
    */
   interface Provider {
-    // TODO(sergiitk): consider making generic: Provider<? extends Filter>
-
     /**
      * The proto message types supported by this filter. A filter will be registered by each of its
      * supported message types.

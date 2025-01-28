@@ -571,6 +571,7 @@ class XdsListenerResource extends XdsResourceType<LdsUpdate> {
           "HttpFilter [" + filterName + "] contains invalid proto: " + e);
     }
 
+    // TODO(sergiitk): instead, just get the registry and move parseFilterConfig/override to it.
     Filter filter = makeHttpFilter(filterRegistry, typeUrl, isForClient);
     if (filter == null) {
       // Filter type not supported.
