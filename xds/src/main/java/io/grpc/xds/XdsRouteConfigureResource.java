@@ -216,30 +216,35 @@ class XdsRouteConfigureResource extends XdsResourceType<RdsUpdate> {
       Any anyConfig = rawFilterConfigMap.get(name);
       String typeUrl = anyConfig.getTypeUrl();
       boolean isOptional = false;
+      if (typeUrl.equals(TYPE_URL_FILTER_CONFIG)) {
+        io.envoyproxy.envoy.config.route.v3.FilterConfig filterConfig;
+        try {
+          filterConfig =
+              anyConfig.unpack(io.envoyproxy.envoy.config.route.v3.FilterConfig.class);
+        } catch (InvalidProtocolBufferException e) {
+          return StructOrError.fromError(
+              "FilterConfig [" + name + "] contains invalid proto: " + e);
+        }
+        isOptional = filterConfig.getIsOptional();
+        anyConfig = filterConfig.getConfig();
+        typeUrl = anyConfig.getTypeUrl();
+      }
       Message rawConfig = anyConfig;
-
       try {
-        switch (anyConfig.getTypeUrl()) {
-          case TYPE_URL_FILTER_CONFIG:
-            io.envoyproxy.envoy.config.route.v3.FilterConfig filterConfig =
-                anyConfig.unpack(io.envoyproxy.envoy.config.route.v3.FilterConfig.class);
-            isOptional = filterConfig.getIsOptional();
-            anyConfig = filterConfig.getConfig();
-            typeUrl = anyConfig.getTypeUrl();
-            break;
-          case TYPE_URL_TYPED_STRUCT:
-          case TYPE_URL_TYPED_STRUCT_UDPA:
-            TypedStruct typedStruct = unpackCompatibleType(
-                anyConfig, TypedStruct.class, TYPE_URL_TYPED_STRUCT_UDPA, TYPE_URL_TYPED_STRUCT);
-            typeUrl = typedStruct.getTypeUrl();
-            rawConfig = typedStruct.getValue();
-            break;
+        if (typeUrl.equals(TYPE_URL_TYPED_STRUCT_UDPA)) {
+          TypedStruct typedStruct = anyConfig.unpack(TypedStruct.class);
+          typeUrl = typedStruct.getTypeUrl();
+          rawConfig = typedStruct.getValue();
+        } else if (typeUrl.equals(TYPE_URL_TYPED_STRUCT)) {
+          com.github.xds.type.v3.TypedStruct newTypedStruct =
+              anyConfig.unpack(com.github.xds.type.v3.TypedStruct.class);
+          typeUrl = newTypedStruct.getTypeUrl();
+          rawConfig = newTypedStruct.getValue();
         }
       } catch (InvalidProtocolBufferException e) {
         return StructOrError.fromError(
             "FilterConfig [" + name + "] contains invalid proto: " + e);
       }
-
       Filter filter = filterRegistry.get(typeUrl);
       if (filter == null) {
         if (isOptional) {
