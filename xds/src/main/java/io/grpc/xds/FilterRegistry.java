@@ -37,7 +37,7 @@ final class FilterRegistry {
       instance = newRegistry().register(
               new FaultFilter.Provider(),
               RouterFilter.PROVIDER,
-              RbacFilter.PROVIDER);
+              new RbacFilter.Provider());
     }
     return instance;
   }

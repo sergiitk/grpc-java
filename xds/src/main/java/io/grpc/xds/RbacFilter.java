@@ -77,22 +77,19 @@ final class RbacFilter implements Filter, ServerInterceptorBuilder {
   private static final String TYPE_URL_OVERRIDE_CONFIG =
           "type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBACPerRoute";
 
-  static final Filter.Provider PROVIDER = new Filter.Provider() {
+  static final class Provider implements Filter.Provider {
     @Override
     public String[] typeUrls() {
-      return new String[] { TYPE_URL, TYPE_URL_OVERRIDE_CONFIG };
+      return new String[] {TYPE_URL, TYPE_URL_OVERRIDE_CONFIG};
     }
 
     @Override
     public RbacFilter newInstance() {
       return INSTANCE;
     }
-  };
-
-  @VisibleForTesting
-  RbacFilter() {
-    // TODO(sergiitk): replace direct calls to constructor with RbacFilter.PROVIDER.newInstance()?
   }
+
+  private RbacFilter() {}
 
   @Override
   public ConfigOrError<RbacConfig> parseFilterConfig(Message rawProtoMessage) {

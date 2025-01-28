@@ -168,6 +168,8 @@ import org.junit.runners.JUnit4;
 public class GrpcXdsClientImplDataTest {
 
   private static final FaultFilter.Provider FAULT_FILTER_PROVIDER = new FaultFilter.Provider();
+  private static final RbacFilter.Provider RBAC_FILTER_PROVIDER = new RbacFilter.Provider();
+
   private static final ServerInfo LRS_SERVER_INFO =
       ServerInfo.create("lrs.googleapis.com", InsecureChannelCredentials.create());
   private static final String GRPC_EXPERIMENTAL_XDS_AUTHORITY_REWRITE =
@@ -1437,7 +1439,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_rbacConfigForServer() {
-    filterRegistry.register(RbacFilter.PROVIDER);
+    filterRegistry.register(RBAC_FILTER_PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1464,7 +1466,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_rbacConfigUnsupportedForClient() {
-    filterRegistry.register(RbacFilter.PROVIDER);
+    filterRegistry.register(RBAC_FILTER_PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1493,7 +1495,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseOverrideRbacFilterConfig() {
-    filterRegistry.register(RbacFilter.PROVIDER);
+    filterRegistry.register(RBAC_FILTER_PROVIDER);
     RBACPerRoute rbacPerRoute =
         RBACPerRoute.newBuilder()
             .setRbac(
