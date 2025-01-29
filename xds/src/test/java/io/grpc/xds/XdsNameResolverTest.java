@@ -130,6 +130,9 @@ public class XdsNameResolverTest {
   private static final String RDS_RESOURCE_NAME = "route-configuration.googleapis.com";
   private static final String FAULT_FILTER_INSTANCE_NAME = "envoy.fault";
   private static final String ROUTER_FILTER_INSTANCE_NAME = "envoy.router";
+  private static final FaultFilter.Provider FAULT_FILTER_PROVIDER = new FaultFilter.Provider();
+  private static final RouterFilter.Provider ROUTER_FILTER_PROVIDER = new RouterFilter.Provider();
+
   @Rule
   public final MockitoRule mocks = MockitoJUnit.rule();
   private final SynchronizationContext syncContext = new SynchronizationContext(
@@ -184,19 +187,20 @@ public class XdsNameResolverTest {
 
     originalEnableTimeout = XdsNameResolver.enableTimeout;
     XdsNameResolver.enableTimeout = true;
-    final FaultFilter mockedFaultFilter = new FaultFilter(mockRandom, new AtomicLong());
+
+    final FaultFilter faultFilterInjected = new FaultFilter(mockRandom, new AtomicLong());
     FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
-        RouterFilter.PROVIDER,
-        // Mocked FaultFilter provider.
+        ROUTER_FILTER_PROVIDER,
+        // Replace FaultFilter.Provider with the one returning FaultFilter injected with mockRandom.
         new Filter.Provider() {
           @Override
           public String[] typeUrls() {
-            return new String[]{ FaultFilter.TYPE_URL };
+            return FAULT_FILTER_PROVIDER.typeUrls();
           }
 
           @Override
           public FaultFilter newInstance() {
-            return mockedFaultFilter;
+            return faultFilterInjected;
           }
         }
     );

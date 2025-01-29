@@ -169,6 +169,7 @@ public class GrpcXdsClientImplDataTest {
 
   private static final FaultFilter.Provider FAULT_FILTER_PROVIDER = new FaultFilter.Provider();
   private static final RbacFilter.Provider RBAC_FILTER_PROVIDER = new RbacFilter.Provider();
+  private static final RouterFilter.Provider ROUTER_FILTER_PROVIDER = new RouterFilter.Provider();
 
   private static final ServerInfo LRS_SERVER_INFO =
       ServerInfo.create("lrs.googleapis.com", InsecureChannelCredentials.create());
@@ -1355,7 +1356,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_routerFilterForClient() {
-    filterRegistry.register(RouterFilter.PROVIDER);
+    filterRegistry.register(ROUTER_FILTER_PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1369,7 +1370,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_routerFilterForServer() {
-    filterRegistry.register(RouterFilter.PROVIDER);
+    filterRegistry.register(ROUTER_FILTER_PROVIDER);
     HttpFilter httpFilter =
         HttpFilter.newBuilder()
             .setIsOptional(false)
@@ -1651,7 +1652,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpConnectionManager_terminalNotLast() throws ResourceInvalidException {
-    filterRegistry.register(RouterFilter.PROVIDER);
+    filterRegistry.register(ROUTER_FILTER_PROVIDER);
     HttpConnectionManager hcm =
             HttpConnectionManager.newBuilder()
                     .addHttpFilters(

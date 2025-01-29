@@ -25,10 +25,11 @@ import org.junit.runners.JUnit4;
 /** Tests for {@link RouterFilter}. */
 @RunWith(JUnit4.class)
 public class RouterFilterTest {
+  private static final RouterFilter.Provider FILTER_PROVIDER = new RouterFilter.Provider();
 
   @Test
   public void filterType_clientAndServer() {
-    Filter routerFilter = RouterFilter.PROVIDER.newInstance();
+    RouterFilter routerFilter = FILTER_PROVIDER.newInstance();
     assertThat(routerFilter.isClientFilter()).isTrue();
     assertThat(routerFilter.isServerFilter()).isTrue();
   }

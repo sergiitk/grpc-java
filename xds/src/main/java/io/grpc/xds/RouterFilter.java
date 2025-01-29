@@ -36,17 +36,17 @@ final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInte
 
   private RouterFilter() {}
 
-  static final Filter.Provider PROVIDER = new Filter.Provider() {
+  static final class Provider implements Filter.Provider {
     @Override
     public String[] typeUrls() {
-      return new String[] { TYPE_URL };
+      return new String[]{TYPE_URL};
     }
 
     @Override
     public RouterFilter newInstance() {
       return INSTANCE;
     }
-  };
+  }
 
   static final FilterConfig ROUTER_CONFIG = new FilterConfig() {
     @Override
