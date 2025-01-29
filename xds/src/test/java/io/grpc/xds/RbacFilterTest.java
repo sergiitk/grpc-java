@@ -82,9 +82,8 @@ public class RbacFilterTest {
 
   @Test
   public void filterType_serverOnly() {
-    RbacFilter rbacFilter = FILTER_PROVIDER.newInstance();
-    assertThat(rbacFilter.isClientFilter()).isFalse();
-    assertThat(rbacFilter.isServerFilter()).isTrue();
+    assertThat(FILTER_PROVIDER.isClientFilter()).isFalse();
+    assertThat(FILTER_PROVIDER.isServerFilter()).isTrue();
   }
 
   @Test

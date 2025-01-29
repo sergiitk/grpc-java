@@ -29,9 +29,8 @@ public class RouterFilterTest {
 
   @Test
   public void filterType_clientAndServer() {
-    RouterFilter routerFilter = FILTER_PROVIDER.newInstance();
-    assertThat(routerFilter.isClientFilter()).isTrue();
-    assertThat(routerFilter.isServerFilter()).isTrue();
+    assertThat(FILTER_PROVIDER.isClientFilter()).isTrue();
+    assertThat(FILTER_PROVIDER.isServerFilter()).isTrue();
   }
 
 }

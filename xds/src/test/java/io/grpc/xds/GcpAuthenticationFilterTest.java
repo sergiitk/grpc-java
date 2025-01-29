@@ -49,9 +49,8 @@ public class GcpAuthenticationFilterTest {
 
   @Test
   public void filterType_clientOnly() {
-    Filter gcpAuthFilter = FILTER_PROVIDER.newInstance();
-    assertThat(gcpAuthFilter.isClientFilter()).isTrue();
-    assertThat(gcpAuthFilter.isServerFilter()).isFalse();
+    assertThat(FILTER_PROVIDER.isClientFilter()).isTrue();
+    assertThat(FILTER_PROVIDER.isServerFilter()).isFalse();
   }
 
   @Test

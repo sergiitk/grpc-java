@@ -571,40 +571,21 @@ class XdsListenerResource extends XdsResourceType<LdsUpdate> {
           "HttpFilter [" + filterName + "] contains invalid proto: " + e);
     }
 
-    // TODO(sergiitk): instead, just get the registry and move parseFilterConfig/override to it.
-    Filter filter = makeHttpFilter(filterRegistry, typeUrl, isForClient);
-    if (filter == null) {
+    Filter.Provider provider = filterRegistry.getProvider(typeUrl);
+    if (provider == null
+        || isForClient && !provider.isClientFilter()
+        || !isForClient && !provider.isServerFilter()) {
       // Filter type not supported.
       return isOptional ? null : StructOrError.fromError(
           "HttpFilter [" + filterName + "](" + typeUrl + ") is required but unsupported for " + (
               isForClient ? "client" : "server"));
     }
-    ConfigOrError<? extends FilterConfig> filterConfig = filter.parseFilterConfig(rawConfig);
+    ConfigOrError<? extends FilterConfig> filterConfig = provider.parseFilterConfig(rawConfig);
     if (filterConfig.errorDetail != null) {
       return StructOrError.fromError(
           "Invalid filter config for HttpFilter [" + filterName + "]: " + filterConfig.errorDetail);
     }
     return StructOrError.fromStruct(filterConfig.config);
-  }
-
-  @Nullable
-  private static Filter makeHttpFilter(
-      FilterRegistry filterRegistry, String typeUrl, boolean isForClient) {
-    Filter.Provider provider = filterRegistry.getProvider(typeUrl);
-    // Filter for type not found.
-    if (provider == null) {
-      return null;
-    }
-    Filter filter = provider.newInstance();
-    // Wanted a client filter, but the filter doesn't support client mode.
-    if (isForClient && !filter.isClientFilter()) {
-      return null;
-    }
-    // Wanted a server filter, but the filter doesn't support server mode.
-    if (!isForClient && !filter.isServerFilter()) {
-      return null;
-    }
-    return filter;
   }
 
   @AutoValue

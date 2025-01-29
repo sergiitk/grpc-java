@@ -37,9 +37,8 @@ public class FaultFilterTest {
 
   @Test
   public void filterType_clientOnly() {
-    FaultFilter faultFilter = FILTER_PROVIDER.newInstance();
-    assertThat(faultFilter.isClientFilter()).isTrue();
-    assertThat(faultFilter.isServerFilter()).isFalse();
+    assertThat(FILTER_PROVIDER.isClientFilter()).isTrue();
+    assertThat(FILTER_PROVIDER.isServerFilter()).isFalse();
   }
 
   @Test

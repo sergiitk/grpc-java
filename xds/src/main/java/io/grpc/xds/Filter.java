@@ -39,20 +39,6 @@ interface Filter extends Closeable {
   }
 
   /**
-   * Whether the filter can be installed on the client side.
-   */
-  default boolean isClientFilter() {
-    return this instanceof ClientInterceptorBuilder;
-  }
-
-  /**
-   * Whether the filter can be installed into xDS-enabled servers.
-   */
-  default boolean isServerFilter() {
-    return this instanceof ServerInterceptorBuilder;
-  }
-
-  /**
    * Common interface for filter providers.
    */
   interface Provider {
@@ -76,6 +62,20 @@ interface Filter extends Closeable {
      * a {@link com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
      */
     ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage);
+
+    /**
+     * Whether the filter can be installed on the client side.
+     */
+    default boolean isClientFilter() {
+      return false;
+    }
+
+    /**
+     * Whether the filter can be installed into xDS-enabled servers.
+     */
+    default boolean isServerFilter() {
+      return false;
+    }
   }
 
 

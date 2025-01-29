@@ -576,14 +576,10 @@ final class XdsServerWrapper extends Server {
     @Nullable
     private Filter makeServerFilter(String typeUrl) {
       Filter.Provider provider = filterRegistry.getProvider(typeUrl);
-      if (provider == null) {
+      if (provider == null || !provider.isServerFilter()) {
         return null;
       }
-      Filter filter = provider.newInstance();
-      if (!filter.isServerFilter()) {
-        return null;
-      }
-      return filter;
+      return provider.newInstance();
     }
 
     private ServerInterceptor combineInterceptors(final List<ServerInterceptor> interceptors) {
