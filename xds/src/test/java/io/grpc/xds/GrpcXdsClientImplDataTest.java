@@ -1251,7 +1251,7 @@ public class GrpcXdsClientImplDataTest {
 
   private static class TestFilter implements io.grpc.xds.Filter, ClientInterceptorBuilder {
 
-    static final io.grpc.xds.Filter.Provider PROVIDER = new io.grpc.xds.Filter.Provider() {
+    static final class Provider implements io.grpc.xds.Filter.Provider {
       @Override
       public String[] typeUrls() {
         return new String[]{"test-url"};
@@ -1261,17 +1261,16 @@ public class GrpcXdsClientImplDataTest {
       public TestFilter newInstance() {
         return new TestFilter();
       }
-    };
 
-    @Override
-    public ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage) {
-      return ConfigOrError.fromConfig(new SimpleFilterConfig(rawProtoMessage));
-    }
+      @Override
+      public ConfigOrError<SimpleFilterConfig> parseFilterConfig(Message rawProtoMessage) {
+        return ConfigOrError.fromConfig(new SimpleFilterConfig(rawProtoMessage));
+      }
 
-    @Override
-    public ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(
-        Message rawProtoMessage) {
-      return ConfigOrError.fromConfig(new SimpleFilterConfig(rawProtoMessage));
+      @Override
+      public ConfigOrError<SimpleFilterConfig> parseFilterConfigOverride(Message rawProtoMessage) {
+        return ConfigOrError.fromConfig(new SimpleFilterConfig(rawProtoMessage));
+      }
     }
 
     @Nullable
@@ -1286,7 +1285,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseHttpFilter_typedStructMigration() {
-    filterRegistry.register(TestFilter.PROVIDER);
+    filterRegistry.register(new TestFilter.Provider());
     Struct rawStruct = Struct.newBuilder()
         .putFields("name", Value.newBuilder().setStringValue("default").build())
         .build();
@@ -1315,7 +1314,7 @@ public class GrpcXdsClientImplDataTest {
 
   @Test
   public void parseOverrideHttpFilter_typedStructMigration() {
-    filterRegistry.register(TestFilter.PROVIDER);
+    filterRegistry.register(new TestFilter.Provider());
     Struct rawStruct0 = Struct.newBuilder()
         .putFields("name", Value.newBuilder().setStringValue("default0").build())
         .build();
