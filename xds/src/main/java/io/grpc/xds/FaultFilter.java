@@ -46,7 +46,6 @@ import io.grpc.internal.DelayedClientCall;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.xds.FaultConfig.FaultAbort;
 import io.grpc.xds.FaultConfig.FaultDelay;
-import io.grpc.xds.Filter.ClientInterceptorBuilder;
 import io.grpc.xds.ThreadSafeRandom.ThreadSafeRandomImpl;
 import java.util.Locale;
 import java.util.concurrent.Executor;
@@ -57,7 +56,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nullable;
 
 /** HttpFault filter implementation. */
-final class FaultFilter implements Filter, ClientInterceptorBuilder {
+final class FaultFilter implements Filter {
 
   private static final FaultFilter INSTANCE =
       new FaultFilter(ThreadSafeRandomImpl.instance, new AtomicLong());

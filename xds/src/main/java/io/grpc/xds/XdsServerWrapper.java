@@ -47,7 +47,6 @@ import io.grpc.internal.SharedResourceHolder;
 import io.grpc.xds.EnvoyServerProtoData.FilterChain;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.Filter.NamedFilterConfig;
-import io.grpc.xds.Filter.ServerInterceptorBuilder;
 import io.grpc.xds.FilterChainMatchingProtocolNegotiators.FilterChainMatchingHandler.FilterChainSelector;
 import io.grpc.xds.ThreadSafeRandom.ThreadSafeRandomImpl;
 import io.grpc.xds.VirtualHost.Route;
@@ -537,17 +536,19 @@ final class XdsServerWrapper extends Server {
             String name = namedFilter.name;
             String typeUrl = config.typeUrl();
 
-            Filter filter = activeFilters.computeIfAbsent(name, k -> makeServerFilter(typeUrl));
-            if (filter == null) {
+            Filter.Provider provider = filterRegistry.getProvider(typeUrl);
+            if (provider == null || !provider.isServerFilter()) {
               logger.warning("HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
               continue;
             }
-            // Filter looks good; remove from the chopping block.
+            // Valid server filter for given type found; remove name from the chopping block.
             filtersToShutdown.remove(name);
 
-            ServerInterceptor interceptor = ((ServerInterceptorBuilder) filter)
-                .buildServerInterceptor(config, perRouteOverrides.get(name));
+            // Upsert filter to the active filters map.
+            Filter filter = activeFilters.computeIfAbsent(name, k -> provider.newInstance());
 
+            ServerInterceptor interceptor =
+                filter.buildServerInterceptor(config, perRouteOverrides.get(name));
             if (interceptor != null) {
               interceptors.add(interceptor);
             }
@@ -571,15 +572,6 @@ final class XdsServerWrapper extends Server {
       }
 
       return perRouteInterceptors.buildOrThrow();
-    }
-
-    @Nullable
-    private Filter makeServerFilter(String typeUrl) {
-      Filter.Provider provider = filterRegistry.getProvider(typeUrl);
-      if (provider == null || !provider.isServerFilter()) {
-        return null;
-      }
-      return provider.newInstance();
     }
 
     private ServerInterceptor combineInterceptors(final List<ServerInterceptor> interceptors) {

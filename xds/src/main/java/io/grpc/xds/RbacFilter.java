@@ -33,7 +33,6 @@ import io.grpc.ServerCall;
 import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 import io.grpc.Status;
-import io.grpc.xds.Filter.ServerInterceptorBuilder;
 import io.grpc.xds.internal.MatcherParser;
 import io.grpc.xds.internal.Matchers;
 import io.grpc.xds.internal.rbac.engine.GrpcAuthorizationEngine;
@@ -65,7 +64,7 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /** RBAC Http filter implementation. */
-final class RbacFilter implements Filter, ServerInterceptorBuilder {
+final class RbacFilter implements Filter {
   private static final Logger logger = Logger.getLogger(RbacFilter.class.getName());
 
   private static final RbacFilter INSTANCE = new RbacFilter();

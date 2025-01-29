@@ -27,15 +27,18 @@ import java.util.concurrent.ScheduledExecutorService;
 import javax.annotation.Nullable;
 
 /**
- * Defines the parsing functionality of an HTTP filter. A Filter may optionally implement either
- * {@link ClientInterceptorBuilder} or {@link ServerInterceptorBuilder} or both, indicating it is
- * capable of working on the client side or server side or both, respectively.
+ * Defines the parsing functionality of an HTTP filter.
+ *
+ * <p>A Filter may optionally implement either {@link Filter#buildClientInterceptor} or
+ * {@link Filter#buildServerInterceptor} or both, and return true from corresponding
+ * {@link Provider#isClientFilter()}, {@link Provider#isServerFilter()} to indicate that the filter
+ * is capable of working on the client side or server side or both, respectively.
  */
 interface Filter extends Closeable {
 
-  @Override
-  default void close() {
-    // Optional cleanup on filter shutdown.
+  /** Represents an opaque data structure holding configuration for a filter. */
+  interface FilterConfig {
+    String typeUrl();
   }
 
   /**
@@ -51,7 +54,7 @@ interface Filter extends Closeable {
     /**
      * Whether the filter can be installed on the client side.
      *
-     * <p>Return true if the filter implements {@link ClientInterceptorBuilder}.
+     * <p>Return true if the filter implements {@link Filter#buildClientInterceptor}.
      */
     default boolean isClientFilter() {
       return false;
@@ -60,7 +63,7 @@ interface Filter extends Closeable {
     /**
      * Whether the filter can be installed into xDS-enabled servers.
      *
-     * <p>Return true if the filter implements {@link ServerInterceptorBuilder}.
+     * <p>Return true if the filter implements {@link Filter#buildServerInterceptor}.
      */
     default boolean isServerFilter() {
       return false;
@@ -86,25 +89,24 @@ interface Filter extends Closeable {
     ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage);
   }
 
-
-  /** Represents an opaque data structure holding configuration for a filter. */
-  interface FilterConfig {
-    String typeUrl();
-  }
-
   /** Uses the FilterConfigs produced above to produce an HTTP filter interceptor for clients. */
-  interface ClientInterceptorBuilder {
-    @Nullable
-    ClientInterceptor buildClientInterceptor(
-        FilterConfig config, @Nullable FilterConfig overrideConfig, PickSubchannelArgs args,
-        ScheduledExecutorService scheduler);
+  @Nullable
+  default ClientInterceptor buildClientInterceptor(
+      FilterConfig config, @Nullable FilterConfig overrideConfig, PickSubchannelArgs args,
+      ScheduledExecutorService scheduler) {
+    return null;
   }
 
   /** Uses the FilterConfigs produced above to produce an HTTP filter interceptor for the server. */
-  interface ServerInterceptorBuilder {
-    @Nullable
-    ServerInterceptor buildServerInterceptor(
-        FilterConfig config, @Nullable FilterConfig overrideConfig);
+  @Nullable
+  default ServerInterceptor buildServerInterceptor(
+      FilterConfig config, @Nullable FilterConfig overrideConfig) {
+    return null;
+  }
+
+  @Override
+  default void close() {
+    // Optional cleanup on filter shutdown.
   }
 
   /** Filter config with instance name. */

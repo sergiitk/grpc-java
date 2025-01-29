@@ -110,10 +110,8 @@ import io.envoyproxy.envoy.type.matcher.v3.StringMatcher;
 import io.envoyproxy.envoy.type.v3.FractionalPercent;
 import io.envoyproxy.envoy.type.v3.FractionalPercent.DenominatorType;
 import io.envoyproxy.envoy.type.v3.Int64Range;
-import io.grpc.ClientInterceptor;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.InsecureChannelCredentials;
-import io.grpc.LoadBalancer;
 import io.grpc.LoadBalancerRegistry;
 import io.grpc.Status.Code;
 import io.grpc.internal.JsonUtil;
@@ -128,7 +126,6 @@ import io.grpc.xds.ClusterSpecifierPlugin.NamedPluginConfig;
 import io.grpc.xds.ClusterSpecifierPlugin.PluginConfig;
 import io.grpc.xds.Endpoints.LbEndpoint;
 import io.grpc.xds.Endpoints.LocalityLbEndpoints;
-import io.grpc.xds.Filter.ClientInterceptorBuilder;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.MetadataRegistry.MetadataValueParser;
 import io.grpc.xds.RouteLookupServiceClusterSpecifierPlugin.RlsPluginConfig;
@@ -152,9 +149,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -1249,7 +1244,7 @@ public class GrpcXdsClientImplDataTest {
     }
   }
 
-  private static class TestFilter implements io.grpc.xds.Filter, ClientInterceptorBuilder {
+  private static class TestFilter implements io.grpc.xds.Filter {
 
     static final class Provider implements io.grpc.xds.Filter.Provider {
       @Override
@@ -1276,15 +1271,6 @@ public class GrpcXdsClientImplDataTest {
       public ConfigOrError<SimpleFilterConfig> parseFilterConfigOverride(Message rawProtoMessage) {
         return ConfigOrError.fromConfig(new SimpleFilterConfig(rawProtoMessage));
       }
-    }
-
-    @Nullable
-    @Override
-    public ClientInterceptor buildClientInterceptor(FilterConfig config,
-                                                    @Nullable FilterConfig overrideConfig,
-                                                    LoadBalancer.PickSubchannelArgs args,
-                                                    ScheduledExecutorService scheduler) {
-      return null;
     }
   }
 

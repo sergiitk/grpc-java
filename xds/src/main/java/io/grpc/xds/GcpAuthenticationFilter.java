@@ -36,7 +36,6 @@ import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.auth.MoreCallCredentials;
-import io.grpc.xds.Filter.ClientInterceptorBuilder;
 import io.grpc.xds.MetadataRegistry.MetadataValueParser;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -48,7 +47,7 @@ import javax.annotation.Nullable;
  * A {@link Filter} that injects a {@link CallCredentials} to handle
  * authentication for xDS credentials.
  */
-final class GcpAuthenticationFilter implements Filter, ClientInterceptorBuilder {
+final class GcpAuthenticationFilter implements Filter {
 
   static final String TYPE_URL =
       "type.googleapis.com/envoy.extensions.filters.http.gcp_authn.v3.GcpAuthnFilterConfig";

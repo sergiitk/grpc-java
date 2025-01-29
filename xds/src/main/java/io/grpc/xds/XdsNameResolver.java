@@ -49,7 +49,6 @@ import io.grpc.SynchronizationContext;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.ObjectPool;
 import io.grpc.xds.ClusterSpecifierPlugin.PluginConfig;
-import io.grpc.xds.Filter.ClientInterceptorBuilder;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.Filter.NamedFilterConfig;
 import io.grpc.xds.RouteLookupServiceClusterSpecifierPlugin.RlsPluginConfig;
@@ -460,12 +459,12 @@ final class XdsNameResolver extends NameResolver {
       if (routingCfg.filterChain != null) {
         for (NamedFilterConfig namedFilter : routingCfg.filterChain) {
           FilterConfig filterConfig = namedFilter.filterConfig;
-          Filter filter = filterRegistry.get(filterConfig.typeUrl());
-          if (filter instanceof ClientInterceptorBuilder) {
-            ClientInterceptor interceptor = ((ClientInterceptorBuilder) filter)
-                .buildClientInterceptor(
-                    filterConfig, selectedOverrideConfigs.get(namedFilter.name),
-                    args, scheduler);
+          Filter.Provider provider = filterRegistry.getProvider(filterConfig.typeUrl());
+          if (provider != null && provider.isClientFilter()) {
+            Filter filter = provider.newInstance();
+            ClientInterceptor interceptor = filter.buildClientInterceptor(
+                filterConfig, selectedOverrideConfigs.get(namedFilter.name),
+                args, scheduler);
             if (interceptor != null) {
               filterInterceptors.add(interceptor);
             }

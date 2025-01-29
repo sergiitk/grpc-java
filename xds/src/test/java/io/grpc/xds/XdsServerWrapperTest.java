@@ -31,7 +31,6 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.withSettings;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -53,7 +52,6 @@ import io.grpc.testing.TestMethodDescriptors;
 import io.grpc.xds.EnvoyServerProtoData.FilterChain;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.Filter.NamedFilterConfig;
-import io.grpc.xds.Filter.ServerInterceptorBuilder;
 import io.grpc.xds.FilterChainMatchingProtocolNegotiators.FilterChainMatchingHandler.FilterChainSelector;
 import io.grpc.xds.VirtualHost.Route;
 import io.grpc.xds.VirtualHost.Route.RouteMatch;
@@ -1117,9 +1115,7 @@ public class XdsServerWrapperTest {
             PathMatcher.fromPath("/FooService/barMethod", true),
             Collections.<HeaderMatcher>emptyList(), null);
 
-    Filter filter = mock(Filter.class, withSettings()
-        .extraInterfaces(ServerInterceptorBuilder.class));
-
+    Filter filter = mock(Filter.class);
     Filter.Provider filterProvider = mock(Filter.Provider.class);
     when(filterProvider.typeUrls()).thenReturn(new String[]{"filter-type-url"});
     when(filterProvider.isServerFilter()).thenReturn(true);
@@ -1146,10 +1142,8 @@ public class XdsServerWrapperTest {
         return next.startCall(call, headers);
       }
     };
-    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, null))
-        .thenReturn(interceptor0);
-    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, f0Override))
-        .thenReturn(interceptor1);
+    when(filter.buildServerInterceptor(f0, null)).thenReturn(interceptor0);
+    when(filter.buildServerInterceptor(f0, f0Override)).thenReturn(interceptor1);
     Route route = Route.forAction(routeMatch, null,
         ImmutableMap.<String, FilterConfig>of());
     VirtualHost virtualHost  = VirtualHost.create(
@@ -1194,9 +1188,7 @@ public class XdsServerWrapperTest {
     });
     xdsClient.ldsResource.get(5, TimeUnit.SECONDS);
 
-    Filter filter = mock(Filter.class, withSettings()
-        .extraInterfaces(ServerInterceptorBuilder.class));
-
+    Filter filter = mock(Filter.class);
     Filter.Provider filterProvider = mock(Filter.Provider.class);
     when(filterProvider.typeUrls()).thenReturn(new String[]{"filter-type-url"});
     when(filterProvider.isServerFilter()).thenReturn(true);
@@ -1223,10 +1215,8 @@ public class XdsServerWrapperTest {
         return next.startCall(call, headers);
       }
     };
-    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, null))
-        .thenReturn(interceptor0);
-    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, f0Override))
-        .thenReturn(interceptor1);
+    when(filter.buildServerInterceptor(f0, null)).thenReturn(interceptor0);
+    when(filter.buildServerInterceptor(f0, f0Override)).thenReturn(interceptor1);
     RouteMatch routeMatch =
         RouteMatch.create(
             PathMatcher.fromPath("/FooService/barMethod", true),
