@@ -33,18 +33,6 @@ import javax.annotation.Nullable;
  */
 interface Filter extends Closeable {
 
-  /**
-   * Parses the top-level filter config from raw proto message. The message may be either a {@link
-   * com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
-   */
-  ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage);
-
-  /**
-   * Parses the per-filter override filter config from raw proto message. The message may be either
-   * a {@link com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
-   */
-  ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage);
-
   @Override
   default void close() {
     // Optional cleanup on filter shutdown.
@@ -76,6 +64,18 @@ interface Filter extends Closeable {
 
 
     Filter newInstance();
+
+    /**
+     * Parses the top-level filter config from raw proto message. The message may be either a {@link
+     * com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
+     */
+    ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage);
+
+    /**
+     * Parses the per-filter override filter config from raw proto message. The message may be either
+     * a {@link com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
+     */
+    ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage);
   }
 
 

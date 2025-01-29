@@ -46,12 +46,11 @@ public class FaultFilterTest {
   public void parseFaultAbort_convertHttpStatus() {
     Any rawConfig = Any.pack(
         HTTPFault.newBuilder().setAbort(FaultAbort.newBuilder().setHttpStatus(404)).build());
-    FaultConfig faultConfig = FILTER_PROVIDER.newInstance().parseFilterConfig(rawConfig).config;
+    FaultConfig faultConfig = FILTER_PROVIDER.parseFilterConfig(rawConfig).config;
     assertThat(faultConfig.faultAbort().status().getCode())
         .isEqualTo(GrpcUtil.httpStatusToGrpcStatus(404).getCode());
 
-    FaultConfig faultConfigOverride =
-        FILTER_PROVIDER.newInstance().parseFilterConfigOverride(rawConfig).config;
+    FaultConfig faultConfigOverride = FILTER_PROVIDER.parseFilterConfigOverride(rawConfig).config;
     assertThat(faultConfigOverride.faultAbort().status().getCode())
         .isEqualTo(GrpcUtil.httpStatusToGrpcStatus(404).getCode());
   }
@@ -63,7 +62,7 @@ public class FaultFilterTest {
             .setPercentage(FractionalPercent.newBuilder()
                 .setNumerator(20).setDenominator(DenominatorType.HUNDRED))
             .setHeaderAbort(HeaderAbort.getDefaultInstance()).build();
-    FaultConfig.FaultAbort faultAbort = FaultFilter.parseFaultAbort(proto).config;
+    FaultConfig.FaultAbort faultAbort = FaultFilter.Provider.parseFaultAbort(proto).config;
     assertThat(faultAbort.headerAbort()).isTrue();
     assertThat(faultAbort.percent().numerator()).isEqualTo(20);
     assertThat(faultAbort.percent().denominatorType())
@@ -77,7 +76,7 @@ public class FaultFilterTest {
             .setPercentage(FractionalPercent.newBuilder()
                 .setNumerator(100).setDenominator(DenominatorType.TEN_THOUSAND))
             .setHttpStatus(400).build();
-    FaultConfig.FaultAbort res = FaultFilter.parseFaultAbort(proto).config;
+    FaultConfig.FaultAbort res = FaultFilter.Provider.parseFaultAbort(proto).config;
     assertThat(res.percent().numerator()).isEqualTo(100);
     assertThat(res.percent().denominatorType())
         .isEqualTo(FaultConfig.FractionalPercent.DenominatorType.TEN_THOUSAND);
@@ -91,7 +90,7 @@ public class FaultFilterTest {
             .setPercentage(FractionalPercent.newBuilder()
                 .setNumerator(600).setDenominator(DenominatorType.MILLION))
             .setGrpcStatus(Code.DEADLINE_EXCEEDED.value()).build();
-    FaultConfig.FaultAbort faultAbort = FaultFilter.parseFaultAbort(proto).config;
+    FaultConfig.FaultAbort faultAbort = FaultFilter.Provider.parseFaultAbort(proto).config;
     assertThat(faultAbort.percent().numerator()).isEqualTo(600);
     assertThat(faultAbort.percent().denominatorType())
         .isEqualTo(FaultConfig.FractionalPercent.DenominatorType.MILLION);
