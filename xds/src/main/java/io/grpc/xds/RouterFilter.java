@@ -53,7 +53,8 @@ final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInte
     }
 
     @Override
-    public ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage) {
+    public ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(
+        Message rawProtoMessage) {
       return ConfigOrError.fromError("Router Filter should not have override config");
     }
   }

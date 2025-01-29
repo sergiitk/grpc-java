@@ -39,6 +39,7 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
+import com.google.protobuf.Message;
 import com.google.protobuf.util.Durations;
 import com.google.re2j.Pattern;
 import io.grpc.CallOptions;
@@ -201,6 +202,17 @@ public class XdsNameResolverTest {
           @Override
           public FaultFilter newInstance() {
             return faultFilterInjected;
+          }
+
+          @Override
+          public io.grpc.xds.ConfigOrError<FaultConfig> parseFilterConfig(Message rawProtoMessage) {
+            return FAULT_FILTER_PROVIDER.parseFilterConfig(rawProtoMessage);
+          }
+
+          @Override
+          public io.grpc.xds.ConfigOrError<FaultConfig> parseFilterConfigOverride(
+              Message rawProtoMessage) {
+            return FAULT_FILTER_PROVIDER.parseFilterConfigOverride(rawProtoMessage);
           }
         }
     );

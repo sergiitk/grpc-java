@@ -58,8 +58,8 @@ interface Filter extends Closeable {
     ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage);
 
     /**
-     * Parses the per-filter override filter config from raw proto message. The message may be either
-     * a {@link com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
+     * Parses the per-filter override filter config from raw proto message. The message may be
+     * either a {@link com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
      */
     ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage);
 

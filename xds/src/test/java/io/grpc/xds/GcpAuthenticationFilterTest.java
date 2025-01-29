@@ -84,7 +84,8 @@ public class GcpAuthenticationFilterTest {
   @Test
   public void testParseFilterConfig_withInvalidMessageType() {
     Message invalidMessage = Empty.getDefaultInstance();
-    ConfigOrError<GcpAuthenticationConfig> result = FILTER_PROVIDER.parseFilterConfig(invalidMessage);
+    ConfigOrError<GcpAuthenticationConfig> result =
+        FILTER_PROVIDER.parseFilterConfig(invalidMessage);
 
     assertNull(result.config);
     assertThat(result.errorDetail).contains("Invalid config type");

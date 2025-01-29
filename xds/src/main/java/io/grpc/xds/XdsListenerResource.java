@@ -573,8 +573,8 @@ class XdsListenerResource extends XdsResourceType<LdsUpdate> {
 
     Filter.Provider provider = filterRegistry.getProvider(typeUrl);
     if (provider == null
-        || isForClient && !provider.isClientFilter()
-        || !isForClient && !provider.isServerFilter()) {
+        || (isForClient && !provider.isClientFilter())
+        || (!isForClient && !provider.isServerFilter())) {
       // Filter type not supported.
       return isOptional ? null : StructOrError.fromError(
           "HttpFilter [" + filterName + "](" + typeUrl + ") is required but unsupported for " + (

@@ -138,7 +138,8 @@ final class RbacFilter implements Filter, ServerInterceptorBuilder {
           return ConfigOrError.fromConfig(RbacConfig.create(null));
         case UNRECOGNIZED:
         default:
-          return ConfigOrError.fromError("Unknown rbacConfig action type: " + rbacConfig.getAction());
+          return ConfigOrError.fromError(
+              "Unknown rbacConfig action type: " + rbacConfig.getAction());
       }
       List<GrpcAuthorizationEngine.PolicyMatcher> policyMatchers = new ArrayList<>();
       List<Entry<String, Policy>> sortedPolicyEntries = rbacConfig.getPoliciesMap().entrySet()
