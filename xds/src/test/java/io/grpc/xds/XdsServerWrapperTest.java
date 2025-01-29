@@ -88,7 +88,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
@@ -1117,12 +1116,13 @@ public class XdsServerWrapperTest {
         RouteMatch.create(
             PathMatcher.fromPath("/FooService/barMethod", true),
             Collections.<HeaderMatcher>emptyList(), null);
+
     Filter filter = mock(Filter.class, withSettings()
-        .defaultAnswer(Answers.CALLS_REAL_METHODS)
         .extraInterfaces(ServerInterceptorBuilder.class));
 
     Filter.Provider filterProvider = mock(Filter.Provider.class);
     when(filterProvider.typeUrls()).thenReturn(new String[]{"filter-type-url"});
+    when(filterProvider.isServerFilter()).thenReturn(true);
     when(filterProvider.newInstance()).thenReturn(filter);
     filterRegistry.register(filterProvider);
 
@@ -1195,10 +1195,11 @@ public class XdsServerWrapperTest {
     xdsClient.ldsResource.get(5, TimeUnit.SECONDS);
 
     Filter filter = mock(Filter.class, withSettings()
-        .defaultAnswer(Answers.CALLS_REAL_METHODS)
         .extraInterfaces(ServerInterceptorBuilder.class));
+
     Filter.Provider filterProvider = mock(Filter.Provider.class);
     when(filterProvider.typeUrls()).thenReturn(new String[]{"filter-type-url"});
+    when(filterProvider.isServerFilter()).thenReturn(true);
     when(filterProvider.newInstance()).thenReturn(filter);
     filterRegistry.register(filterProvider);
 

@@ -60,6 +60,11 @@ final class GcpAuthenticationFilter implements Filter, ClientInterceptorBuilder 
     }
 
     @Override
+    public boolean isClientFilter() {
+      return true;
+    }
+
+    @Override
     public GcpAuthenticationFilter newInstance() {
       return new GcpAuthenticationFilter();
     }

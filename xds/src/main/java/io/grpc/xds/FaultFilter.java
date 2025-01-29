@@ -90,6 +90,11 @@ final class FaultFilter implements Filter, ClientInterceptorBuilder {
     }
 
     @Override
+    public boolean isClientFilter() {
+      return true;
+    }
+
+    @Override
     public FaultFilter newInstance() {
       return INSTANCE;
     }

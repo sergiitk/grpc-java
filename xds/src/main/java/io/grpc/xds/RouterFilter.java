@@ -43,6 +43,16 @@ final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInte
     }
 
     @Override
+    public boolean isClientFilter() {
+      return true;
+    }
+
+    @Override
+    public boolean isServerFilter() {
+      return true;
+    }
+
+    @Override
     public RouterFilter newInstance() {
       return INSTANCE;
     }

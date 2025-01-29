@@ -1258,6 +1258,11 @@ public class GrpcXdsClientImplDataTest {
       }
 
       @Override
+      public boolean isClientFilter() {
+        return true;
+      }
+
+      @Override
       public TestFilter newInstance() {
         return new TestFilter();
       }

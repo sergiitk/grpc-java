@@ -22,10 +22,12 @@ import static io.grpc.xds.FaultFilter.HEADER_ABORT_HTTP_STATUS_KEY;
 import static io.grpc.xds.FaultFilter.HEADER_ABORT_PERCENTAGE_KEY;
 import static io.grpc.xds.FaultFilter.HEADER_DELAY_KEY;
 import static io.grpc.xds.FaultFilter.HEADER_DELAY_PERCENTAGE_KEY;
+import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -39,7 +41,6 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import com.google.protobuf.Message;
 import com.google.protobuf.util.Durations;
 import com.google.re2j.Pattern;
 import io.grpc.CallOptions;
@@ -189,33 +190,14 @@ public class XdsNameResolverTest {
     originalEnableTimeout = XdsNameResolver.enableTimeout;
     XdsNameResolver.enableTimeout = true;
 
-    final FaultFilter faultFilterInjected = new FaultFilter(mockRandom, new AtomicLong());
+    // Replace FaultFilter.Provider with the one returning FaultFilter injected with mockRandom.
+    Filter.Provider faultFilterProvider =
+        mock(Filter.Provider.class, delegatesTo(FAULT_FILTER_PROVIDER));
+    doReturn(new FaultFilter(mockRandom, new AtomicLong())).when(faultFilterProvider).newInstance();
+
     FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
         ROUTER_FILTER_PROVIDER,
-        // Replace FaultFilter.Provider with the one returning FaultFilter injected with mockRandom.
-        new Filter.Provider() {
-          @Override
-          public String[] typeUrls() {
-            return FAULT_FILTER_PROVIDER.typeUrls();
-          }
-
-          @Override
-          public FaultFilter newInstance() {
-            return faultFilterInjected;
-          }
-
-          @Override
-          public io.grpc.xds.ConfigOrError<FaultConfig> parseFilterConfig(Message rawProtoMessage) {
-            return FAULT_FILTER_PROVIDER.parseFilterConfig(rawProtoMessage);
-          }
-
-          @Override
-          public io.grpc.xds.ConfigOrError<FaultConfig> parseFilterConfigOverride(
-              Message rawProtoMessage) {
-            return FAULT_FILTER_PROVIDER.parseFilterConfigOverride(rawProtoMessage);
-          }
-        }
-    );
+        faultFilterProvider);
 
     resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null,
         serviceConfigParser, syncContext, scheduler,

@@ -83,6 +83,11 @@ final class RbacFilter implements Filter, ServerInterceptorBuilder {
     }
 
     @Override
+    public boolean isServerFilter() {
+      return true;
+    }
+
+    @Override
     public RbacFilter newInstance() {
       return INSTANCE;
     }
