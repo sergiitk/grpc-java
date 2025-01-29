@@ -245,7 +245,7 @@ class XdsRouteConfigureResource extends XdsResourceType<RdsUpdate> {
         return StructOrError.fromError(
             "FilterConfig [" + name + "] contains invalid proto: " + e);
       }
-      Filter.Provider provider = filterRegistry.getProvider(typeUrl);
+      Filter.Provider provider = filterRegistry.get(typeUrl);
       if (provider == null) {
         if (isOptional) {
           continue;

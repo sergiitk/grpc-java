@@ -459,7 +459,7 @@ final class XdsNameResolver extends NameResolver {
       if (routingCfg.filterChain != null) {
         for (NamedFilterConfig namedFilter : routingCfg.filterChain) {
           FilterConfig filterConfig = namedFilter.filterConfig;
-          Filter.Provider provider = filterRegistry.getProvider(filterConfig.typeUrl());
+          Filter.Provider provider = filterRegistry.get(filterConfig.typeUrl());
           if (provider != null && provider.isClientFilter()) {
             Filter filter = provider.newInstance();
             ClientInterceptor interceptor = filter.buildClientInterceptor(

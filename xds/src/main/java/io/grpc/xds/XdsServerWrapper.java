@@ -536,7 +536,7 @@ final class XdsServerWrapper extends Server {
             String name = namedFilter.name;
             String typeUrl = config.typeUrl();
 
-            Filter.Provider provider = filterRegistry.getProvider(typeUrl);
+            Filter.Provider provider = filterRegistry.get(typeUrl);
             if (provider == null || !provider.isServerFilter()) {
               logger.warning("HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
               continue;
