@@ -46,6 +46,16 @@ final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInte
     public RouterFilter newInstance() {
       return INSTANCE;
     }
+
+    @Override
+    public ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage) {
+      return ConfigOrError.fromConfig(ROUTER_CONFIG);
+    }
+
+    @Override
+    public ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage) {
+      return ConfigOrError.fromError("Router Filter should not have override config");
+    }
   }
 
   static final FilterConfig ROUTER_CONFIG = new FilterConfig() {
@@ -59,16 +69,6 @@ final class RouterFilter implements Filter, ClientInterceptorBuilder, ServerInte
       return "ROUTER_CONFIG";
     }
   };
-
-  @Override
-  public ConfigOrError<? extends FilterConfig> parseFilterConfig(Message rawProtoMessage) {
-    return ConfigOrError.fromConfig(ROUTER_CONFIG);
-  }
-
-  @Override
-  public ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage) {
-    return ConfigOrError.fromError("Router Filter should not have override config");
-  }
 
   @Nullable
   @Override
