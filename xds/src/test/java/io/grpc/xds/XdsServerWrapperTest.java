@@ -957,6 +957,7 @@ public class XdsServerWrapperTest {
 
     Filter.Provider filterProvider = mock(Filter.Provider.class);
     when(filterProvider.typeUrls()).thenReturn(new String[]{"filter-type-url"});
+    when(filterProvider.isServerFilter()).thenReturn(true);
     filterRegistry.register(filterProvider);
 
     ServerCallHandler<Void, Void> next = mock(ServerCallHandler.class);
@@ -999,6 +1000,7 @@ public class XdsServerWrapperTest {
 
     Filter.Provider filterProvider = mock(Filter.Provider.class);
     when(filterProvider.typeUrls()).thenReturn(new String[]{"filter-type-url"});
+    when(filterProvider.isServerFilter()).thenReturn(true);
     filterRegistry.register(filterProvider);
 
     ServerCallHandler<Void, Void> next = mock(ServerCallHandler.class);
@@ -1046,6 +1048,7 @@ public class XdsServerWrapperTest {
 
     Filter.Provider filterProvider = mock(Filter.Provider.class);
     when(filterProvider.typeUrls()).thenReturn(new String[]{"filter-type-url"});
+    when(filterProvider.isServerFilter()).thenReturn(true);
     filterRegistry.register(filterProvider);
 
     ServerCallHandler<Void, Void> next = mock(ServerCallHandler.class);
