@@ -47,7 +47,6 @@ import io.grpc.internal.SharedResourceHolder;
 import io.grpc.xds.EnvoyServerProtoData.FilterChain;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.Filter.NamedFilterConfig;
-import io.grpc.xds.Filter.ServerInterceptorBuilder;
 import io.grpc.xds.FilterChainMatchingProtocolNegotiators.FilterChainMatchingHandler.FilterChainSelector;
 import io.grpc.xds.ThreadSafeRandom.ThreadSafeRandomImpl;
 import io.grpc.xds.VirtualHost.Route;
@@ -61,6 +60,7 @@ import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -114,6 +114,9 @@ final class XdsServerWrapper extends Server {
   private XdsClient xdsClient;
   private DiscoveryState discoveryState;
   private volatile Server delegate;
+
+  // Must be updated in the sync context.
+  private final HashMap<String, Filter> activeFilters = new HashMap<>();
 
   XdsServerWrapper(
       String listenerAddress,
@@ -503,37 +506,71 @@ final class XdsServerWrapper extends Server {
     }
 
     private ImmutableMap<Route, ServerInterceptor> generatePerRouteInterceptors(
-        List<NamedFilterConfig> namedFilterConfigs, List<VirtualHost> virtualHosts) {
+        @Nullable List<NamedFilterConfig> namedFilterConfigs, List<VirtualHost> virtualHosts) {
+      // This should always be called from the sync context.
+      // syncContext.throwIfNotInThisSynchronizationContext();
+
       ImmutableMap.Builder<Route, ServerInterceptor> perRouteInterceptors =
           new ImmutableMap.Builder<>();
+      Set<String> filtersToShutdown = new HashSet<>(activeFilters.keySet());
+
       for (VirtualHost virtualHost : virtualHosts) {
         for (Route route : virtualHost.routes()) {
-          List<ServerInterceptor> filterInterceptors = new ArrayList<>();
-          Map<String, FilterConfig> selectedOverrideConfigs =
-              new HashMap<>(virtualHost.filterConfigOverrides());
-          selectedOverrideConfigs.putAll(route.filterConfigOverrides());
-          if (namedFilterConfigs != null) {
-            for (NamedFilterConfig namedFilterConfig : namedFilterConfigs) {
-              FilterConfig filterConfig = namedFilterConfig.filterConfig;
-              Filter filter = filterRegistry.get(filterConfig.typeUrl());
-              if (filter instanceof ServerInterceptorBuilder) {
-                ServerInterceptor interceptor =
-                    ((ServerInterceptorBuilder) filter).buildServerInterceptor(
-                        filterConfig, selectedOverrideConfigs.get(namedFilterConfig.name));
-                if (interceptor != null) {
-                  filterInterceptors.add(interceptor);
-                }
-              } else {
-                logger.log(Level.WARNING, "HttpFilterConfig(type URL: "
-                    + filterConfig.typeUrl() + ") is not supported on server-side. "
-                    + "Probably a bug at ClientXdsClient verification.");
-              }
+          // Short circuit.
+          if (namedFilterConfigs == null) {
+            perRouteInterceptors.put(route, noopInterceptor);
+            continue;
+          }
+
+          // Override vhost filter configs with more specific per-route configs.
+          Map<String, FilterConfig> perRouteOverrides = ImmutableMap.<String, FilterConfig>builder()
+              .putAll(virtualHost.filterConfigOverrides())
+              .putAll(route.filterConfigOverrides())
+              .buildKeepingLast();
+
+          // Interceptors for this vhost/route combo.
+          List<ServerInterceptor> interceptors = new ArrayList<>(namedFilterConfigs.size());
+
+          for (NamedFilterConfig namedFilter : namedFilterConfigs) {
+            FilterConfig config = namedFilter.filterConfig;
+            String name = namedFilter.name;
+            String typeUrl = config.typeUrl();
+
+            Filter.Provider provider = filterRegistry.get(typeUrl);
+            if (provider == null || !provider.isServerFilter()) {
+              logger.warning("HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
+              continue;
+            }
+            // Valid server filter for given type found; remove name from the chopping block.
+            filtersToShutdown.remove(name);
+
+            // Upsert filter to the active filters map.
+            Filter filter = activeFilters.computeIfAbsent(name, k -> provider.newInstance());
+
+            ServerInterceptor interceptor =
+                filter.buildServerInterceptor(config, perRouteOverrides.get(name));
+            if (interceptor != null) {
+              interceptors.add(interceptor);
             }
           }
-          ServerInterceptor interceptor = combineInterceptors(filterInterceptors);
-          perRouteInterceptors.put(route, interceptor);
+
+          // Combine interceptors produced by different filters into a single one that executes
+          // them sequentially. The order is preserved.
+          perRouteInterceptors.put(route, combineInterceptors(interceptors));
         }
       }
+
+      // Shutdown filters not present in the current chain.
+      for (String name : filtersToShutdown) {
+        Filter filterToShutdown = activeFilters.remove(name);
+        if (filterToShutdown == null) {
+          // Shouldn't happen.
+          throw new ConcurrentModificationException("Filter to shutdown '" + name
+              + "' was removed from the active filters outside of the syncContext");
+        }
+        filterToShutdown.close();
+      }
+
       return perRouteInterceptors.buildOrThrow();
     }
 
