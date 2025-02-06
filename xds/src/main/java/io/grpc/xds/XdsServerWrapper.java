@@ -116,6 +116,7 @@ final class XdsServerWrapper extends Server {
   private volatile Server delegate;
 
   // Must be updated in the sync context.
+  // TODO(sergiitk): [QUESTION] should this be per filter chain too?
   private final HashMap<String, Filter> activeFilters = new HashMap<>();
 
   XdsServerWrapper(
@@ -464,6 +465,7 @@ final class XdsServerWrapper extends Server {
     private void updateSelector() {
       Map<FilterChain, AtomicReference<ServerRoutingConfig>> filterChainRouting = new HashMap<>();
       savedRdsRoutingConfigRef.clear();
+      // TODO(sergiitk): [QUESTION] is filter names unique across all chains?
       for (FilterChain filterChain: filterChains) {
         filterChainRouting.put(filterChain, generateRoutingConfig(filterChain));
       }
@@ -499,6 +501,7 @@ final class XdsServerWrapper extends Server {
           serverRoutingConfigRef.set(serverRoutingConfig);
         } else {
           serverRoutingConfigRef.set(ServerRoutingConfig.FAILING_ROUTING_CONFIG);
+          // TODO(sergiitk): [QUESTION] do we need to shutdown all filters here?
         }
         savedRdsRoutingConfigRef.put(filterChain, serverRoutingConfigRef);
         return serverRoutingConfigRef;
@@ -725,6 +728,7 @@ final class XdsServerWrapper extends Server {
             if (savedVirtualHosts == null) {
               updatedRoutingConfig = ServerRoutingConfig.FAILING_ROUTING_CONFIG;
             } else {
+              // TODO(sergiitk): [QUESTION] same applies here: should filters be per chain?
               ImmutableMap<Route, ServerInterceptor> updatedInterceptors =
                   generatePerRouteInterceptors(
                       filterChain.httpConnectionManager().httpFilterConfigs(),
