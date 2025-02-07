@@ -116,8 +116,12 @@ final class XdsServerWrapper extends Server {
   private volatile Server delegate;
 
   // Must be updated in the sync context.
-  // TODO(sergiitk): [QUESTION] should this be per filter chain too?
+  // TODO(sergiitk): [QUESTION] consider the implication of filterchain equality, during updates.
+  // how to identify this is the same filter chain
+  // - based on index?
+  // - based on FilterChainMatch?
   private final HashMap<String, Filter> activeFilters = new HashMap<>();
+  // private final HashMap<FilterChain, HashMap<String, Filter>> activeFilters = new HashMap<>();
 
   XdsServerWrapper(
       String listenerAddress,
