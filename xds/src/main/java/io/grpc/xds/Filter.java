@@ -20,7 +20,6 @@ import com.google.common.base.MoreObjects;
 import com.google.protobuf.Message;
 import io.grpc.ClientInterceptor;
 import io.grpc.ServerInterceptor;
-import java.io.Closeable;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.annotation.Nullable;
@@ -33,7 +32,7 @@ import javax.annotation.Nullable;
  * {@link Provider#isClientFilter()}, {@link Provider#isServerFilter()} to indicate that the filter
  * is capable of working on the client side or server side or both, respectively.
  */
-interface Filter extends Closeable {
+interface Filter {
 
   /** Represents an opaque data structure holding configuration for a filter. */
   interface FilterConfig {
@@ -53,7 +52,7 @@ interface Filter extends Closeable {
     /**
      * Whether the filter can be installed on the client side.
      *
-     * <p>Return true if the filter implements {@link Filter#buildClientInterceptor}.
+     * <p>Returns true if the filter implements {@link Filter#buildClientInterceptor}.
      */
     default boolean isClientFilter() {
       return false;
@@ -62,7 +61,7 @@ interface Filter extends Closeable {
     /**
      * Whether the filter can be installed into xDS-enabled servers.
      *
-     * <p>Return true if the filter implements {@link Filter#buildServerInterceptor}.
+     * <p>Returns true if the filter implements {@link Filter#buildServerInterceptor}.
      */
     default boolean isServerFilter() {
       return false;
@@ -71,7 +70,8 @@ interface Filter extends Closeable {
     /**
      * Creates a new instance of the filter.
      *
-     * <p>TODO(sergiitk): [IMPL] better doc.
+     * <p>Returns a filter instance registered with the same typeUrls as the provider,
+     * capable of working with the same FilterConfig type returned by provider's parse functions.
      */
     Filter newInstance();
 
@@ -101,11 +101,6 @@ interface Filter extends Closeable {
   default ServerInterceptor buildServerInterceptor(
       FilterConfig config, @Nullable FilterConfig overrideConfig) {
     return null;
-  }
-
-  @Override
-  default void close() {
-    // Optional cleanup on filter shutdown.
   }
 
   /** Filter config with instance name. */

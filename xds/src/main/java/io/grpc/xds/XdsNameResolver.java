@@ -827,7 +827,6 @@ final class XdsNameResolver extends NameResolver {
         return new PassthroughClientInterceptor();
       }
 
-      // TODO(sergiitk): immutable map?
       Map<String, FilterConfig> selectedOverrideConfigs =
           new HashMap<>(virtualHost.filterConfigOverrides());
       selectedOverrideConfigs.putAll(route.filterConfigOverrides());
@@ -845,11 +844,7 @@ final class XdsNameResolver extends NameResolver {
         if (provider == null || !provider.isClientFilter()) {
           continue;
         }
-        // TODO(sergiitk): [IMPL] track shutdown
-        // filtersToShutdown.remove(name);
 
-        // TODO(sergiitk): [IMPL]  Upsert filter to the active filters map.
-        // Filter filter = activeFilters.computeIfAbsent(name, k -> provider.newInstance());
         Filter filter = provider.newInstance();
 
         ClientInterceptor interceptor =
@@ -858,8 +853,6 @@ final class XdsNameResolver extends NameResolver {
           filterInterceptors.add(interceptor);
         }
       }
-
-      // TODO(sergiitk): [IMPL]  Shutdown filters not present in the current chain.
 
       // Combine interceptors produced by different filters into a single one that executes
       // them sequentially. The order is preserved.

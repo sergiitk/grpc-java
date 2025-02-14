@@ -59,7 +59,6 @@ import io.grpc.xds.internal.security.SslContextProviderSupplier;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.ArrayList;
-import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -113,14 +112,6 @@ final class XdsServerWrapper extends Server {
   private XdsClient xdsClient;
   private DiscoveryState discoveryState;
   private volatile Server delegate;
-
-  // Must be updated in the sync context.
-  // TODO(sergiitk): [QUESTION] consider the implication of filterchain equality, during updates.
-  // how to identify this is the same filter chain
-  // - based on index?
-  // - based on FilterChainMatch?
-  private final HashMap<String, Filter> activeFilters = new HashMap<>();
-  // private final HashMap<FilterChain, HashMap<String, Filter>> activeFilters = new HashMap<>();
 
   XdsServerWrapper(
       String listenerAddress,
@@ -498,7 +489,6 @@ final class XdsServerWrapper extends Server {
       for (SslContextProviderSupplier supplier: oldSslSuppliers) {
         supplier.close();
       }
-      // TODO(sergiitk): [IMPL] consider filter shutdown here.
 
       // Now that we have valid Transport Socket config, we can start/restart listening on a port.
       startDelegateServer();
@@ -525,7 +515,6 @@ final class XdsServerWrapper extends Server {
         routingConfig = ServerRoutingConfig.create(savedVhosts, interceptors);
       } else {
         routingConfig = ServerRoutingConfig.FAILING_ROUTING_CONFIG;
-        // TODO(sergiitk): [QUESTION] do we need to shutdown all filters here?
       }
 
       AtomicReference<ServerRoutingConfig> routingConfigRef = new AtomicReference<>(routingConfig);
@@ -536,16 +525,14 @@ final class XdsServerWrapper extends Server {
     private ImmutableMap<Route, ServerInterceptor> generatePerRouteInterceptors(
         @Nullable List<NamedFilterConfig> filterConfigs, List<VirtualHost> virtualHosts) {
       // This should always be called from the sync context.
-      // TODO(sergiitk): [QUESTION] add a note about throw failing tests
+      // Ideally we'd want to throw otherwise, but this breaks the tests now.
       // syncContext.throwIfNotInThisSynchronizationContext();
 
       ImmutableMap.Builder<Route, ServerInterceptor> perRouteInterceptors =
           new ImmutableMap.Builder<>();
-      Set<String> filtersToShutdown = new HashSet<>(activeFilters.keySet());
 
       for (VirtualHost virtualHost : virtualHosts) {
         for (Route route : virtualHost.routes()) {
-          // TODO(sergiitk): [IMPL] filterConfigs is null per method. pull up.
           // Short circuit.
           if (filterConfigs == null) {
             perRouteInterceptors.put(route, noopInterceptor);
@@ -571,12 +558,8 @@ final class XdsServerWrapper extends Server {
               logger.warning("HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
               continue;
             }
-            // Valid server filter for given type found; remove name from the chopping block.
-            filtersToShutdown.remove(name);
 
-            // Upsert filter to the active filters map.
-            Filter filter = activeFilters.computeIfAbsent(name, k -> provider.newInstance());
-
+            Filter filter = provider.newInstance();
             ServerInterceptor interceptor =
                 filter.buildServerInterceptor(config, perRouteOverrides.get(name));
             if (interceptor != null) {
@@ -588,17 +571,6 @@ final class XdsServerWrapper extends Server {
           // them sequentially. The order is preserved.
           perRouteInterceptors.put(route, combineInterceptors(interceptors));
         }
-      }
-
-      // Shutdown filters not present in the current chain.
-      for (String name : filtersToShutdown) {
-        Filter filterToShutdown = activeFilters.remove(name);
-        if (filterToShutdown == null) {
-          // Shouldn't happen.
-          throw new ConcurrentModificationException("Filter to shutdown '" + name
-              + "' was removed from the active filters outside of the syncContext");
-        }
-        filterToShutdown.close();
       }
 
       return perRouteInterceptors.buildOrThrow();
@@ -752,9 +724,7 @@ final class XdsServerWrapper extends Server {
             ServerRoutingConfig updatedRoutingConfig;
             if (savedVirtualHosts == null) {
               updatedRoutingConfig = ServerRoutingConfig.FAILING_ROUTING_CONFIG;
-              // TODO(sergiitk): [QUESTION] do we need to shutdown all filters here?
             } else {
-              // TODO(sergiitk): [QUESTION] where do we update the active filters?
               ImmutableMap<Route, ServerInterceptor> updatedInterceptors =
                   generatePerRouteInterceptors(
                       filterChain.httpConnectionManager().httpFilterConfigs(),
