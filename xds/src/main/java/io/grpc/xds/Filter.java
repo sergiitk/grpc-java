@@ -20,6 +20,7 @@ import com.google.common.base.MoreObjects;
 import com.google.protobuf.Message;
 import io.grpc.ClientInterceptor;
 import io.grpc.ServerInterceptor;
+import java.io.Closeable;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.annotation.Nullable;
@@ -32,7 +33,7 @@ import javax.annotation.Nullable;
  * {@link Provider#isClientFilter()}, {@link Provider#isServerFilter()} to indicate that the filter
  * is capable of working on the client side or server side or both, respectively.
  */
-interface Filter {
+interface Filter extends Closeable {
 
   /** Represents an opaque data structure holding configuration for a filter. */
   interface FilterConfig {
@@ -101,6 +102,11 @@ interface Filter {
   default ServerInterceptor buildServerInterceptor(
       FilterConfig config, @Nullable FilterConfig overrideConfig) {
     return null;
+  }
+
+  @Override
+  default void close() {
+    // Optional cleanup on filter shutdown.
   }
 
   /** Filter config with instance name. */
