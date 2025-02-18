@@ -17,6 +17,7 @@
 package io.grpc.xds;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static io.grpc.xds.FaultFilter.HEADER_ABORT_GRPC_STATUS_KEY;
 import static io.grpc.xds.FaultFilter.HEADER_ABORT_HTTP_STATUS_KEY;
 import static io.grpc.xds.FaultFilter.HEADER_ABORT_PERCENTAGE_KEY;
@@ -114,6 +115,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import org.junit.After;
 import org.junit.Before;
@@ -1290,6 +1292,7 @@ public class XdsNameResolverTest {
         syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
         metricRecorder);
     resolver.start(mockListener);
+    FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
     // Single basic route.
     Route route = Route.forAction(
@@ -1298,33 +1301,30 @@ public class XdsNameResolverTest {
         ImmutableMap.of());
     ImmutableList<Route> routes = ImmutableList.of(route);
 
-    // Filters for LDS 0.
-    ImmutableList<NamedFilterConfig> filters0 = ImmutableList.of(
+    // LDS 0.
+    ImmutableList<NamedFilterConfig> filterConfigs0 = ImmutableList.of(
         new NamedFilterConfig("stateful-filter-00", new StatefulFilter.Config()),
         new NamedFilterConfig("stateful-filter-01", new StatefulFilter.Config()),
         new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
 
-    FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    xdsClient.deliverLdsUpdateWithFilters(routes, filters0);
-
-    // Smoke check: ensure we configured routing correctly.
-    verify(mockListener).onResult(resolutionResultCaptor.capture());
-    ResolutionResult result = resolutionResultCaptor.getValue();
-    InternalConfigSelector configSelector = result.getAttributes().get(InternalConfigSelector.KEY);
-    assertCallSelectClusterResult(call1, configSelector, cluster1, null);
-
-    // Filter-specific checks.
+    xdsClient.deliverLdsUpdateWithFilters(routes, filterConfigs0);
+    assertClusterResolutionResult(call1, cluster1);
+    // Filter state checks.
     assertThat(statefulFilterProvider.getCount()).isEqualTo(2);
-    StatefulFilter filter0 = statefulFilterProvider.getInstance(0);
-    StatefulFilter filter1 = statefulFilterProvider.getInstance(1);
-    assertThat(filter0.iteration).isEqualTo(0);
-    assertThat(filter1.iteration).isEqualTo(1);
-    assertThat(filter0).isNotSameInstanceAs(filter1);
+    ImmutableList<StatefulFilter> filters0 = statefulFilterProvider.getInstances();
+    assertThat(filters0.get(0)).isNotSameInstanceAs(filters0.get(1));
+    // Redundant check just in case StatefulFilter synchronization is broken.
+    assertThat(filters0.get(0).iteration).isEqualTo(0);
+    assertThat(filters0.get(1).iteration).isEqualTo(1);
 
-    //  Filters for LDS 0.
-    // ImmutableList<NamedFilterConfig> filters0 = ImmutableList.of(
-    // new NamedFilterConfig("stateful-filter-0", new StatefulFilter.Config()),
-    // new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
+    // LDS 1: same filter configs.
+    xdsClient.deliverLdsUpdateWithFilters(routes, filterConfigs0);
+    assertClusterResolutionResult(call1, cluster1);
+
+    // Filter state checks.
+    ImmutableList<StatefulFilter> filters1 = statefulFilterProvider.getInstances();
+    assertWithMessage("Expected Filter instances with the same filter name to be reused across LDS")
+        .that(filters1).isEqualTo(filters0);
   }
 
   @SuppressWarnings("unchecked")
@@ -1338,6 +1338,13 @@ public class XdsNameResolverTest {
         newPickSubchannelArgs(call1.methodDescriptor, new Metadata(), CallOptions.DEFAULT));
     assertThat(configResult.getStatus().getCode()).isEqualTo(Status.Code.UNAVAILABLE);
     assertThat(configResult.getStatus().getDescription()).contains(resource);
+  }
+
+  private void assertClusterResolutionResult(CallInfo call, String expectedCluster) {
+    verify(mockListener).onResult(resolutionResultCaptor.capture());
+    ResolutionResult result = resolutionResultCaptor.getValue();
+    InternalConfigSelector configSelector = result.getAttributes().get(InternalConfigSelector.KEY);
+    assertCallSelectClusterResult(call, configSelector, expectedCluster, null);
   }
 
   private void assertCallSelectClusterResult(
@@ -2410,6 +2417,12 @@ public class XdsNameResolverTest {
       this.iteration = iteration;
     }
 
+    @Override public String toString() {
+      return "StatefulFilter{" +
+          "iteration=" + iteration +
+          '}';
+    }
+
     static final class Provider implements io.grpc.xds.Filter.Provider {
       volatile int counter;
       private final ConcurrentMap<Integer, StatefulFilter> instances = new ConcurrentHashMap<>();
@@ -2433,6 +2446,16 @@ public class XdsNameResolverTest {
 
       public synchronized StatefulFilter getInstance(int idx) {
         return instances.get(idx);
+      }
+
+      public synchronized ImmutableList<StatefulFilter> getInstances() {
+        return IntStream.range(0, counter).mapToObj(this::getInstance)
+            .collect(ImmutableList.toImmutableList());
+        // ImmutableList.Builder<StatefulFilter> result = ImmutableList.builder();
+        // for (int i = 0; i < counter; i++) {
+        //   result.add(getInstance(i));
+        // }
+        // return result.build();
       }
 
       public synchronized int getCount() {
