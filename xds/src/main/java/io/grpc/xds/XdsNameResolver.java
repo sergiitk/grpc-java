@@ -658,6 +658,7 @@ final class XdsNameResolver extends NameResolver {
       HttpConnectionManager httpConnectionManager = update.httpConnectionManager();
       List<VirtualHost> virtualHosts = httpConnectionManager.virtualHosts();
       String rdsName = httpConnectionManager.rdsName();
+      // TODO(sergiitk): [IMPL] cleanup filters? here
       cleanUpRouteDiscoveryState();
       if (virtualHosts != null) {
         updateRoutes(virtualHosts, httpConnectionManager.httpMaxStreamDurationNano(),
@@ -760,6 +761,7 @@ final class XdsNameResolver extends NameResolver {
           routesData.add(new RouteData(route.routeMatch(), route.routeAction(), filters));
         } else {
           // Discard route
+          // TODO(sergiitk): [NOTE] parallels selectConfig
         }
       }
 
@@ -827,7 +829,7 @@ final class XdsNameResolver extends NameResolver {
         return new PassthroughClientInterceptor();
       }
 
-      // TODO(sergiitk): immutable map?
+      // TODO(sergiitk): [QUESTION] immutable map?
       Map<String, FilterConfig> selectedOverrideConfigs =
           new HashMap<>(virtualHost.filterConfigOverrides());
       selectedOverrideConfigs.putAll(route.filterConfigOverrides());

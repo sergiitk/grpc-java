@@ -41,6 +41,7 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
+import com.google.protobuf.Message;
 import com.google.protobuf.util.Durations;
 import com.google.re2j.Pattern;
 import io.grpc.CallOptions;
@@ -107,6 +108,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -1274,6 +1277,56 @@ public class XdsNameResolverTest {
         call1, configSelector2, "rls-plugin-foo", 30.0);
   }
 
+  @Test
+  public void resolved_filterState_retainedAcrossLds() {
+    // Unlike most filters, StatefulFilter.Provider returns a new filter instance each time.
+    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
+        statefulFilterProvider,
+        ROUTER_FILTER_PROVIDER);
+
+    // Resolver.
+    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
+        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
+        metricRecorder);
+    resolver.start(mockListener);
+
+    // Single basic route.
+    Route route = Route.forAction(
+        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
+        RouteAction.forCluster(cluster1, ImmutableList.of(), null, null, true),
+        ImmutableMap.of());
+    ImmutableList<Route> routes = ImmutableList.of(route);
+
+    // Filters for LDS 0.
+    ImmutableList<NamedFilterConfig> filters0 = ImmutableList.of(
+        new NamedFilterConfig("stateful-filter-00", new StatefulFilter.Config()),
+        new NamedFilterConfig("stateful-filter-01", new StatefulFilter.Config()),
+        new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
+
+    FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
+    xdsClient.deliverLdsUpdateWithFilters(routes, filters0);
+
+    // Smoke check: ensure we configured routing correctly.
+    verify(mockListener).onResult(resolutionResultCaptor.capture());
+    ResolutionResult result = resolutionResultCaptor.getValue();
+    InternalConfigSelector configSelector = result.getAttributes().get(InternalConfigSelector.KEY);
+    assertCallSelectClusterResult(call1, configSelector, cluster1, null);
+
+    // Filter-specific checks.
+    assertThat(statefulFilterProvider.getCount()).isEqualTo(2);
+    StatefulFilter filter0 = statefulFilterProvider.getInstance(0);
+    StatefulFilter filter1 = statefulFilterProvider.getInstance(1);
+    assertThat(filter0.iteration).isEqualTo(0);
+    assertThat(filter1.iteration).isEqualTo(1);
+    assertThat(filter0).isNotSameInstanceAs(filter1);
+
+    //  Filters for LDS 0.
+    // ImmutableList<NamedFilterConfig> filters0 = ImmutableList.of(
+    // new NamedFilterConfig("stateful-filter-0", new StatefulFilter.Config()),
+    // new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
+  }
+
   @SuppressWarnings("unchecked")
   private void assertEmptyResolutionResult(String resource) {
     verify(mockListener).onResult(resolutionResultCaptor.capture());
@@ -2127,6 +2180,16 @@ public class XdsNameResolverTest {
       });
     }
 
+    void deliverLdsUpdateWithFilters(List<Route> routes, List<NamedFilterConfig> filterConfigs) {
+      VirtualHost vhost =
+          VirtualHost.create("virtual-host", Collections.singletonList(expectedLdsResourceName),
+              routes, ImmutableMap.of());
+      syncContext.execute(() -> {
+        ldsWatcher.onChanged(LdsUpdate.forApiListener(HttpConnectionManager.forVirtualHosts(
+            0L, Collections.singletonList(vhost), filterConfigs)));
+      });
+    }
+
     void deliverLdsUpdateWithFaultInjection(
         final String cluster,
         FaultConfig httpFilterFaultConfig,
@@ -2335,6 +2398,79 @@ public class XdsNameResolverTest {
 
     void deliverErrorStatus() {
       listener.onClose(Status.UNAVAILABLE, new Metadata());
+    }
+  }
+
+  private static class StatefulFilter implements io.grpc.xds.Filter {
+    static final String TYPE_URL = "my-stateful-filter";
+    int iteration;
+
+
+    public StatefulFilter(int iteration) {
+      this.iteration = iteration;
+    }
+
+    static final class Provider implements io.grpc.xds.Filter.Provider {
+      volatile int counter;
+      private final ConcurrentMap<Integer, StatefulFilter> instances = new ConcurrentHashMap<>();
+
+      @Override
+      public String[] typeUrls() {
+        return new String[]{TYPE_URL};
+      }
+
+      @Override
+      public boolean isClientFilter() {
+        return true;
+      }
+
+      @Override
+      public synchronized StatefulFilter newInstance() {
+        StatefulFilter filter = new StatefulFilter(counter++);
+        instances.put(filter.iteration, filter);
+        return filter;
+      }
+
+      public synchronized StatefulFilter getInstance(int idx) {
+        return instances.get(idx);
+      }
+
+      public synchronized int getCount() {
+        return counter;
+      }
+
+      @Override
+      public io.grpc.xds.ConfigOrError<Config> parseFilterConfig(Message rawProtoMessage) {
+        return io.grpc.xds.ConfigOrError.fromConfig(new Config(rawProtoMessage));
+      }
+
+      @Override
+      public io.grpc.xds.ConfigOrError<Config> parseFilterConfigOverride(Message rawProtoMessage) {
+        return io.grpc.xds.ConfigOrError.fromConfig(new Config(rawProtoMessage));
+      }
+    }
+
+    static final class Config implements FilterConfig {
+      @Nullable
+      private final Message message;
+
+      public Config(@Nullable Message rawProtoMessage) {
+        message = rawProtoMessage;
+      }
+
+      public Config() {
+        this(null);
+      }
+
+      @SuppressWarnings("UnusedMethod")
+      public Message getConfig() {
+        return message;
+      }
+
+      @Override
+      public String typeUrl() {
+        return TYPE_URL;
+      }
     }
   }
 }
