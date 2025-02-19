@@ -16,6 +16,7 @@
 
 package io.grpc.xds;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 import static io.grpc.xds.FaultFilter.HEADER_ABORT_GRPC_STATUS_KEY;
@@ -105,6 +106,7 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -114,6 +116,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
@@ -163,7 +166,8 @@ public class XdsNameResolverTest {
   private final CallInfo call1 = new CallInfo("HelloService", "hi");
   private final CallInfo call2 = new CallInfo("GreetService", "bye");
   private final TestChannel channel = new TestChannel();
-  private final MetricRecorder metricRecorder = new MetricRecorder() {};
+  private final MetricRecorder metricRecorder = new MetricRecorder() {
+  };
   private BootstrapInfo bootstrapInfo = BootstrapInfo.builder()
       .servers(ImmutableList.of(ServerInfo.create(
           "td.googleapis.com", InsecureChannelCredentials.create())))
@@ -330,7 +334,6 @@ public class XdsNameResolverTest {
         targetUri, null, serviceAuthority, null, serviceConfigParser, syncContext, scheduler,
         xdsClientPoolFactory, mockRandom, FilterRegistry.getDefaultRegistry(), null,
         metricRecorder);
-
 
     // The Service Authority must be URL encoded, but unlike the LDS resource name.
     assertThat(resolver.getServiceAuthority()).isEqualTo("path%2Fto%2Fservice");
@@ -1302,29 +1305,61 @@ public class XdsNameResolverTest {
     ImmutableList<Route> routes = ImmutableList.of(route);
 
     // LDS 0.
-    ImmutableList<NamedFilterConfig> filterConfigs0 = ImmutableList.of(
-        new NamedFilterConfig("stateful-filter-00", new StatefulFilter.Config()),
-        new NamedFilterConfig("stateful-filter-01", new StatefulFilter.Config()),
-        new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
-
-    xdsClient.deliverLdsUpdateWithFilters(routes, filterConfigs0);
+    xdsClient.deliverLdsUpdateWithFilters(routes,
+        makeStatefulFilterConfigs("stateful-filter-00", "stateful-filter-01"));
     assertClusterResolutionResult(call1, cluster1);
-    // Filter state checks.
+    // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(statefulFilterProvider.getCount()).isEqualTo(2);
     ImmutableList<StatefulFilter> filters0 = statefulFilterProvider.getInstances();
-    assertThat(filters0.get(0)).isNotSameInstanceAs(filters0.get(1));
+    StatefulFilter filter00 = filters0.get(0);
+    StatefulFilter filter01 = filters0.get(1);
+    assertThat(filter00).isNotSameInstanceAs(filter01);
     // Redundant check just in case StatefulFilter synchronization is broken.
-    assertThat(filters0.get(0).iteration).isEqualTo(0);
-    assertThat(filters0.get(1).iteration).isEqualTo(1);
+    assertThat(filter00.iteration).isEqualTo(0);
+    assertThat(filter01.iteration).isEqualTo(1);
 
-    // LDS 1: same filter configs.
-    xdsClient.deliverLdsUpdateWithFilters(routes, filterConfigs0);
+    // LDS 1: filter configs with the same names.
+    xdsClient.deliverLdsUpdateWithFilters(routes,
+        makeStatefulFilterConfigs("stateful-filter-00", "stateful-filter-01"));
     assertClusterResolutionResult(call1, cluster1);
-
-    // Filter state checks.
+    // Filter names hasn't changed, so expecting no new StatefulFilter instances.
     ImmutableList<StatefulFilter> filters1 = statefulFilterProvider.getInstances();
-    assertWithMessage("Expected Filter instances with the same filter name to be reused across LDS")
+    assertWithMessage("LDS1: Expected Filter instances to be reused across LDS updates")
         .that(filters1).isEqualTo(filters0);
+
+    // LDS 2: Filter "stateful-filter-01" removed.
+    xdsClient.deliverLdsUpdateWithFilters(routes, makeStatefulFilterConfigs("stateful-filter-00"));
+    assertClusterResolutionResult(call1, cluster1);
+    // Again, no additional StatefulFilter should've been created.
+    ImmutableList<StatefulFilter> filters2 = statefulFilterProvider.getInstances();
+    assertWithMessage("LDS2: Expected Filter instances to be reused across LDS updates")
+        .that(filters2).isEqualTo(filters0);
+    // Verify shutdown state.
+    assertThat(filter00.isShutdown()).isFalse();
+    assertWithMessage("Expected %s to be shut down", filter01).that(filter01.isShutdown()).isTrue();
+
+    // LDS 3: Filter "stateful-filter-01" added back.
+    xdsClient.deliverLdsUpdateWithFilters(routes, makeStatefulFilterConfigs("stateful-filter-00"));
+    assertClusterResolutionResult(call1, cluster1);
+    // Filter "stateful-filter-01" was removed by LDS 2, so expecting a new instance to be created.
+    ImmutableList<StatefulFilter> filters3 = statefulFilterProvider.getInstances();
+    assertWithMessage("Expected Filter instances with the same filter name to be reused across LDS")
+        .that(filters3).containsAtLeastElementsIn(filters0);
+    assertThat(statefulFilterProvider.getCount()).isEqualTo(3);
+    StatefulFilter filter32 = filters3.get(2);
+    assertThat(filter32).isNotSameInstanceAs(filter01);
+    assertThat(filter32.isShutdown()).isFalse();
+    assertThat(filter00.isShutdown()).isFalse();
+    // TODO(sergiitk): [IMPL] test: same name, different typeUrls => failure.
+  }
+
+  private ImmutableList<NamedFilterConfig> makeStatefulFilterConfigs(String... names) {
+    ImmutableList.Builder<NamedFilterConfig> result = ImmutableList.builder();
+    for (String name : names) {
+      result.add(new NamedFilterConfig(name, new StatefulFilter.Config()));
+    }
+    result.add(new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
+    return result.build();
   }
 
   @SuppressWarnings("unchecked")
@@ -1565,7 +1600,7 @@ public class XdsNameResolverTest {
 
     // timeout and retry with empty retriable status codes
     assertThat(XdsNameResolver.generateServiceConfigWithMethodConfig(
-            timeoutNano, retryPolicyWithEmptyStatusCodes))
+        timeoutNano, retryPolicyWithEmptyStatusCodes))
         .isEqualTo(expectedServiceConfig);
 
     // retry only
@@ -1587,7 +1622,6 @@ public class XdsNameResolverTest {
         (Map<String, ?>) JsonParser.parse(expectedServiceConfigJson);
     assertThat(XdsNameResolver.generateServiceConfigWithMethodConfig(null, retryPolicy))
         .isEqualTo(expectedServiceConfig);
-
 
     // timeout and retry
     expectedServiceConfigJson = "{\n"
@@ -1619,7 +1653,7 @@ public class XdsNameResolverTest {
 
     // retry with emtry retriable status codes only
     assertThat(XdsNameResolver.generateServiceConfigWithMethodConfig(
-            null, retryPolicyWithEmptyStatusCodes))
+        null, retryPolicyWithEmptyStatusCodes))
         .isEqualTo(expectedServiceConfig);
   }
 
@@ -2066,7 +2100,8 @@ public class XdsNameResolverTest {
 
   private PickSubchannelArgs newPickSubchannelArgs(
       MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
-    return new PickSubchannelArgsImpl(method, headers, callOptions, new PickDetailsConsumer() {});
+    return new PickSubchannelArgsImpl(method, headers, callOptions, new PickDetailsConsumer() {
+    });
   }
 
   private final class FakeXdsClientPoolFactory implements XdsClientPoolFactory {
@@ -2074,7 +2109,8 @@ public class XdsNameResolverTest {
     XdsClient xdsClient = new FakeXdsClient();
 
     @Override
-    public void setBootstrapOverride(Map<String, ?> bootstrap) {}
+    public void setBootstrapOverride(Map<String, ?> bootstrap) {
+    }
 
     @Override
     @Nullable
@@ -2124,10 +2160,11 @@ public class XdsNameResolverTest {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T extends ResourceUpdate> void watchXdsResource(XdsResourceType<T> resourceType,
-            String resourceName,
-            ResourceWatcher<T> watcher,
-            Executor syncContext) {
+    public <T extends ResourceUpdate> void watchXdsResource(
+        XdsResourceType<T> resourceType,
+        String resourceName,
+        ResourceWatcher<T> watcher,
+        Executor syncContext) {
 
       switch (resourceType.typeName()) {
         case "LDS":
@@ -2148,9 +2185,10 @@ public class XdsNameResolverTest {
     }
 
     @Override
-    public <T extends ResourceUpdate> void cancelXdsResourceWatch(XdsResourceType<T> type,
-                                                                  String resourceName,
-                                                                  ResourceWatcher<T> watcher) {
+    public <T extends ResourceUpdate> void cancelXdsResourceWatch(
+        XdsResourceType<T> type,
+        String resourceName,
+        ResourceWatcher<T> watcher) {
       switch (type.typeName()) {
         case "LDS":
           assertThat(ldsResource).isNotNull();
@@ -2189,8 +2227,12 @@ public class XdsNameResolverTest {
 
     void deliverLdsUpdateWithFilters(List<Route> routes, List<NamedFilterConfig> filterConfigs) {
       VirtualHost vhost =
-          VirtualHost.create("virtual-host", Collections.singletonList(expectedLdsResourceName),
-              routes, ImmutableMap.of());
+          VirtualHost.create("virtual-host", ImmutableList.of(expectedLdsResourceName), routes,
+              ImmutableMap.of());
+      deliverLdsUpdateWithFilters(vhost, filterConfigs);
+    }
+
+    void deliverLdsUpdateWithFilters(VirtualHost vhost, List<NamedFilterConfig> filterConfigs) {
       syncContext.execute(() -> {
         ldsWatcher.onChanged(LdsUpdate.forApiListener(HttpConnectionManager.forVirtualHosts(
             0L, Collections.singletonList(vhost), filterConfigs)));
@@ -2410,17 +2452,31 @@ public class XdsNameResolverTest {
 
   private static class StatefulFilter implements io.grpc.xds.Filter {
     static final String TYPE_URL = "my-stateful-filter";
-    int iteration;
 
+    private final int iteration;
+    private final AtomicBoolean shutdown = new AtomicBoolean();
 
     public StatefulFilter(int iteration) {
       this.iteration = iteration;
     }
 
-    @Override public String toString() {
-      return "StatefulFilter{" +
-          "iteration=" + iteration +
-          '}';
+    public boolean isShutdown() {
+      return shutdown.get();
+    }
+
+    @Override
+    public void close() {
+      if (!shutdown.compareAndSet(false, true)) {
+        throw new ConcurrentModificationException(
+            "Unexpected: StatefulFilter#close called multiple times");
+      }
+    }
+
+    @Override
+    public String toString() {
+      return "StatefulFilter{"
+          + "iteration=" + iteration
+          + '}';
     }
 
     static final class Provider implements io.grpc.xds.Filter.Provider {
@@ -2449,13 +2505,7 @@ public class XdsNameResolverTest {
       }
 
       public synchronized ImmutableList<StatefulFilter> getInstances() {
-        return IntStream.range(0, counter).mapToObj(this::getInstance)
-            .collect(ImmutableList.toImmutableList());
-        // ImmutableList.Builder<StatefulFilter> result = ImmutableList.builder();
-        // for (int i = 0; i < counter; i++) {
-        //   result.add(getInstance(i));
-        // }
-        // return result.build();
+        return IntStream.range(0, counter).mapToObj(this::getInstance).collect(toImmutableList());
       }
 
       public synchronized int getCount() {
