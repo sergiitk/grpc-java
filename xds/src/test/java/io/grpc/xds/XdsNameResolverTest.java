@@ -1283,8 +1283,7 @@ public class XdsNameResolverTest {
   }
 
   @Test
-  public void resolved_filterState_retainedAcrossLds() {
-    // Unlike most filters, StatefulFilter.Provider returns a new filter instance each time.
+  public void filterState_survivesLds() {
     StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
     FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
         statefulFilterProvider,
@@ -1304,56 +1303,61 @@ public class XdsNameResolverTest {
         ImmutableMap.of());
     ImmutableList<Route> routes = ImmutableList.of(route);
 
-    // LDS 0.
-    xdsClient.deliverLdsUpdateWithFilters(routes,
-        makeStatefulFilterConfigs("stateful-filter-00", "stateful-filter-01"));
+    final String STATEFUL_1 = "stateful-filter-1";
+    final String STATEFUL_2 = "stateful-filter-2";
+
+    // LDS1.
+    xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
-    assertThat(statefulFilterProvider.getCount()).isEqualTo(2);
-    ImmutableList<StatefulFilter> filters0 = statefulFilterProvider.getInstances();
-    StatefulFilter filter00 = filters0.get(0);
-    StatefulFilter filter01 = filters0.get(1);
-    assertThat(filter00).isNotSameInstanceAs(filter01);
+    assertThat(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Filter<name#>
+    StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
+    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
     // Redundant check just in case StatefulFilter synchronization is broken.
-    assertThat(filter00.iteration).isEqualTo(0);
-    assertThat(filter01.iteration).isEqualTo(1);
+    assertThat(lds1Filter1.iteration).isEqualTo(0);
+    assertThat(lds1Filter2.iteration).isEqualTo(1);
 
-    // LDS 1: filter configs with the same names.
-    xdsClient.deliverLdsUpdateWithFilters(routes,
-        makeStatefulFilterConfigs("stateful-filter-00", "stateful-filter-01"));
+    // // LDS 2: filter configs with the same names.
+    xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
+    ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     // Filter names hasn't changed, so expecting no new StatefulFilter instances.
-    ImmutableList<StatefulFilter> filters1 = statefulFilterProvider.getInstances();
-    assertWithMessage("LDS1: Expected Filter instances to be reused across LDS updates")
-        .that(filters1).isEqualTo(filters0);
+    assertWithMessage("LDS 2: Expected Filter instances to be reused across LDS updates")
+        .that(lds2Snapshot).isEqualTo(lds1Snapshot);
 
-    // LDS 2: Filter "stateful-filter-01" removed.
-    xdsClient.deliverLdsUpdateWithFilters(routes, makeStatefulFilterConfigs("stateful-filter-00"));
+    // LDS 3: Filter "STATEFUL_2" removed.
+    xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1));
     assertClusterResolutionResult(call1, cluster1);
-    // Again, no additional StatefulFilter should've been created.
-    ImmutableList<StatefulFilter> filters2 = statefulFilterProvider.getInstances();
-    assertWithMessage("LDS2: Expected Filter instances to be reused across LDS updates")
-        .that(filters2).isEqualTo(filters0);
-    // Verify shutdown state.
-    assertThat(filter00.isShutdown()).isFalse();
-    assertWithMessage("Expected %s to be shut down", filter01).that(filter01.isShutdown()).isTrue();
+    ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
+    // Again, no new StatefulFilter instances should be created.
+    assertWithMessage("LDS 3: Expected Filter instances to be reused across LDS updates")
+        .that(lds3Snapshot).isEqualTo(lds1Snapshot);
+    // Verify the shutdown state.
+    assertThat(lds1Filter1.isShutdown()).isFalse();
+    assertWithMessage("LDS 3: Expected %s to be shut down", lds1Filter2)
+        .that(lds1Filter2.isShutdown()).isTrue();
 
-    // LDS 3: Filter "stateful-filter-01" added back.
-    xdsClient.deliverLdsUpdateWithFilters(routes, makeStatefulFilterConfigs("stateful-filter-00"));
+    // LDS 4: Filter "STATEFUL_2" added back.
+    xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
-    // Filter "stateful-filter-01" was removed by LDS 2, so expecting a new instance to be created.
-    ImmutableList<StatefulFilter> filters3 = statefulFilterProvider.getInstances();
-    assertWithMessage("Expected Filter instances with the same filter name to be reused across LDS")
-        .that(filters3).containsAtLeastElementsIn(filters0);
-    assertThat(statefulFilterProvider.getCount()).isEqualTo(3);
-    StatefulFilter filter32 = filters3.get(2);
-    assertThat(filter32).isNotSameInstanceAs(filter01);
-    assertThat(filter32.isShutdown()).isFalse();
-    assertThat(filter00.isShutdown()).isFalse();
+    ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
+    // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
+    // a new instance should be created.
+    assertThat(lds4Snapshot).hasSize(3);
+    StatefulFilter lds4Filter2 = lds4Snapshot.get(2);
+    assertThat(lds4Filter2).isNotSameInstanceAs(lds1Filter2);
+    assertThat(lds4Snapshot).containsAtLeastElementsIn(lds1Snapshot);
+    // Verify the shutdown state.
+    assertThat(lds1Filter1.isShutdown()).isFalse();
+    assertThat(lds1Filter2.isShutdown()).isTrue();
+    assertThat(lds4Filter2.isShutdown()).isFalse();
     // TODO(sergiitk): [IMPL] test: same name, different typeUrls => failure.
   }
 
-  private ImmutableList<NamedFilterConfig> makeStatefulFilterConfigs(String... names) {
+  private ImmutableList<NamedFilterConfig> statefulFilterChain(String... names) {
     ImmutableList.Builder<NamedFilterConfig> result = ImmutableList.builder();
     for (String name : names) {
       result.add(new NamedFilterConfig(name, new StatefulFilter.Config()));
@@ -2446,6 +2450,9 @@ public class XdsNameResolverTest {
     }
   }
 
+  /**
+   * Unlike most singleton-based filters, each StatefulFilter object has a distinct identity.
+   */
   private static class StatefulFilter implements io.grpc.xds.Filter {
     static final String TYPE_URL = "my-stateful-filter";
 
@@ -2500,10 +2507,11 @@ public class XdsNameResolverTest {
         return instances.get(idx);
       }
 
-      public synchronized ImmutableList<StatefulFilter> getInstances() {
+      public synchronized ImmutableList<StatefulFilter> getAllInstances() {
         return IntStream.range(0, counter).mapToObj(this::getInstance).collect(toImmutableList());
       }
 
+      @SuppressWarnings("UnusedMethod")
       public synchronized int getCount() {
         return counter;
       }
