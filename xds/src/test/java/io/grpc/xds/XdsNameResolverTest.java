@@ -118,6 +118,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import org.junit.After;
@@ -1284,27 +1285,25 @@ public class XdsNameResolverTest {
 
   @Test
   public void filterState_survivesLds() {
+    // Prepare filter registry and resolver.
     StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
-    FilterRegistry filterRegistry = FilterRegistry.newRegistry().register(
-        statefulFilterProvider,
-        ROUTER_FILTER_PROVIDER);
-
-    // Resolver.
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
+        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
     resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
         syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
         metricRecorder);
     resolver.start(mockListener);
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
-    // Single basic route.
+    // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
     Route route = Route.forAction(
         RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
         RouteAction.forCluster(cluster1, ImmutableList.of(), null, null, true),
         ImmutableMap.of());
     ImmutableList<Route> routes = ImmutableList.of(route);
 
-    final String STATEFUL_1 = "stateful-filter-1";
-    final String STATEFUL_2 = "stateful-filter-2";
+    final String STATEFUL_1 = "test.lds.stateful.filter.1";
+    final String STATEFUL_2 = "test.lds.stateful.filter.2";
 
     // LDS1.
     xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1, STATEFUL_2));
@@ -1348,6 +1347,7 @@ public class XdsNameResolverTest {
     // a new instance should be created.
     assertThat(lds4Snapshot).hasSize(3);
     StatefulFilter lds4Filter2 = lds4Snapshot.get(2);
+    assertThat(lds4Filter2.iteration).isEqualTo(2);
     assertThat(lds4Filter2).isNotSameInstanceAs(lds1Filter2);
     assertThat(lds4Snapshot).containsAtLeastElementsIn(lds1Snapshot);
     // Verify the shutdown state.
@@ -1355,6 +1355,106 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter2.isShutdown()).isTrue();
     assertThat(lds4Filter2.isShutdown()).isFalse();
     // TODO(sergiitk): [IMPL] test: same name, different typeUrls => failure.
+  }
+
+  @Test
+  @SuppressWarnings("UnusedVariable")  // TODO(sergiitk): [IMPL] remove
+  public void filterState_survivesRds() {
+    // Prepare filter registry and resolver.
+    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
+        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
+    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
+        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
+        metricRecorder);
+    resolver.start(mockListener);
+    FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
+
+
+    // Some templating helpers.
+    Function<ImmutableMap<String, FilterConfig>, Route> makeRoute = (overrides) -> Route.forAction(
+        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
+        RouteAction.forCluster(cluster1, ImmutableList.of(), null, null, true),
+        overrides
+    );
+
+    Function<ImmutableMap<String, FilterConfig>, ImmutableList<Route>> makeOneRoute
+        = makeRoute.andThen(ImmutableList::of);
+
+    Function<ImmutableList<Route>, VirtualHost> makeVhost = (routes) -> VirtualHost.create(
+        "virtual-host", ImmutableList.of(expectedLdsResourceName), routes, ImmutableMap.of());
+
+    Function<ImmutableMap<String, FilterConfig>, VirtualHost> makeVhostWithOverrides =
+        makeOneRoute.andThen(makeVhost);
+
+
+    final ImmutableMap<String, FilterConfig> NO_OVERRIDES = ImmutableMap.of();
+    final String STATEFUL_1 = "test.rds.stateful.filter.1";
+    final String STATEFUL_2 = "test.rds.stateful.filter.2";
+
+    // LDS 1.
+    xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
+        statefulFilterChain(STATEFUL_1, STATEFUL_2));
+
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertThat(lds1Snapshot).isEmpty();
+
+    // xdsClient.deliverLdsUpdateWithFilters(vhost1, statefulFilterChain(STATEFUL_1, STATEFUL_2));
+    // assertClusterResolutionResult(call1, cluster1);
+    // // Verify that StatefulFilter with different filter names result in different Filter instances.
+    // assertThat(lds1Snapshot).hasSize(2);
+    // // Naming: lds<LDS#>Filter<name#>
+    // StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
+    // StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
+    // assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
+    // // Redundant check just in case StatefulFilter synchronization is broken.
+    // assertThat(lds1Filter1.iteration).isEqualTo(0);
+    // assertThat(lds1Filter2.iteration).isEqualTo(1);
+
+    // RDS 1.
+    VirtualHost vhost1 = makeVhost.apply(makeOneRoute.apply(NO_OVERRIDES));
+    xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost1);
+    assertClusterResolutionResult(call1, cluster1);
+
+    ImmutableList<StatefulFilter> rds1Snapshot = statefulFilterProvider.getAllInstances();
+    // Verify that StatefulFilter with different filter names result in different Filter instances.
+    assertThat(rds1Snapshot).hasSize(2);
+    // Naming: rds<RDS#>Filter<name#>
+    StatefulFilter rds1Filter1 = rds1Snapshot.get(0);
+    StatefulFilter rds1Filter2 = rds1Snapshot.get(1);
+    assertThat(rds1Filter1).isNotSameInstanceAs(rds1Filter2);
+    // Redundant check just in case StatefulFilter synchronization is broken.
+    assertThat(rds1Filter1.iteration).isEqualTo(0);
+    assertThat(rds1Filter2.iteration).isEqualTo(1);
+
+    // RDS 2.
+    ImmutableMap<String, FilterConfig> rds2Overrides = ImmutableMap.of(
+        STATEFUL_1, new StatefulFilter.Config("RDS1"));
+    VirtualHost vhost2 = makeVhost.apply(makeOneRoute.apply(rds2Overrides));
+
+    xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost2);
+    assertClusterResolutionResult(call1, cluster1);
+
+    ImmutableList<StatefulFilter> rds2Snapshot = statefulFilterProvider.getAllInstances();
+    // Filter instances should never be created/destroyed by any RDS action.
+    assertWithMessage("RDS 2: Filter instances lifecycle should never be affected by RDS")
+        .that(rds2Snapshot).isEqualTo(rds1Snapshot);
+    
+    //
+    // ImmutableMap<String, FilterConfig> overrides = ImmutableMap.of(STATEFUL_1,
+    //     new StatefulFilter.Config("RDS1"));
+
+    // verify(mockListener).onResult(resolutionResultCaptor.capture());
+    //
+    // @SuppressWarnings("unchecked")
+    // Map<String, ?> config = (Map<String, ?>) resolutionResultCaptor.getValue()
+    //     .getServiceConfig().getConfig();
+    // assertServiceConfigForLoadBalancingConfig(Collections.singletonList(cluster1), config);
+    // assertClusterResolutionResult(call1, cluster1);
+    //
+    // ImmutableList<StatefulFilter> rds1Snapshot = statefulFilterProvider.getAllInstances();
+    // assertThat(rds1Snapshot).isEqualTo(lds1Snapshot);
+
   }
 
   private ImmutableList<NamedFilterConfig> statefulFilterChain(String... names) {
@@ -2309,6 +2409,13 @@ public class XdsNameResolverTest {
       });
     }
 
+    void deliverLdsUpdateForRdsName(String rdsName, List<NamedFilterConfig> filterConfigs) {
+      syncContext.execute(() -> {
+        ldsWatcher.onChanged(LdsUpdate.forApiListener(HttpConnectionManager.forRdsName(
+            0, rdsName, filterConfigs)));
+      });
+    }
+
     void deliverLdsResourceNotFound() {
       syncContext.execute(() -> {
         ldsWatcher.onResourceDoesNotExist(expectedLdsResourceName);
@@ -2361,6 +2468,10 @@ public class XdsNameResolverTest {
       syncContext.execute(() -> {
         rdsWatcher.onChanged(new RdsUpdate(virtualHosts));
       });
+    }
+
+    void deliverRdsUpdate(String resourceName, VirtualHost virtualHost) {
+      deliverRdsUpdate(resourceName, ImmutableList.of(virtualHost));
     }
 
     void deliverRdsResourceNotFound(String resourceName) {
@@ -2527,21 +2638,25 @@ public class XdsNameResolverTest {
       }
     }
 
+    @SuppressWarnings("UnusedMethod") // TODO(sergiitk): [IMPL] remove
     static final class Config implements FilterConfig {
-      @Nullable
-      private final Message message;
+      private final String config;
 
       public Config(@Nullable Message rawProtoMessage) {
-        message = rawProtoMessage;
+        config = rawProtoMessage.toString();
+      }
+
+      public Config(String config) {
+        this.config = config;
       }
 
       public Config() {
-        this(null);
+        config = "<BLANK>";
       }
 
-      @SuppressWarnings("UnusedMethod")
-      public Message getConfig() {
-        return message;
+      @Nullable
+      public String getConfig() {
+        return config;
       }
 
       @Override
