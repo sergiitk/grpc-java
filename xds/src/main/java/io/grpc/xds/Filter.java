@@ -120,6 +120,12 @@ interface Filter extends Closeable {
       this.filterConfig = filterConfig;
     }
 
+    public String filterStateKey() {
+      // TODO(sergiitk): handle wrong filter type with the same name
+      return name;
+      // return name + "_" + filterConfig.typeUrl();
+    }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) {
