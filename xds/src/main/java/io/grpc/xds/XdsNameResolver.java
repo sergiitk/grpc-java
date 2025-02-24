@@ -664,20 +664,20 @@ final class XdsNameResolver extends NameResolver {
       ImmutableList<NamedFilterConfig> filterConfigs = httpConnectionManager.httpFilterConfigs();
       long streamDurationNano = httpConnectionManager.httpMaxStreamDurationNano();
       cleanUpRouteDiscoveryState();
+      updateActiveFilters(filterConfigs);
 
-      // Track routes via RDS.
-      if (virtualHosts == null) {
-        // TODO(sergiitk): [QUESTION] interesting that we don't have nullness check for rdsName.
-        routeDiscoveryState = new RouteDiscoveryState(rdsName, streamDurationNano, filterConfigs);
-        logger.log(XdsLogLevel.INFO, "Start watching RDS resource {0}", rdsName);
-        xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(),
-            rdsName, routeDiscoveryState, syncContext);
+      if (virtualHosts != null) {
+        // Routes specified directly in LDS.
+        updateRoutes(virtualHosts, streamDurationNano, filterConfigs);
         return;
       }
 
-      // Routes specified directly in LDS.
-      updateActiveFilters(filterConfigs);
-      updateRoutes(virtualHosts, streamDurationNano, filterConfigs);
+      // Routes specified via RDS.
+      // TODO(sergiitk): [QUESTION] interesting that we don't have nullness check for rdsName.
+      routeDiscoveryState = new RouteDiscoveryState(rdsName, streamDurationNano, filterConfigs);
+      logger.log(XdsLogLevel.INFO, "Start watching RDS resource {0}", rdsName);
+      xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(),
+          rdsName, routeDiscoveryState, syncContext);
     }
 
     @Override
@@ -724,7 +724,9 @@ final class XdsNameResolver extends NameResolver {
       for (NamedFilterConfig namedFilter : filterConfigs) {
         FilterConfig config = namedFilter.filterConfig;
         String typeUrl = config.typeUrl();
-        String filterKey = namedFilter.name + "_" + typeUrl;
+        // TODO(sergiitk): handle wrong filter type with the same name
+        String filterKey = namedFilter.name;
+        // String filterKey = namedFilter.name + "_" + typeUrl;
         Filter.Provider provider = filterRegistry.get(typeUrl);
         activeFilters.computeIfAbsent(filterKey, k -> provider.newInstance());
         // TODO(sergiitk): [QUESTION] check not null?
@@ -865,7 +867,6 @@ final class XdsNameResolver extends NameResolver {
         return new PassthroughClientInterceptor();
       }
 
-      // TODO(sergiitk): [QUESTION] immutable map?
       Map<String, FilterConfig> selectedOverrideConfigs =
           new HashMap<>(virtualHost.filterConfigOverrides());
       selectedOverrideConfigs.putAll(route.filterConfigOverrides());
@@ -877,27 +878,15 @@ final class XdsNameResolver extends NameResolver {
       for (NamedFilterConfig namedFilter : filterConfigs) {
         FilterConfig config = namedFilter.filterConfig;
         String name = namedFilter.name;
-        String typeUrl = config.typeUrl();
+        // String typeUrl = config.typeUrl();
 
-        Filter.Provider provider = filterRegistry.get(typeUrl);
-        if (provider == null || !provider.isClientFilter()) {
-          continue;
-        }
-        // TODO(sergiitk): [IMPL] track shutdown
-        // filtersToShutdown.remove(name);
-
-        // TODO(sergiitk): [IMPL]  Upsert filter to the active filters map.
-        // Filter filter = activeFilters.computeIfAbsent(name, k -> provider.newInstance());
-        Filter filter = provider.newInstance();
-
+        Filter filter = activeFilters.get(name);
         ClientInterceptor interceptor =
             filter.buildClientInterceptor(config, selectedOverrideConfigs.get(name), scheduler);
         if (interceptor != null) {
           filterInterceptors.add(interceptor);
         }
       }
-
-      // TODO(sergiitk): [IMPL]  Shutdown filters not present in the current chain.
 
       // Combine interceptors produced by different filters into a single one that executes
       // them sequentially. The order is preserved.
