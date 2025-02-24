@@ -662,17 +662,17 @@ final class XdsNameResolver extends NameResolver {
       String rdsName = httpConnectionManager.rdsName();
       ImmutableList<NamedFilterConfig> filterConfigs = httpConnectionManager.httpFilterConfigs();
       long streamDurationNano = httpConnectionManager.httpMaxStreamDurationNano();
+
+      // Create/update HCM-bound state.
       cleanUpRouteDiscoveryState();
       updateActiveFilters(filterConfigs);
-      // TODO(sergiitk): [IMPL] revert back below
 
+      // Routes specified directly in LDS.
       if (virtualHosts != null) {
-        // Routes specified directly in LDS.
         updateRoutes(virtualHosts, streamDurationNano, filterConfigs);
         return;
       }
-
-      // Routes specified via RDS.
+      // Routes provided by RDS.
       routeDiscoveryState = new RouteDiscoveryState(rdsName, streamDurationNano, filterConfigs);
       logger.log(XdsLogLevel.INFO, "Start watching RDS resource {0}", rdsName);
       xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(),
