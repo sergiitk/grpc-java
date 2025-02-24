@@ -144,6 +144,14 @@ public class XdsNameResolverTest {
   private static final FaultFilter.Provider FAULT_FILTER_PROVIDER = new FaultFilter.Provider();
   private static final RouterFilter.Provider ROUTER_FILTER_PROVIDER = new RouterFilter.Provider();
 
+  // Readability: makes it simpler to distinguish resource parameters.
+  private static final ImmutableMap<String, FilterConfig> NO_OVERRIDES = ImmutableMap.of();
+  private static final ImmutableList<HashPolicy> NO_HASH_POLICIES = ImmutableList.of();
+
+  // Stateful instance filter names.
+  private static final String STATEFUL_1 = "test.stateful.filter.1";
+  private static final String STATEFUL_2 = "test.stateful.filter.2";
+
   @Rule
   public final MockitoRule mocks = MockitoJUnit.rule();
   private final SynchronizationContext syncContext = new SynchronizationContext(
@@ -1298,12 +1306,9 @@ public class XdsNameResolverTest {
     // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
     Route route = Route.forAction(
         RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
-        RouteAction.forCluster(cluster1, ImmutableList.of(), null, null, true),
-        ImmutableMap.of());
+        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
+        NO_OVERRIDES);
     ImmutableList<Route> routes = ImmutableList.of(route);
-
-    final String STATEFUL_1 = "test.lds.stateful.filter.1";
-    final String STATEFUL_2 = "test.lds.stateful.filter.2";
 
     // LDS1.
     xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1, STATEFUL_2));
@@ -1372,27 +1377,22 @@ public class XdsNameResolverTest {
     resolver.start(mockListener);
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
+
     // Some resource templating helpers.
     Function<ImmutableMap<String, FilterConfig>, Route> makeRoute = (overrides) -> Route.forAction(
         RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
-        RouteAction.forCluster(cluster1, ImmutableList.of(), null, null, true),
+        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
         overrides);
     Function<ImmutableMap<String, FilterConfig>, ImmutableList<Route>> makeOneRoute
         = makeRoute.andThen(ImmutableList::of);
     Function<ImmutableList<Route>, VirtualHost> makeVhost = (routes) -> VirtualHost.create(
-        "virtual-host", ImmutableList.of(expectedLdsResourceName), routes, ImmutableMap.of());
-
-    final ImmutableMap<String, FilterConfig> NO_OVERRIDES = ImmutableMap.of();
-    // TODO(sergiitk): [QUESTION] ignore final in tests?
-    //                 https://checkstyle.sourceforge.io/checks/naming/abbreviationaswordinname.html
-
-    final String STATEFUL_1 = "test.rds.stateful.filter.1";
-    final String STATEFUL_2 = "test.rds.stateful.filter.2";
+        "virtual-host", ImmutableList.of(expectedLdsResourceName), routes, NO_OVERRIDES);
 
     // LDS 1.
     xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
         statefulFilterChain(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
@@ -1403,22 +1403,23 @@ public class XdsNameResolverTest {
     VirtualHost vhost1 = makeVhost.apply(makeOneRoute.apply(NO_OVERRIDES));
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost1);
     assertClusterResolutionResult(call1, cluster1);
+    // Initial RDS update should not generate Filter instances.
     ImmutableList<StatefulFilter> rds1Snapshot = statefulFilterProvider.getAllInstances();
-    // Verify that StatefulFilter with different filter names result in different Filter instances.
-    assertWithMessage("RDS 2: Expected Filter instances to be reused across RDS route updates")
+    assertWithMessage("RDS 1: Expected Filter instances to be reused across RDS route updates")
         .that(rds1Snapshot).isEqualTo(lds1Snapshot);
 
     // RDS 2: exactly the same as RDS 1.
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost1);
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> rds2Snapshot = statefulFilterProvider.getAllInstances();
-    // Filter instances should be reused across RDS route updates.
+    // Neither should any following RDS updates.
     assertWithMessage("RDS 2: Expected Filter instances to be reused across RDS route updates")
         .that(rds2Snapshot).isEqualTo(lds1Snapshot);
 
     // RDS 3: Contains a per-route override for STATEFUL_1.
     ImmutableMap<String, FilterConfig> rds3Overrides = ImmutableMap.of(
-        STATEFUL_1, new StatefulFilter.Config("RDS1"));
+        STATEFUL_1, new StatefulFilter.Config("RDS1")
+    );
     VirtualHost vhost3 = makeVhost.apply(makeOneRoute.apply(rds3Overrides));
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost3);
     assertClusterResolutionResult(call1, cluster1);
@@ -2298,9 +2299,8 @@ public class XdsNameResolverTest {
     }
 
     void deliverLdsUpdateWithFilters(List<Route> routes, List<NamedFilterConfig> filterConfigs) {
-      VirtualHost vhost =
-          VirtualHost.create("virtual-host", ImmutableList.of(expectedLdsResourceName), routes,
-              ImmutableMap.of());
+      VirtualHost vhost = VirtualHost.create("virtual-host",
+          ImmutableList.of(expectedLdsResourceName), routes, NO_OVERRIDES);
       deliverLdsUpdateWithFilters(vhost, filterConfigs);
     }
 
