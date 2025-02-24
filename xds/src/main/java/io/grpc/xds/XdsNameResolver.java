@@ -70,6 +70,7 @@ import io.grpc.xds.client.XdsLogger.XdsLogLevel;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -127,6 +128,8 @@ final class XdsNameResolver extends NameResolver {
   private final ConfigSelector configSelector = new ConfigSelector();
   private final long randomChannelId;
   private final MetricRecorder metricRecorder;
+  // "Filter name + typeUrl" -> Filter instance.
+  private final HashMap<String, Filter> activeFilters = new HashMap<>();
 
   private volatile RoutingConfig routingConfig = RoutingConfig.EMPTY;
   private Listener2 listener;
@@ -658,19 +661,23 @@ final class XdsNameResolver extends NameResolver {
       HttpConnectionManager httpConnectionManager = update.httpConnectionManager();
       List<VirtualHost> virtualHosts = httpConnectionManager.virtualHosts();
       String rdsName = httpConnectionManager.rdsName();
-      // TODO(sergiitk): [IMPL] cleanup filters? here
+      ImmutableList<NamedFilterConfig> filterConfigs = httpConnectionManager.httpFilterConfigs();
+      long streamDurationNano = httpConnectionManager.httpMaxStreamDurationNano();
       cleanUpRouteDiscoveryState();
-      if (virtualHosts != null) {
-        updateRoutes(virtualHosts, httpConnectionManager.httpMaxStreamDurationNano(),
-            httpConnectionManager.httpFilterConfigs());
-      } else {
-        routeDiscoveryState = new RouteDiscoveryState(
-            rdsName, httpConnectionManager.httpMaxStreamDurationNano(),
-            httpConnectionManager.httpFilterConfigs());
+
+      // Track routes via RDS.
+      if (virtualHosts == null) {
+        // TODO(sergiitk): [QUESTION] interesting that we don't have nullness check for rdsName.
+        routeDiscoveryState = new RouteDiscoveryState(rdsName, streamDurationNano, filterConfigs);
         logger.log(XdsLogLevel.INFO, "Start watching RDS resource {0}", rdsName);
         xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(),
             rdsName, routeDiscoveryState, syncContext);
+        return;
       }
+
+      // Routes specified directly in LDS.
+      updateActiveFilters(filterConfigs);
+      updateRoutes(virtualHosts, streamDurationNano, filterConfigs);
     }
 
     @Override
@@ -690,6 +697,7 @@ final class XdsNameResolver extends NameResolver {
       }
       String error = "LDS resource does not exist: " + resourceName;
       logger.log(XdsLogLevel.INFO, error);
+      // TODO(sergiitk): [IMPL] cleanup filters? here
       cleanUpRouteDiscoveryState();
       cleanUpRoutes(error);
     }
@@ -703,8 +711,36 @@ final class XdsNameResolver extends NameResolver {
     private void stop() {
       logger.log(XdsLogLevel.INFO, "Stop watching LDS resource {0}", ldsResourceName);
       stopped = true;
+      // TODO(sergiitk): [IMPL] cleanup filters? here
       cleanUpRouteDiscoveryState();
       xdsClient.cancelXdsResourceWatch(XdsListenerResource.getInstance(), ldsResourceName, this);
+    }
+
+    private void updateActiveFilters(@Nullable List<NamedFilterConfig> filterConfigs) {
+      if (filterConfigs == null) {
+        filterConfigs = ImmutableList.of();
+      }
+      Set<String> filtersToShutdown = new HashSet<>(activeFilters.keySet());
+      for (NamedFilterConfig namedFilter : filterConfigs) {
+        FilterConfig config = namedFilter.filterConfig;
+        String typeUrl = config.typeUrl();
+        String filterKey = namedFilter.name + "_" + typeUrl;
+        Filter.Provider provider = filterRegistry.get(typeUrl);
+        activeFilters.computeIfAbsent(filterKey, k -> provider.newInstance());
+        // TODO(sergiitk): [QUESTION] check not null?
+        filtersToShutdown.remove(filterKey);
+      }
+
+      // Shutdown filters not present in current HCM.
+      for (String name : filtersToShutdown) {
+        Filter filterToShutdown = activeFilters.remove(name);
+        if (filterToShutdown == null) {
+          // Shouldn't happen.
+          throw new ConcurrentModificationException("Filter to shutdown '" + name
+              + "' was removed from the active filters outside of the syncContext");
+        }
+        filterToShutdown.close();
+      }
     }
 
     // called in syncContext
