@@ -1455,8 +1455,8 @@ public class XdsNameResolverTest {
 
     // LDS 2: Filter STATEFUL_2 present, but with a different typeUrl: altTypeUrl.
     ImmutableList<NamedFilterConfig> filterConfigs = ImmutableList.of(
-        new NamedFilterConfig(STATEFUL_1, new Config()),
-        new NamedFilterConfig(STATEFUL_2, new Config(altTypeUrl)),
+        new NamedFilterConfig(STATEFUL_1, new StatefulFilter.Config()),
+        new NamedFilterConfig(STATEFUL_2, new StatefulFilter.Config(altTypeUrl)),
         new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG)
     );
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterConfigs);
