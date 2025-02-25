@@ -1309,12 +1309,7 @@ public class XdsNameResolverTest {
   public void filterState_survivesLds() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-
-    // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
-    Route route = Route.forAction(
-        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
-        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
-        NO_FILTER_OVERRIDES);
+    Route route = filterStateTestRoute();
 
     // LDS 1.
     xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
@@ -1505,12 +1500,7 @@ public class XdsNameResolverTest {
   public void filterState_shutdown_onLdsNotFound() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-
-    // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
-    Route route = Route.forAction(
-        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
-        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
-        NO_FILTER_OVERRIDES);
+    Route route = filterStateTestRoute();
 
     // LDS 1.
     xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
@@ -1540,12 +1530,7 @@ public class XdsNameResolverTest {
   public void filterState_shutdown_onResolverShutdown() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-
-    // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
-    Route route = Route.forAction(
-        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
-        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
-        NO_FILTER_OVERRIDES);
+    Route route = filterStateTestRoute();
 
     // LDS 1.
     xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
@@ -1623,6 +1608,14 @@ public class XdsNameResolverTest {
     }
     result.add(new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
     return result.build();
+  }
+
+  private Route filterStateTestRoute() {
+    // Standard basic route for filterState tests.
+    return Route.forAction(
+        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
+        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
+        NO_FILTER_OVERRIDES);
   }
 
   // End filter state tests.
