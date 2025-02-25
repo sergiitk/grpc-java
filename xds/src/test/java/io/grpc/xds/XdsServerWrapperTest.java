@@ -94,6 +94,14 @@ import org.mockito.junit.MockitoRule;
 @RunWith(JUnit4.class)
 public class XdsServerWrapperTest {
   private static final int START_WAIT_AFTER_LISTENER_MILLIS = 100;
+  private static final String ROUTER_FILTER_INSTANCE_NAME = "envoy.router";
+  private static final RouterFilter.Provider ROUTER_FILTER_PROVIDER = new RouterFilter.Provider();
+
+  // Readability: makes it simpler to distinguish resource parameters.
+  private static final ImmutableMap<String, FilterConfig> NO_FILTER_OVERRIDES = ImmutableMap.of();
+
+  private static final String STATEFUL_1 = "test.stateful.filter.1";
+  private static final String STATEFUL_2 = "test.stateful.filter.2";
 
   @Rule
   public final MockitoRule mocks = MockitoJUnit.rule();
@@ -1269,6 +1277,87 @@ public class XdsServerWrapperTest {
     assertThat(selectorManager.getSelectorToUpdateSelector().getRoutingConfigs()
         .get(filterChain).get()).isEqualTo(noopConfig);
   }
+
+  // Begin filter state tests.
+
+  @Test
+  public void filterState_survivesLds() throws Exception {
+    SettableFuture<Server> start = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServerWrapper(start);
+    VirtualHost vhost = filterStateTestLdsVhost();
+    HttpConnectionManager hcm = filterStateTestHcm(vhost,
+        filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    EnvoyServerProtoData.FilterChain filterChain = createFilterChain("fc1", hcm);
+
+    // LDS 1.
+    xdsClient.deliverLdsUpdate(filterChain, null);
+    start.get(5000, TimeUnit.MILLISECONDS);
+    verify(listener).onServing();
+    // TODO(sergiitk): [IMPL] consider other checks from discoverState_virtualhost
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    // Verify that StatefulFilter with different filter names result in different Filter instances.
+    assertThat(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Filter<name#>
+    StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
+    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
+    // Redundant check just in case StatefulFilter synchronization is broken.
+    assertThat(lds1Filter1.iteration).isEqualTo(0);
+    assertThat(lds1Filter2.iteration).isEqualTo(1);
+
+    // LDS 2: filter configs with the same names.
+  }
+
+  private StatefulFilter.Provider filterStateTestSetupServerWrapper(SettableFuture<Server> start) {
+    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
+        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
+    xdsServerWrapper = new XdsServerWrapper("0.0.0.0:1", mockBuilder, listener,
+        selectorManager, new FakeXdsClientPoolFactory(xdsClient), filterRegistry);
+
+    Executors.newSingleThreadExecutor().execute(() -> {
+      try {
+        start.set(xdsServerWrapper.start());
+      } catch (Exception ex) {
+        start.setException(ex);
+      }
+    });
+
+    return statefulFilterProvider;
+  }
+
+  private ImmutableList<NamedFilterConfig> filterStateTestConfigs(String... names) {
+    ImmutableList.Builder<NamedFilterConfig> result = ImmutableList.builder();
+    for (String name : names) {
+      result.add(new NamedFilterConfig(name, new StatefulFilter.Config()));
+    }
+    result.add(new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
+    return result.build();
+  }
+
+  private Route filterStateTestRoute(ImmutableMap<String, FilterConfig> perRouteOverrides) {
+    // Standard basic route for filterState tests.
+    return Route.forAction(
+        RouteMatch.withPathExactOnly("/FooService/barMethod"), null, perRouteOverrides);
+  }
+
+  private Route filterStateTestRoute() {
+    return filterStateTestRoute(NO_FILTER_OVERRIDES);
+  }
+
+  private VirtualHost filterStateTestLdsVhost() {
+    return VirtualHost.create("stateful-vhost",
+        ImmutableList.of("foo.example.com"),
+        ImmutableList.of(filterStateTestRoute()),
+        NO_FILTER_OVERRIDES);
+  }
+
+  private HttpConnectionManager filterStateTestHcm(VirtualHost vhost,
+      List<NamedFilterConfig> filterConfigs) {
+    return HttpConnectionManager.forVirtualHosts(0L, ImmutableList.of(vhost), filterConfigs);
+  }
+
+  // End filter state tests.
 
   private static FilterChain createFilterChain(String name, HttpConnectionManager hcm) {
     return EnvoyServerProtoData.FilterChain.create(name, createMatch(),

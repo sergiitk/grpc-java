@@ -240,9 +240,13 @@ public class XdsServerTestHelper {
     }
 
     void deliverLdsUpdate(List<FilterChain> filterChains,
-                          FilterChain defaultFilterChain) {
+                          @Nullable FilterChain defaultFilterChain) {
       ldsWatcher.onChanged(LdsUpdate.forTcpListener(Listener.create(
               "listener", "0.0.0.0:1", ImmutableList.copyOf(filterChains), defaultFilterChain)));
+    }
+
+    void deliverLdsUpdate(FilterChain filterChain, @Nullable FilterChain defaultFilterChain) {
+      deliverLdsUpdate(ImmutableList.of(filterChain), defaultFilterChain);
     }
 
     void deliverLdsUpdate(LdsUpdate ldsUpdate) {
