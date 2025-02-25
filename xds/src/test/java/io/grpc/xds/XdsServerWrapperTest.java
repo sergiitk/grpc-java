@@ -18,6 +18,7 @@
 package io.grpc.xds;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static io.grpc.xds.XdsServerWrapper.ATTR_SERVER_ROUTING_CONFIG;
 import static io.grpc.xds.XdsServerWrapper.RETRY_DELAY_NANOS;
 import static org.junit.Assert.fail;
@@ -1285,12 +1286,12 @@ public class XdsServerWrapperTest {
     SettableFuture<Server> start = SettableFuture.create();
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServerWrapper(start);
     VirtualHost vhost = filterStateTestLdsVhost();
-    HttpConnectionManager hcm = filterStateTestHcm(vhost,
-        filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
-    EnvoyServerProtoData.FilterChain filterChain = createFilterChain("fc1", hcm);
 
     // LDS 1.
-    xdsClient.deliverLdsUpdate(filterChain, null);
+    HttpConnectionManager hcm1 = filterStateTestHcm(vhost,
+        filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    EnvoyServerProtoData.FilterChain fc1 = createFilterChain("fc1", hcm1);
+    xdsClient.deliverLdsUpdate(fc1, null);
     start.get(5000, TimeUnit.MILLISECONDS);
     verify(listener).onServing();
     // TODO(sergiitk): [IMPL] consider other checks from discoverState_virtualhost
@@ -1306,6 +1307,41 @@ public class XdsServerWrapperTest {
     assertThat(lds1Filter2.iteration).isEqualTo(1);
 
     // LDS 2: filter configs with the same names.
+    xdsClient.deliverLdsUpdate(fc1, null);
+    start.get(5000, TimeUnit.MILLISECONDS);
+    ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
+    // Filter names hasn't changed, so expecting no new StatefulFilter instances.
+    assertWithMessage("LDS 2: Expected Filter instances to be reused across LDS updates")
+        .that(lds2Snapshot).isEqualTo(lds1Snapshot);
+
+    // LDS 3: Filter "STATEFUL_2" removed.
+    HttpConnectionManager hcm2 = filterStateTestHcm(vhost, filterStateTestConfigs(STATEFUL_1));
+    xdsClient.deliverLdsUpdate(createFilterChain("fc1", hcm2), null);
+    start.get(5000, TimeUnit.MILLISECONDS);
+    ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
+    // Again, no new StatefulFilter instances should be created.
+    assertWithMessage("LDS 3: Expected Filter instances to be reused across LDS updates")
+        .that(lds3Snapshot).isEqualTo(lds1Snapshot);
+    // Verify the shutdown state.
+    assertThat(lds1Filter1.isShutdown()).isFalse();
+    assertWithMessage("LDS 3: Expected %s to be shut down", lds1Filter2)
+        .that(lds1Filter2.isShutdown()).isTrue();
+
+    // LDS 4: Filter "STATEFUL_2" added back.
+    xdsClient.deliverLdsUpdate(fc1, null);
+    start.get(5000, TimeUnit.MILLISECONDS);
+    ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
+    // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
+    // a new instance should be created.
+    assertThat(lds4Snapshot).hasSize(3);
+    StatefulFilter lds4Filter2 = lds4Snapshot.get(2);
+    assertThat(lds4Filter2.iteration).isEqualTo(2);
+    assertThat(lds4Filter2).isNotSameInstanceAs(lds1Filter2);
+    assertThat(lds4Snapshot).containsAtLeastElementsIn(lds1Snapshot);
+    // Verify the shutdown state.
+    assertThat(lds1Filter1.isShutdown()).isFalse();
+    assertThat(lds1Filter2.isShutdown()).isTrue();
+    assertThat(lds4Filter2.isShutdown()).isFalse();
   }
 
   private StatefulFilter.Provider filterStateTestSetupServerWrapper(SettableFuture<Server> start) {
