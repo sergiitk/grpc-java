@@ -1317,7 +1317,7 @@ public class XdsNameResolverTest {
         NO_FILTER_OVERRIDES);
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1331,7 +1331,7 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter2.iteration).isEqualTo(1);
 
     // LDS 2: filter configs with the same names.
-    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     // Filter names hasn't changed, so expecting no new StatefulFilter instances.
@@ -1339,7 +1339,7 @@ public class XdsNameResolverTest {
         .that(lds2Snapshot).isEqualTo(lds1Snapshot);
 
     // LDS 3: Filter "STATEFUL_2" removed.
-    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1));
+    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
     // Again, no new StatefulFilter instances should be created.
@@ -1351,7 +1351,7 @@ public class XdsNameResolverTest {
         .that(lds1Filter2.isShutdown()).isTrue();
 
     // LDS 4: Filter "STATEFUL_2" added back.
-    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
     // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
@@ -1392,7 +1392,7 @@ public class XdsNameResolverTest {
 
     // LDS 1.
     xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
-        statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+        filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(lds1Snapshot).hasSize(2);
@@ -1462,7 +1462,7 @@ public class XdsNameResolverTest {
         NO_FILTER_OVERRIDES);
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     ImmutableList<StatefulFilter> lds1SnapshotAlt = altStatefulFilterProvider.getAllInstances();
@@ -1513,7 +1513,7 @@ public class XdsNameResolverTest {
         NO_FILTER_OVERRIDES);
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1548,7 +1548,7 @@ public class XdsNameResolverTest {
         NO_FILTER_OVERRIDES);
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1575,7 +1575,7 @@ public class XdsNameResolverTest {
 
     // LDS 1.
     xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
-        statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+        filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(lds1Snapshot).hasSize(2);
@@ -1616,7 +1616,7 @@ public class XdsNameResolverTest {
     return statefulFilterProvider;
   }
 
-  private ImmutableList<NamedFilterConfig> statefulFilterConfigs(String... names) {
+  private ImmutableList<NamedFilterConfig> filterStateTestConfigs(String... names) {
     ImmutableList.Builder<NamedFilterConfig> result = ImmutableList.builder();
     for (String name : names) {
       result.add(new NamedFilterConfig(name, new StatefulFilter.Config()));
