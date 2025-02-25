@@ -1512,6 +1512,9 @@ public class XdsNameResolverTest {
     assertThat(lds2Filter2Alt.isShutdown()).isFalse();
   }
 
+  /**
+   * Verifies that all filter instances are shutdown (closed) on LDS updated without HCM.
+   */
   @Test
   public void filterState_shutdown_onLdsNotFound() {
     // Prepare filter registry and resolver.
@@ -1551,6 +1554,9 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter2.isShutdown()).isTrue();
   }
 
+  /**
+   * Verifies that all filter instances are shutdown (closed) on LDS ResourceWatcher shutdown.
+   */
   @Test
   public void filterState_shutdown_onResolverShutdown() {
     // Prepare filter registry and resolver.
