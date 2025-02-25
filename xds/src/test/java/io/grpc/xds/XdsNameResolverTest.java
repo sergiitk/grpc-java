@@ -1375,7 +1375,7 @@ public class XdsNameResolverTest {
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
+    xdsClient.deliverLdsUpdateForRdsNameWithFilters(RDS_RESOURCE_NAME,
         filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1542,7 +1542,7 @@ public class XdsNameResolverTest {
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
+    xdsClient.deliverLdsUpdateForRdsNameWithFilters(RDS_RESOURCE_NAME,
         filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -2549,10 +2549,10 @@ public class XdsNameResolverTest {
     }
 
     void deliverLdsUpdateForRdsName(String rdsName) {
-      deliverLdsUpdateForRdsName(rdsName, null);
+      deliverLdsUpdateForRdsNameWithFilters(rdsName, null);
     }
 
-    void deliverLdsUpdateForRdsName(
+    void deliverLdsUpdateForRdsNameWithFilters(
         String rdsName,
         @Nullable List<NamedFilterConfig> filterConfigs) {
       syncContext.execute(() -> {
