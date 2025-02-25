@@ -1530,7 +1530,7 @@ public class XdsNameResolverTest {
    * Verifies that filter instances are NOT shutdown on RDS_RESOURCE_NAME not found.
    */
   @Test
-  public void filterState_shutdown_notShutdownOnRdsNotFound() {
+  public void filterState_shutdown_noShutdownOnRdsNotFound() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
