@@ -793,7 +793,6 @@ final class XdsNameResolver extends NameResolver {
           routesData.add(new RouteData(route.routeMatch(), route.routeAction(), filters));
         } else {
           // Discard route
-          // TODO(sergiitk): [NOTE] parallels selectConfig
         }
       }
 
