@@ -1301,7 +1301,7 @@ public class XdsNameResolverTest {
   public void filterState_survivesLds() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    VirtualHost vhost = filterStateTestLdsVhost();
+    VirtualHost vhost = filterStateTestVhost();
 
     // LDS 1.
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
@@ -1379,7 +1379,7 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
 
     // RDS 1.
-    VirtualHost vhost1 = filterStateTestRdsVhost();
+    VirtualHost vhost1 = filterStateTestVhost();
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost1);
     assertClusterResolutionResult(call1, cluster1);
     // Initial RDS update should not generate Filter instances.
@@ -1396,7 +1396,7 @@ public class XdsNameResolverTest {
         .that(rds2Snapshot).isEqualTo(lds1Snapshot);
 
     // RDS 3: Contains a per-route override for STATEFUL_1.
-    VirtualHost vhost3 = filterStateTestRdsVhost(ImmutableMap.of(
+    VirtualHost vhost3 = filterStateTestVhost(ImmutableMap.of(
         STATEFUL_1, new StatefulFilter.Config("RDS1")
     ));
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost3);
@@ -1430,7 +1430,7 @@ public class XdsNameResolverTest {
     resolver.start(mockListener);
 
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    VirtualHost vhost = filterStateTestLdsVhost();
+    VirtualHost vhost = filterStateTestVhost();
 
     // LDS 1.
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
@@ -1476,7 +1476,7 @@ public class XdsNameResolverTest {
   public void filterState_shutdown_onLdsNotFound() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    VirtualHost vhost = filterStateTestLdsVhost();
+    VirtualHost vhost = filterStateTestVhost();
 
     // LDS 1.
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
@@ -1506,7 +1506,7 @@ public class XdsNameResolverTest {
   public void filterState_shutdown_onResolverShutdown() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    VirtualHost vhost = filterStateTestLdsVhost();
+    VirtualHost vhost = filterStateTestVhost();
 
     // LDS 1.
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
@@ -1546,7 +1546,7 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
 
     // RDS 1: Standard vhost with a route.
-    xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, filterStateTestRdsVhost());
+    xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, filterStateTestVhost());
     assertClusterResolutionResult(call1, cluster1);
     assertThat(statefulFilterProvider.getAllInstances()).isEqualTo(lds1Snapshot);
 
@@ -1586,18 +1586,7 @@ public class XdsNameResolverTest {
         perRouteOverrides);
   }
 
-  private Route filterStateTestRoute() {
-    return filterStateTestRoute(NO_FILTER_OVERRIDES);
-  }
-
-  private VirtualHost filterStateTestLdsVhost() {
-    return VirtualHost.create("virtual-host",
-        ImmutableList.of(expectedLdsResourceName),
-        ImmutableList.of(filterStateTestRoute()),
-        NO_FILTER_OVERRIDES);
-  }
-
-  private VirtualHost filterStateTestRdsVhost(
+  private VirtualHost filterStateTestVhost(
       @Nullable ImmutableMap<String, FilterConfig> perRouteOverrides) {
     return VirtualHost.create(
         "virtual-host",
@@ -1606,8 +1595,8 @@ public class XdsNameResolverTest {
         NO_FILTER_OVERRIDES);
   }
 
-  private VirtualHost filterStateTestRdsVhost() {
-    return filterStateTestRdsVhost(NO_FILTER_OVERRIDES);
+  private VirtualHost filterStateTestVhost() {
+    return filterStateTestVhost(NO_FILTER_OVERRIDES);
   }
 
   // End filter state tests.
