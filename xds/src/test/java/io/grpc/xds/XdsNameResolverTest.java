@@ -2792,7 +2792,7 @@ public class XdsNameResolverTest {
       }
     }
 
-    @SuppressWarnings("UnusedMethod") // TODO(sergiitk): [IMPL] remove
+
     static final class Config implements FilterConfig {
       private final String typeUrl;
       private final String config;
@@ -2803,7 +2803,7 @@ public class XdsNameResolverTest {
       }
 
       public Config(@Nullable Message rawProtoMessage, String typeUrl) {
-        this(rawProtoMessage.toString(), typeUrl);
+        this(rawProtoMessage != null ? rawProtoMessage.toString() : "<NO_MSG>", typeUrl);
       }
 
       public Config(String typeUrl) {
@@ -2814,7 +2814,7 @@ public class XdsNameResolverTest {
         this(DEFAULT_TYPE_URL);
       }
 
-      @Nullable
+      @SuppressWarnings("UnusedMethod")
       public String getConfig() {
         return config;
       }
