@@ -715,6 +715,7 @@ final class XdsNameResolver extends NameResolver {
       xdsClient.cancelXdsResourceWatch(XdsListenerResource.getInstance(), ldsResourceName, this);
     }
 
+    // called in syncContext
     private void updateActiveFilters(@Nullable List<NamedFilterConfig> filterConfigs) {
       if (filterConfigs == null) {
         filterConfigs = ImmutableList.of();
