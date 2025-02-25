@@ -1307,14 +1307,7 @@ public class XdsNameResolverTest {
    */
   @Test
   public void filterState_survivesLds() {
-    // Prepare filter registry and resolver.
-    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
-    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
-        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
-    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
-        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
-        metricRecorder);
-    resolver.start(mockListener);
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
     // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
@@ -1384,14 +1377,7 @@ public class XdsNameResolverTest {
    */
   @Test
   public void filterState_survivesRds() {
-    // Prepare filter registry and resolver.
-    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
-    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
-        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
-    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
-        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
-        metricRecorder);
-    resolver.start(mockListener);
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
     // Resource templating helpers.
@@ -1517,14 +1503,7 @@ public class XdsNameResolverTest {
    */
   @Test
   public void filterState_shutdown_onLdsNotFound() {
-    // Prepare filter registry and resolver.
-    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
-    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
-        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
-    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
-        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
-        metricRecorder);
-    resolver.start(mockListener);
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
     // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
@@ -1559,14 +1538,7 @@ public class XdsNameResolverTest {
    */
   @Test
   public void filterState_shutdown_onResolverShutdown() {
-    // Prepare filter registry and resolver.
-    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
-    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
-        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
-    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
-        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
-        metricRecorder);
-    resolver.start(mockListener);
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
     // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
@@ -1598,14 +1570,7 @@ public class XdsNameResolverTest {
    */
   @Test
   public void filterState_shutdown_notShutdownOnRdsNotFound() {
-    // Prepare filter registry and resolver.
-    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
-    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
-        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
-    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
-        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
-        metricRecorder);
-    resolver.start(mockListener);
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
     // LDS 1.
@@ -1638,6 +1603,17 @@ public class XdsNameResolverTest {
     assertEmptyResolutionResult(RDS_RESOURCE_NAME);
     assertThat(lds1Filter1.isShutdown()).isFalse();
     assertThat(lds1Filter2.isShutdown()).isFalse();
+  }
+
+  private StatefulFilter.Provider filterStateTestSetupResolver() {
+    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
+        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
+    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
+        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
+        metricRecorder);
+    resolver.start(mockListener);
+    return statefulFilterProvider;
   }
 
   private ImmutableList<NamedFilterConfig> statefulFilterConfigs(String... names) {
