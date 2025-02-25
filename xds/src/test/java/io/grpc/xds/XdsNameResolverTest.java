@@ -227,6 +227,10 @@ public class XdsNameResolverTest {
   @After
   public void tearDown() {
     XdsNameResolver.enableTimeout = originalEnableTimeout;
+    if (resolver == null) {
+      // Allow tests to test shutdown.
+      return;
+    }
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
     resolver.shutdown();
     if (xdsClient != null) {
@@ -1542,6 +1546,42 @@ public class XdsNameResolverTest {
     reset(mockListener);
     xdsClient.deliverLdsResourceNotFound();
     assertEmptyResolutionResult(expectedLdsResourceName);
+    // Verify shutdown.
+    assertThat(lds1Filter1.isShutdown()).isTrue();
+    assertThat(lds1Filter2.isShutdown()).isTrue();
+  }
+
+  @Test
+  public void filterState_shutdown_onResolverShutdown() {
+    // Prepare filter registry and resolver.
+    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
+        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
+    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
+        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
+        metricRecorder);
+    resolver.start(mockListener);
+    FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
+
+    // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
+    Route route = Route.forAction(
+        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
+        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
+        NO_FILTER_OVERRIDES);
+
+    // LDS 1.
+    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    assertClusterResolutionResult(call1, cluster1);
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    // Verify that StatefulFilter with different filter names result in different Filter instances.
+    assertThat(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Filter<name#>
+    StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
+    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
+
+    resolver.shutdown();
+    resolver = null;  // no need to shutdown again in the teardown.
     // Verify shutdown.
     assertThat(lds1Filter1.isShutdown()).isTrue();
     assertThat(lds1Filter2.isShutdown()).isTrue();
