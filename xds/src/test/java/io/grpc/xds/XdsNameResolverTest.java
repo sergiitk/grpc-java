@@ -1513,7 +1513,7 @@ public class XdsNameResolverTest {
   }
 
   /**
-   * Verifies that all filter instances are shutdown (closed) on LDS updated without HCM.
+   * Verifies that all filter instances are shutdown (closed) on LDS resource not found.
    */
   @Test
   public void filterState_shutdown_onLdsNotFound() {
@@ -1591,6 +1591,53 @@ public class XdsNameResolverTest {
     // Verify shutdown.
     assertThat(lds1Filter1.isShutdown()).isTrue();
     assertThat(lds1Filter2.isShutdown()).isTrue();
+  }
+
+  /**
+   * Verifies that filter instances are NOT shutdown on RDS_RESOURCE_NAME not found.
+   */
+  @Test
+  public void filterState_shutdown_notShutdownOnRdsNotFound() {
+    // Prepare filter registry and resolver.
+    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
+        .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
+    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
+        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
+        metricRecorder);
+    resolver.start(mockListener);
+    FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
+
+    // LDS 1.
+    xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
+        statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    // Verify that StatefulFilter with different filter names result in different Filter instances.
+    assertThat(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Filter<name#>
+    StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
+    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
+
+    // RDS 1: Standard vhost with a route.
+    Route route1 = Route.forAction(
+        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
+        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
+        NO_FILTER_OVERRIDES);
+    VirtualHost vhost1 = VirtualHost.create(
+        "virtual-host", ImmutableList.of(expectedLdsResourceName), ImmutableList.of(route1),
+        NO_FILTER_OVERRIDES);
+    xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost1);
+    assertClusterResolutionResult(call1, cluster1);
+    // Confirm no new filter instances.
+    assertThat(statefulFilterProvider.getAllInstances()).isEqualTo(lds1Snapshot);
+
+    // RDS 2: RDS_RESOURCE_NAME not found.
+    reset(mockListener);
+    xdsClient.deliverRdsResourceNotFound(RDS_RESOURCE_NAME);
+    assertEmptyResolutionResult(RDS_RESOURCE_NAME);
+    assertThat(lds1Filter1.isShutdown()).isFalse();
+    assertThat(lds1Filter2.isShutdown()).isFalse();
   }
 
   private ImmutableList<NamedFilterConfig> statefulFilterConfigs(String... names) {
