@@ -16,7 +16,6 @@
 
 package io.grpc.xds;
 
-import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 import static io.grpc.xds.FaultFilter.HEADER_ABORT_GRPC_STATUS_KEY;
@@ -43,7 +42,6 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import com.google.protobuf.Message;
 import com.google.protobuf.util.Durations;
 import com.google.re2j.Pattern;
 import io.grpc.CallOptions;
@@ -106,19 +104,14 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.ConcurrentModificationException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import org.junit.After;
 import org.junit.Before;
@@ -2703,126 +2696,6 @@ public class XdsNameResolverTest {
 
     void deliverErrorStatus() {
       listener.onClose(Status.UNAVAILABLE, new Metadata());
-    }
-  }
-
-  /**
-   * Unlike most singleton-based filters, each StatefulFilter object has a distinct identity.
-   */
-  private static class StatefulFilter implements io.grpc.xds.Filter {
-    private static final String DEFAULT_TYPE_URL = "type.googleapis.com/grpc.test.StatefulFilter";
-    private final int iteration;
-    private final AtomicBoolean shutdown = new AtomicBoolean();
-
-    public StatefulFilter(int iteration) {
-      this.iteration = iteration;
-    }
-
-    public boolean isShutdown() {
-      return shutdown.get();
-    }
-
-    @Override
-    public void close() {
-      if (!shutdown.compareAndSet(false, true)) {
-        throw new ConcurrentModificationException(
-            "Unexpected: StatefulFilter#close called multiple times");
-      }
-    }
-
-    @Override
-    public String toString() {
-      return "StatefulFilter{"
-          + "iteration=" + iteration
-          + '}';
-    }
-
-    static final class Provider implements io.grpc.xds.Filter.Provider {
-      private final String typeUrl;
-      private final ConcurrentMap<Integer, StatefulFilter> instances = new ConcurrentHashMap<>();
-
-      volatile int counter;
-
-      Provider() {
-        this(DEFAULT_TYPE_URL);
-      }
-
-      Provider(String typeUrl) {
-        this.typeUrl = typeUrl;
-      }
-
-      @Override
-      public String[] typeUrls() {
-        return new String[]{typeUrl};
-      }
-
-      @Override
-      public boolean isClientFilter() {
-        return true;
-      }
-
-      @Override
-      public synchronized StatefulFilter newInstance() {
-        StatefulFilter filter = new StatefulFilter(counter++);
-        instances.put(filter.iteration, filter);
-        return filter;
-      }
-
-      public synchronized StatefulFilter getInstance(int idx) {
-        return instances.get(idx);
-      }
-
-      public synchronized ImmutableList<StatefulFilter> getAllInstances() {
-        return IntStream.range(0, counter).mapToObj(this::getInstance).collect(toImmutableList());
-      }
-
-      @SuppressWarnings("UnusedMethod")
-      public synchronized int getCount() {
-        return counter;
-      }
-
-      @Override
-      public io.grpc.xds.ConfigOrError<Config> parseFilterConfig(Message rawProtoMessage) {
-        return io.grpc.xds.ConfigOrError.fromConfig(new Config(rawProtoMessage, typeUrl));
-      }
-
-      @Override
-      public io.grpc.xds.ConfigOrError<Config> parseFilterConfigOverride(Message rawProtoMessage) {
-        return io.grpc.xds.ConfigOrError.fromConfig(new Config(rawProtoMessage, typeUrl));
-      }
-    }
-
-
-    static final class Config implements FilterConfig {
-      private final String typeUrl;
-      private final String config;
-
-      public Config(String config, String typeUrl) {
-        this.config = config;
-        this.typeUrl = typeUrl;
-      }
-
-      public Config(@Nullable Message rawProtoMessage, String typeUrl) {
-        this(rawProtoMessage != null ? rawProtoMessage.toString() : "<NO_MSG>", typeUrl);
-      }
-
-      public Config(String typeUrl) {
-        this("<BLANK>", typeUrl);
-      }
-
-      public Config() {
-        this(DEFAULT_TYPE_URL);
-      }
-
-      @SuppressWarnings("UnusedMethod")
-      public String getConfig() {
-        return config;
-      }
-
-      @Override
-      public String typeUrl() {
-        return typeUrl;
-      }
     }
   }
 }
