@@ -1291,6 +1291,16 @@ public class XdsNameResolverTest {
         call1, configSelector2, "rls-plugin-foo", 30.0);
   }
 
+  // Begin filter state tests.
+
+  /**
+   * Verifies the lifecycle of HCM filter instances across LDS updates.
+   *
+   * <p>Filter instances:
+   *   1. Must have one unique instance per HCM filter name.
+   *   2. Must be reused when an LDS update with HCM contains a filter with the same name.
+   *   3. Must be shutdown (closed) when an HCM in a LDS update doesn't a filter with the same name.
+   */
   @Test
   public void filterState_survivesLds() {
     // Prepare filter registry and resolver.
@@ -1308,10 +1318,9 @@ public class XdsNameResolverTest {
         RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
         RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
         NO_OVERRIDES);
-    ImmutableList<Route> routes = ImmutableList.of(route);
 
     // LDS1.
-    xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1325,7 +1334,7 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter2.iteration).isEqualTo(1);
 
     // LDS 2: filter configs with the same names.
-    xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     // Filter names hasn't changed, so expecting no new StatefulFilter instances.
@@ -1333,7 +1342,7 @@ public class XdsNameResolverTest {
         .that(lds2Snapshot).isEqualTo(lds1Snapshot);
 
     // LDS 3: Filter "STATEFUL_2" removed.
-    xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1));
+    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
     // Again, no new StatefulFilter instances should be created.
@@ -1345,7 +1354,7 @@ public class XdsNameResolverTest {
         .that(lds1Filter2.isShutdown()).isTrue();
 
     // LDS 4: Filter "STATEFUL_2" added back.
-    xdsClient.deliverLdsUpdateWithFilters(routes, statefulFilterChain(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
     // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
@@ -1361,10 +1370,14 @@ public class XdsNameResolverTest {
     assertThat(lds4Filter2.isShutdown()).isFalse();
   }
 
-  // Missing tests:
-  // TODO(sergiitk): [TEST] updated filter same has name, but different typeUrls.
-  // TODO(sergiitk): [TEST] shutdown on bad LDS/RDS
-
+  /**
+   * Verifies the lifecycle of HCM filter instances across RDS updates.
+   *
+   * <p>Filter instances:
+   *   1. Must have instantiated by the initial LDS.
+   *   2. Must be reused by all subsequent RDS updates.
+   *   3. Must be not shutdown (closed) by valid RDS updates.
+   */
   @Test
   public void filterState_survivesRds() {
     // Prepare filter registry and resolver.
@@ -1377,8 +1390,7 @@ public class XdsNameResolverTest {
     resolver.start(mockListener);
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
 
-
-    // Some resource templating helpers.
+    // Resource templating helpers.
     Function<ImmutableMap<String, FilterConfig>, Route> makeRoute = (overrides) -> Route.forAction(
         RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
         RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
@@ -1390,7 +1402,7 @@ public class XdsNameResolverTest {
 
     // LDS 1.
     xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
-        statefulFilterChain(STATEFUL_1, STATEFUL_2));
+        statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(lds1Snapshot).hasSize(2);
@@ -1430,7 +1442,73 @@ public class XdsNameResolverTest {
         .that(rds3Snapshot).isEqualTo(lds1Snapshot);
   }
 
-  private ImmutableList<NamedFilterConfig> statefulFilterChain(String... names) {
+  /**
+   * Verifies a special case where an existing filter is has a different typeUrl in a subsequent
+   * LDS update.
+   *
+   * <p>Expectations:
+   *   1. The old filter instance must be shutdown.
+   *   2. A new filter instance must be created for the new filter with different typeUrl.
+   */
+  @Test
+  public void filterState_specialCase_sameNameDifferentTypeUrl() {
+    // Prepare filter registry and resolver.
+    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
+    String altTypeUrl = "type.googleapis.com/grpc.test.AltStatefulFilter";
+    StatefulFilter.Provider altStatefulFilterProvider = new StatefulFilter.Provider(altTypeUrl);
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
+        .register(statefulFilterProvider, altStatefulFilterProvider, ROUTER_FILTER_PROVIDER);
+
+    resolver = new XdsNameResolver(targetUri, null, AUTHORITY, null, serviceConfigParser,
+        syncContext, scheduler, xdsClientPoolFactory, mockRandom, filterRegistry, null,
+        metricRecorder);
+    resolver.start(mockListener);
+    FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
+
+    // We'll be sending the same vhost with the same route in each LDS, only changing HCM filters.
+    Route route = Route.forAction(
+        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
+        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
+        NO_OVERRIDES);
+
+    // LDS1.
+    xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
+    assertClusterResolutionResult(call1, cluster1);
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    ImmutableList<StatefulFilter> lds1SnapshotAlt = altStatefulFilterProvider.getAllInstances();
+    // Verify that StatefulFilter with different filter names result in different Filter instances.
+    assertThat(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Filter<name#>
+    StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
+    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
+    // Nothing in the alternative provider.
+    assertThat(lds1SnapshotAlt).isEmpty();
+
+    // LDS 2: Filter STATEFUL_2 present, but with a different typeUrl: altTypeUrl.
+    ImmutableList<NamedFilterConfig> filterConfigs = ImmutableList.of(
+        new NamedFilterConfig(STATEFUL_1, new StatefulFilter.Config()),
+        new NamedFilterConfig(STATEFUL_2, new StatefulFilter.Config(altTypeUrl)),
+        new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG)
+    );
+    xdsClient.deliverLdsUpdateWithFilters(route, filterConfigs);
+    assertClusterResolutionResult(call1, cluster1);
+    ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
+    ImmutableList<StatefulFilter> lds2SnapshotAlt = altStatefulFilterProvider.getAllInstances();
+    // Filter "STATEFUL_2" has different typeUrl, and should be treated as a new filter.
+    // No changes in the snapshot of normal stateful filters.
+    assertThat(lds2Snapshot).isEqualTo(lds1Snapshot);
+    // A new filter instance is created by altStatefulFilterProvider.
+    assertThat(lds2SnapshotAlt).hasSize(1);
+    StatefulFilter lds2Filter2Alt = lds2SnapshotAlt.get(0);
+    assertThat(lds2Filter2Alt).isNotSameInstanceAs(lds1Filter2);
+    // Verify the shutdown state.
+    assertThat(lds1Filter1.isShutdown()).isFalse();
+    assertThat(lds1Filter2.isShutdown()).isTrue();
+    assertThat(lds2Filter2Alt.isShutdown()).isFalse();
+  }
+
+  private ImmutableList<NamedFilterConfig> statefulFilterConfigs(String... names) {
     ImmutableList.Builder<NamedFilterConfig> result = ImmutableList.builder();
     for (String name : names) {
       result.add(new NamedFilterConfig(name, new StatefulFilter.Config()));
@@ -1438,6 +1516,11 @@ public class XdsNameResolverTest {
     result.add(new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
     return result.build();
   }
+
+  // Missing tests:
+  // TODO(sergiitk): [TEST] shutdown on bad LDS/RDS
+
+  // End filter state tests.
 
   @SuppressWarnings("unchecked")
   private void assertEmptyResolutionResult(String resource) {
@@ -2304,6 +2387,10 @@ public class XdsNameResolverTest {
       deliverLdsUpdateWithFilters(vhost, filterConfigs);
     }
 
+    void deliverLdsUpdateWithFilters(Route route, List<NamedFilterConfig> filterConfigs) {
+      deliverLdsUpdateWithFilters(ImmutableList.of(route), filterConfigs);
+    }
+
     void deliverLdsUpdateWithFilters(VirtualHost vhost, List<NamedFilterConfig> filterConfigs) {
       syncContext.execute(() -> {
         ldsWatcher.onChanged(LdsUpdate.forApiListener(HttpConnectionManager.forVirtualHosts(
@@ -2536,8 +2623,7 @@ public class XdsNameResolverTest {
    * Unlike most singleton-based filters, each StatefulFilter object has a distinct identity.
    */
   private static class StatefulFilter implements io.grpc.xds.Filter {
-    static final String TYPE_URL = "my-stateful-filter";
-
+    private static final String DEFAULT_TYPE_URL = "type.googleapis.com/grpc.test.StatefulFilter";
     private final int iteration;
     private final AtomicBoolean shutdown = new AtomicBoolean();
 
@@ -2565,12 +2651,22 @@ public class XdsNameResolverTest {
     }
 
     static final class Provider implements io.grpc.xds.Filter.Provider {
-      volatile int counter;
+      private final String typeUrl;
       private final ConcurrentMap<Integer, StatefulFilter> instances = new ConcurrentHashMap<>();
+
+      volatile int counter;
+
+      Provider() {
+        this(DEFAULT_TYPE_URL);
+      }
+
+      Provider(String typeUrl) {
+        this.typeUrl = typeUrl;
+      }
 
       @Override
       public String[] typeUrls() {
-        return new String[]{TYPE_URL};
+        return new String[]{typeUrl};
       }
 
       @Override
@@ -2600,29 +2696,35 @@ public class XdsNameResolverTest {
 
       @Override
       public io.grpc.xds.ConfigOrError<Config> parseFilterConfig(Message rawProtoMessage) {
-        return io.grpc.xds.ConfigOrError.fromConfig(new Config(rawProtoMessage));
+        return io.grpc.xds.ConfigOrError.fromConfig(new Config(rawProtoMessage, typeUrl));
       }
 
       @Override
       public io.grpc.xds.ConfigOrError<Config> parseFilterConfigOverride(Message rawProtoMessage) {
-        return io.grpc.xds.ConfigOrError.fromConfig(new Config(rawProtoMessage));
+        return io.grpc.xds.ConfigOrError.fromConfig(new Config(rawProtoMessage, typeUrl));
       }
     }
 
     @SuppressWarnings("UnusedMethod") // TODO(sergiitk): [IMPL] remove
     static final class Config implements FilterConfig {
+      private final String typeUrl;
       private final String config;
 
-      public Config(@Nullable Message rawProtoMessage) {
-        config = rawProtoMessage.toString();
+      public Config(String config, String typeUrl) {
+        this.config = config;
+        this.typeUrl = typeUrl;
       }
 
-      public Config(String config) {
-        this.config = config;
+      public Config(@Nullable Message rawProtoMessage, String typeUrl) {
+        this(rawProtoMessage.toString(), typeUrl);
+      }
+
+      public Config(String typeUrl) {
+        this("<BLANK>", typeUrl);
       }
 
       public Config() {
-        config = "<BLANK>";
+        this(DEFAULT_TYPE_URL);
       }
 
       @Nullable
@@ -2632,7 +2734,7 @@ public class XdsNameResolverTest {
 
       @Override
       public String typeUrl() {
-        return TYPE_URL;
+        return typeUrl;
       }
     }
   }
