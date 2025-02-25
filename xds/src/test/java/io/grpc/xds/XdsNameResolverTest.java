@@ -118,7 +118,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import org.junit.After;
@@ -1309,10 +1308,10 @@ public class XdsNameResolverTest {
   public void filterState_survivesLds() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    Route route = filterStateTestRoute();
+    VirtualHost vhost = filterStateTestLdsVhost();
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1326,7 +1325,7 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter2.iteration).isEqualTo(1);
 
     // LDS 2: filter configs with the same names.
-    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     // Filter names hasn't changed, so expecting no new StatefulFilter instances.
@@ -1334,7 +1333,7 @@ public class XdsNameResolverTest {
         .that(lds2Snapshot).isEqualTo(lds1Snapshot);
 
     // LDS 3: Filter "STATEFUL_2" removed.
-    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1));
+    xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
     // Again, no new StatefulFilter instances should be created.
@@ -1346,7 +1345,7 @@ public class XdsNameResolverTest {
         .that(lds1Filter2.isShutdown()).isTrue();
 
     // LDS 4: Filter "STATEFUL_2" added back.
-    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
     // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
@@ -1438,10 +1437,10 @@ public class XdsNameResolverTest {
     resolver.start(mockListener);
 
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    Route route = filterStateTestRoute();
+    VirtualHost vhost = filterStateTestLdsVhost();
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     ImmutableList<StatefulFilter> lds1SnapshotAlt = altStatefulFilterProvider.getAllInstances();
@@ -1456,11 +1455,11 @@ public class XdsNameResolverTest {
 
     // LDS 2: Filter STATEFUL_2 present, but with a different typeUrl: altTypeUrl.
     ImmutableList<NamedFilterConfig> filterConfigs = ImmutableList.of(
-        new NamedFilterConfig(STATEFUL_1, new StatefulFilter.Config()),
-        new NamedFilterConfig(STATEFUL_2, new StatefulFilter.Config(altTypeUrl)),
+        new NamedFilterConfig(STATEFUL_1, new Config()),
+        new NamedFilterConfig(STATEFUL_2, new Config(altTypeUrl)),
         new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG)
     );
-    xdsClient.deliverLdsUpdateWithFilters(route, filterConfigs);
+    xdsClient.deliverLdsUpdateWithFilters(vhost, filterConfigs);
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     ImmutableList<StatefulFilter> lds2SnapshotAlt = altStatefulFilterProvider.getAllInstances();
@@ -1484,10 +1483,10 @@ public class XdsNameResolverTest {
   public void filterState_shutdown_onLdsNotFound() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    Route route = filterStateTestRoute();
+    VirtualHost vhost = filterStateTestLdsVhost();
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1514,10 +1513,10 @@ public class XdsNameResolverTest {
   public void filterState_shutdown_onResolverShutdown() {
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupResolver();
     FakeXdsClient xdsClient = (FakeXdsClient) resolver.getXdsClient();
-    Route route = filterStateTestRoute();
+    VirtualHost vhost = filterStateTestLdsVhost();
 
     // LDS 1.
-    xdsClient.deliverLdsUpdateWithFilters(route, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1554,16 +1553,8 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
 
     // RDS 1: Standard vhost with a route.
-    Route route1 = Route.forAction(
-        RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
-        RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
-        NO_FILTER_OVERRIDES);
-    VirtualHost vhost1 = VirtualHost.create(
-        "virtual-host", ImmutableList.of(expectedLdsResourceName), ImmutableList.of(route1),
-        NO_FILTER_OVERRIDES);
-    xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost1);
+    xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, filterStateTestRdsVhost());
     assertClusterResolutionResult(call1, cluster1);
-    // Confirm no new filter instances.
     assertThat(statefulFilterProvider.getAllInstances()).isEqualTo(lds1Snapshot);
 
     // RDS 2: RDS_RESOURCE_NAME not found.
@@ -1604,6 +1595,13 @@ public class XdsNameResolverTest {
 
   private Route filterStateTestRoute() {
     return filterStateTestRoute(NO_FILTER_OVERRIDES);
+  }
+
+  private VirtualHost filterStateTestLdsVhost() {
+    return VirtualHost.create("virtual-host",
+        ImmutableList.of(expectedLdsResourceName),
+        ImmutableList.of(filterStateTestRoute()),
+        NO_FILTER_OVERRIDES);
   }
 
   private VirtualHost filterStateTestRdsVhost(
@@ -2478,16 +2476,6 @@ public class XdsNameResolverTest {
         ldsWatcher.onChanged(LdsUpdate.forApiListener(HttpConnectionManager.forVirtualHosts(
             0L, Collections.singletonList(virtualHost), null)));
       });
-    }
-
-    void deliverLdsUpdateWithFilters(List<Route> routes, List<NamedFilterConfig> filterConfigs) {
-      VirtualHost vhost = VirtualHost.create("virtual-host",
-          ImmutableList.of(expectedLdsResourceName), routes, NO_FILTER_OVERRIDES);
-      deliverLdsUpdateWithFilters(vhost, filterConfigs);
-    }
-
-    void deliverLdsUpdateWithFilters(Route route, List<NamedFilterConfig> filterConfigs) {
-      deliverLdsUpdateWithFilters(ImmutableList.of(route), filterConfigs);
     }
 
     void deliverLdsUpdateWithFilters(VirtualHost vhost, List<NamedFilterConfig> filterConfigs) {
