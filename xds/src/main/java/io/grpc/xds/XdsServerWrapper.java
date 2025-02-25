@@ -59,7 +59,6 @@ import io.grpc.xds.internal.security.SslContextProviderSupplier;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.ArrayList;
-import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -119,7 +118,7 @@ final class XdsServerWrapper extends Server {
   // how to identify this is the same filter chain
   // - based on index?
   // - based on FilterChainMatch?
-  private final HashMap<String, Filter> activeFilters = new HashMap<>();
+  // private final HashMap<String, Filter> activeFilters = new HashMap<>();
   // private final HashMap<FilterChain, HashMap<String, Filter>> activeFilters = new HashMap<>();
 
   XdsServerWrapper(
@@ -539,12 +538,12 @@ final class XdsServerWrapper extends Server {
     private ImmutableMap<Route, ServerInterceptor> generatePerRouteInterceptors(
         @Nullable List<NamedFilterConfig> filterConfigs, List<VirtualHost> virtualHosts) {
       // This should always be called from the sync context.
-      // TODO(sergiitk): [QUESTION] add a note about throw failing tests
+      // Ideally we'd want to throw otherwise, but this breaks the tests now.
       // syncContext.throwIfNotInThisSynchronizationContext();
 
       ImmutableMap.Builder<Route, ServerInterceptor> perRouteInterceptors =
           new ImmutableMap.Builder<>();
-      Set<String> filtersToShutdown = new HashSet<>(activeFilters.keySet());
+      // Set<String> filtersToShutdown = new HashSet<>(activeFilters.keySet());
 
       for (VirtualHost virtualHost : virtualHosts) {
         for (Route route : virtualHost.routes()) {
@@ -574,12 +573,11 @@ final class XdsServerWrapper extends Server {
               logger.warning("HttpFilter[" + name + "]: not supported on server-side: " + typeUrl);
               continue;
             }
-            // Valid server filter for given type found; remove name from the chopping block.
-            filtersToShutdown.remove(name);
 
             // Upsert filter to the active filters map.
-            Filter filter = activeFilters.computeIfAbsent(name, k -> provider.newInstance());
+            // Filter filter = activeFilters.computeIfAbsent(name, k -> provider.newInstance());
 
+            Filter filter = provider.newInstance();
             ServerInterceptor interceptor =
                 filter.buildServerInterceptor(config, perRouteOverrides.get(name));
             if (interceptor != null) {
@@ -593,16 +591,16 @@ final class XdsServerWrapper extends Server {
         }
       }
 
-      // Shutdown filters not present in the current chain.
-      for (String name : filtersToShutdown) {
-        Filter filterToShutdown = activeFilters.remove(name);
-        if (filterToShutdown == null) {
-          // Shouldn't happen.
-          throw new ConcurrentModificationException("Filter to shutdown '" + name
-              + "' was removed from the active filters outside of the syncContext");
-        }
-        filterToShutdown.close();
-      }
+      // // Shutdown filters not present in the current chain.
+      // for (String name : filtersToShutdown) {
+      //   Filter filterToShutdown = activeFilters.remove(name);
+      //   if (filterToShutdown == null) {
+      //     // Shouldn't happen.
+      //     throw new ConcurrentModificationException("Filter to shutdown '" + name
+      //         + "' was removed from the active filters outside of the syncContext");
+      //   }
+      //   filterToShutdown.close();
+      // }
 
       return perRouteInterceptors.buildOrThrow();
     }
