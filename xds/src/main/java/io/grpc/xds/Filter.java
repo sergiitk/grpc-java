@@ -107,6 +107,7 @@ interface Filter extends Closeable {
   @Override
   default void close() {
     // Optional cleanup on filter shutdown.
+    // TODO(sergiitk): [IMPL] better doc
   }
 
   /** Filter config with instance name. */
@@ -120,10 +121,8 @@ interface Filter extends Closeable {
       this.filterConfig = filterConfig;
     }
 
-    public String filterStateKey() {
-      // TODO(sergiitk): handle wrong filter type with the same name
-      return name;
-      // return name + "_" + filterConfig.typeUrl();
+    String filterStateKey() {
+      return name + "_" + filterConfig.typeUrl();
     }
 
     @Override

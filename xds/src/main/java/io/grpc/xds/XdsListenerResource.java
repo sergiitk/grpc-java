@@ -485,7 +485,6 @@ class XdsListenerResource extends XdsResourceType<LdsUpdate> {
   static io.grpc.xds.HttpConnectionManager parseHttpConnectionManager(
       HttpConnectionManager proto, FilterRegistry filterRegistry,
       boolean isForClient, XdsResourceType.Args args) throws ResourceInvalidException {
-    // TODO(sergiitk): [impl] bootstrap info is available here in args.
     if (proto.getXffNumTrustedHops() != 0) {
       throw new ResourceInvalidException(
           "HttpConnectionManager with xff_num_trusted_hops unsupported");
