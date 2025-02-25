@@ -85,6 +85,11 @@ class StatefulFilter implements Filter {
     }
 
     @Override
+    public boolean isServerFilter() {
+      return true;
+    }
+
+    @Override
     public synchronized StatefulFilter newInstance() {
       StatefulFilter filter = new StatefulFilter(counter++);
       instances.put(filter.iteration, filter);
