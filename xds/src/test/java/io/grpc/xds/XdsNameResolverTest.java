@@ -145,7 +145,7 @@ public class XdsNameResolverTest {
   private static final RouterFilter.Provider ROUTER_FILTER_PROVIDER = new RouterFilter.Provider();
 
   // Readability: makes it simpler to distinguish resource parameters.
-  private static final ImmutableMap<String, FilterConfig> NO_OVERRIDES = ImmutableMap.of();
+  private static final ImmutableMap<String, FilterConfig> NO_FILTER_OVERRIDES = ImmutableMap.of();
   private static final ImmutableList<HashPolicy> NO_HASH_POLICIES = ImmutableList.of();
 
   // Stateful instance filter names.
@@ -1317,7 +1317,7 @@ public class XdsNameResolverTest {
     Route route = Route.forAction(
         RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
         RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
-        NO_OVERRIDES);
+        NO_FILTER_OVERRIDES);
 
     // LDS1.
     xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
@@ -1398,7 +1398,7 @@ public class XdsNameResolverTest {
     Function<ImmutableMap<String, FilterConfig>, ImmutableList<Route>> makeOneRoute
         = makeRoute.andThen(ImmutableList::of);
     Function<ImmutableList<Route>, VirtualHost> makeVhost = (routes) -> VirtualHost.create(
-        "virtual-host", ImmutableList.of(expectedLdsResourceName), routes, NO_OVERRIDES);
+        "virtual-host", ImmutableList.of(expectedLdsResourceName), routes, NO_FILTER_OVERRIDES);
 
     // LDS 1.
     xdsClient.deliverLdsUpdateForRdsName(RDS_RESOURCE_NAME,
@@ -1412,7 +1412,7 @@ public class XdsNameResolverTest {
     assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
 
     // RDS 1.
-    VirtualHost vhost1 = makeVhost.apply(makeOneRoute.apply(NO_OVERRIDES));
+    VirtualHost vhost1 = makeVhost.apply(makeOneRoute.apply(NO_FILTER_OVERRIDES));
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost1);
     assertClusterResolutionResult(call1, cluster1);
     // Initial RDS update should not generate Filter instances.
@@ -1469,7 +1469,7 @@ public class XdsNameResolverTest {
     Route route = Route.forAction(
         RouteMatch.withPathExactOnly(call1.getFullMethodNameForPath()),
         RouteAction.forCluster(cluster1, NO_HASH_POLICIES, null, null, true),
-        NO_OVERRIDES);
+        NO_FILTER_OVERRIDES);
 
     // LDS1.
     xdsClient.deliverLdsUpdateWithFilters(route, statefulFilterConfigs(STATEFUL_1, STATEFUL_2));
@@ -1516,9 +1516,6 @@ public class XdsNameResolverTest {
     result.add(new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
     return result.build();
   }
-
-  // Missing tests:
-  // TODO(sergiitk): [TEST] shutdown on bad LDS/RDS
 
   // End filter state tests.
 
@@ -2383,7 +2380,7 @@ public class XdsNameResolverTest {
 
     void deliverLdsUpdateWithFilters(List<Route> routes, List<NamedFilterConfig> filterConfigs) {
       VirtualHost vhost = VirtualHost.create("virtual-host",
-          ImmutableList.of(expectedLdsResourceName), routes, NO_OVERRIDES);
+          ImmutableList.of(expectedLdsResourceName), routes, NO_FILTER_OVERRIDES);
       deliverLdsUpdateWithFilters(vhost, filterConfigs);
     }
 
