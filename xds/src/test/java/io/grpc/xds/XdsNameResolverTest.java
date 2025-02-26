@@ -1372,7 +1372,7 @@ public class XdsNameResolverTest {
         filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
-    assertThat(lds1Snapshot).hasSize(2);
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
@@ -1391,13 +1391,13 @@ public class XdsNameResolverTest {
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost1);
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> rds2Snapshot = statefulFilterProvider.getAllInstances();
-    // Neither should any following RDS updates.
+    // Neither should any subsequent RDS updates.
     assertWithMessage("RDS 2: Expected Filter instances to be reused across RDS route updates")
         .that(rds2Snapshot).isEqualTo(lds1Snapshot);
 
     // RDS 3: Contains a per-route override for STATEFUL_1.
     VirtualHost vhost3 = filterStateTestVhost(ImmutableMap.of(
-        STATEFUL_1, new StatefulFilter.Config("RDS1")
+        STATEFUL_1, new StatefulFilter.Config("RDS3")
     ));
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, vhost3);
     assertClusterResolutionResult(call1, cluster1);
@@ -1586,17 +1586,16 @@ public class XdsNameResolverTest {
         perRouteOverrides);
   }
 
-  private VirtualHost filterStateTestVhost(
-      @Nullable ImmutableMap<String, FilterConfig> perRouteOverrides) {
+  private VirtualHost filterStateTestVhost() {
+    return filterStateTestVhost(NO_FILTER_OVERRIDES);
+  }
+
+  private VirtualHost filterStateTestVhost(ImmutableMap<String, FilterConfig> perRouteOverrides) {
     return VirtualHost.create(
-        "virtual-host",
+        "stateful-vhost",
         ImmutableList.of(expectedLdsResourceName),
         ImmutableList.of(filterStateTestRoute(perRouteOverrides)),
         NO_FILTER_OVERRIDES);
-  }
-
-  private VirtualHost filterStateTestVhost() {
-    return filterStateTestVhost(NO_FILTER_OVERRIDES);
   }
 
   // End filter state tests.

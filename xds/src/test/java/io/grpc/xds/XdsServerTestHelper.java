@@ -256,5 +256,9 @@ public class XdsServerTestHelper {
     void deliverRdsUpdate(String rdsName, List<VirtualHost> virtualHosts) {
       rdsWatchers.get(rdsName).onChanged(new RdsUpdate(virtualHosts));
     }
+
+    void deliverRdsUpdate(String rdsName, VirtualHost virtualHost) {
+      deliverRdsUpdate(rdsName, ImmutableList.of(virtualHost));
+    }
   }
 }

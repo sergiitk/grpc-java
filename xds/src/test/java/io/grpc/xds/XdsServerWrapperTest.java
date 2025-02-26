@@ -75,6 +75,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -1285,15 +1286,15 @@ public class XdsServerWrapperTest {
   public void filterState_survivesLds() throws Exception {
     SettableFuture<Server> start = SettableFuture.create();
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServerWrapper(start);
-    VirtualHost vhost = filterStateTestLdsVhost();
+    VirtualHost vhost = filterStateTestVhost();
 
     // LDS 1.
-    HttpConnectionManager hcm1 = filterStateTestHcm(vhost,
-        filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
+    HttpConnectionManager hcm1 = createHcm(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     EnvoyServerProtoData.FilterChain fc1 = createFilterChain("fc1", hcm1);
     xdsClient.deliverLdsUpdate(fc1, null);
     start.get(5000, TimeUnit.MILLISECONDS);
     verify(listener).onServing();
+    verify(mockServer).start();
     // TODO(sergiitk): [IMPL] consider other checks from discoverState_virtualhost
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1315,9 +1316,8 @@ public class XdsServerWrapperTest {
         .that(lds2Snapshot).isEqualTo(lds1Snapshot);
 
     // LDS 3: Filter "STATEFUL_2" removed.
-    HttpConnectionManager hcm2 = filterStateTestHcm(vhost, filterStateTestConfigs(STATEFUL_1));
+    HttpConnectionManager hcm2 = createHcm(vhost, filterStateTestConfigs(STATEFUL_1));
     xdsClient.deliverLdsUpdate(createFilterChain("fc1", hcm2), null);
-    start.get(5000, TimeUnit.MILLISECONDS);
     ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
     // Again, no new StatefulFilter instances should be created.
     assertWithMessage("LDS 3: Expected Filter instances to be reused across LDS updates")
@@ -1329,7 +1329,6 @@ public class XdsServerWrapperTest {
 
     // LDS 4: Filter "STATEFUL_2" added back.
     xdsClient.deliverLdsUpdate(fc1, null);
-    start.get(5000, TimeUnit.MILLISECONDS);
     ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
     // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
     // a new instance should be created.
@@ -1344,8 +1343,64 @@ public class XdsServerWrapperTest {
     assertThat(lds4Filter2.isShutdown()).isFalse();
   }
 
-  // TODO(sergiitk): [TEST] filterState_survivesRds
-  // TODO(sergiitk): [TEST] filterState_survivesLds_multipleHcm
+  // TODO(sergiitk): [TEST] filterState_survivesLds_multipleFilterChains -- also cover default FC
+
+  @Test
+  public void filterState_survivesRds() throws Exception {
+    SettableFuture<Server> start = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServerWrapper(start);
+    String rdsName = "rds.example.com";
+
+    // LDS 1.
+    EnvoyServerProtoData.FilterChain fc1 = createFilterChain("fc1",
+        createHcmForRds(rdsName, filterStateTestConfigs(STATEFUL_1, STATEFUL_2)));
+    xdsClient.deliverLdsUpdate(fc1, null);
+    xdsClient.rdsCount.await(1, TimeUnit.SECONDS);
+    verify(listener, never()).onServing();
+    // Server didn't start, but filter instances should have already been created.
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Filter<name#>
+    StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
+    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
+
+    // RDS 1.
+    VirtualHost vhost1 = filterStateTestVhost();
+    xdsClient.deliverRdsUpdate(rdsName, vhost1);
+    start.get(5000, TimeUnit.MILLISECONDS);
+    verify(listener).onServing();
+    verify(mockServer).start();
+    assertThat(getSelectorRoutingConfigs()).hasSize(1);
+    assertThat(getSelectorVhosts(fc1)).containsExactly(vhost1);
+    // Initial RDS update should not generate Filter instances.
+    ImmutableList<StatefulFilter> rds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertWithMessage("RDS 1: Expected Filter instances to be reused across RDS route updates")
+        .that(rds1Snapshot).isEqualTo(lds1Snapshot);
+
+    // RDS 2: exactly the same as RDS 1.
+    xdsClient.deliverRdsUpdate(rdsName, vhost1);
+    assertThat(getSelectorRoutingConfigs()).hasSize(1);
+    assertThat(getSelectorVhosts(fc1)).containsExactly(vhost1);
+    ImmutableList<StatefulFilter> rds2Snapshot = statefulFilterProvider.getAllInstances();
+    // Neither should any subsequent RDS updates.
+    assertWithMessage("RDS 2: Expected Filter instances to be reused across RDS route updates")
+        .that(rds2Snapshot).isEqualTo(lds1Snapshot);
+
+    // RDS 3: Contains a per-route override for STATEFUL_1.
+    VirtualHost vhost3 = filterStateTestVhost(ImmutableMap.of(
+        STATEFUL_1, new StatefulFilter.Config("RDS3")
+    ));
+    xdsClient.deliverRdsUpdate(rdsName, vhost3);
+    assertThat(getSelectorRoutingConfigs()).hasSize(1);
+    assertThat(getSelectorVhosts(fc1)).containsExactly(vhost3);
+    ImmutableList<StatefulFilter> rds3Snapshot = statefulFilterProvider.getAllInstances();
+    // As with any other Route update, typed_per_filter_config overrides should not result in
+    // creating new filter instances.
+    assertWithMessage("RDS 3: Expected Filter instances to be reused on per-route filter overrides")
+        .that(rds3Snapshot).isEqualTo(lds1Snapshot);
+  }
+
   // TODO(sergiitk): [TEST] filterState_specialCase_sameNameDifferentTypeUrl
   // TODO(sergiitk): [TEST] filterState_shutdown_onLdsNotFound
   // TODO(sergiitk): [TEST] filterState_shutdown_onServerShutdown
@@ -1369,7 +1424,7 @@ public class XdsServerWrapperTest {
     return statefulFilterProvider;
   }
 
-  private ImmutableList<NamedFilterConfig> filterStateTestConfigs(String... names) {
+  private static ImmutableList<NamedFilterConfig> filterStateTestConfigs(String... names) {
     ImmutableList.Builder<NamedFilterConfig> result = ImmutableList.builder();
     for (String name : names) {
       result.add(new NamedFilterConfig(name, new StatefulFilter.Config()));
@@ -1378,29 +1433,38 @@ public class XdsServerWrapperTest {
     return result.build();
   }
 
-  private Route filterStateTestRoute(ImmutableMap<String, FilterConfig> perRouteOverrides) {
+  private static Route filterStateTestRoute(ImmutableMap<String, FilterConfig> perRouteOverrides) {
     // Standard basic route for filterState tests.
     return Route.forAction(
         RouteMatch.withPathExactOnly("/FooService/barMethod"), null, perRouteOverrides);
   }
 
-  private Route filterStateTestRoute() {
-    return filterStateTestRoute(NO_FILTER_OVERRIDES);
+  private static VirtualHost filterStateTestVhost() {
+    return filterStateTestVhost(NO_FILTER_OVERRIDES);
   }
 
-  private VirtualHost filterStateTestLdsVhost() {
-    return VirtualHost.create("stateful-vhost",
+  private static VirtualHost filterStateTestVhost(
+      ImmutableMap<String, FilterConfig> perRouteOverrides) {
+    return VirtualHost.create(
+        "stateful-vhost",
         ImmutableList.of("foo.example.com"),
-        ImmutableList.of(filterStateTestRoute()),
+        ImmutableList.of(filterStateTestRoute(perRouteOverrides)),
         NO_FILTER_OVERRIDES);
   }
 
-  private HttpConnectionManager filterStateTestHcm(VirtualHost vhost,
-      List<NamedFilterConfig> filterConfigs) {
-    return HttpConnectionManager.forVirtualHosts(0L, ImmutableList.of(vhost), filterConfigs);
+  // End filter state tests.
+
+  private Map<FilterChain, AtomicReference<ServerRoutingConfig>> getSelectorRoutingConfigs() {
+    return selectorManager.getSelectorToUpdateSelector().getRoutingConfigs();
   }
 
-  // End filter state tests.
+  private ServerRoutingConfig getSelectorRoutingConfig(FilterChain fc) {
+    return getSelectorRoutingConfigs().get(fc).get();
+  }
+
+  private ImmutableList<VirtualHost> getSelectorVhosts(FilterChain fc) {
+    return getSelectorRoutingConfig(fc).virtualHosts();
+  }
 
   private static FilterChain createFilterChain(String name, HttpConnectionManager hcm) {
     return EnvoyServerProtoData.FilterChain.create(name, createMatch(),
@@ -1413,13 +1477,21 @@ public class XdsServerWrapperTest {
             ImmutableMap.<String, FilterConfig>of());
   }
 
-  private static HttpConnectionManager createRds(String name) {
-    return createRds(name, null);
+  private static HttpConnectionManager createHcm(
+      VirtualHost vhost, List<NamedFilterConfig> filterConfigs) {
+    return HttpConnectionManager.forVirtualHosts(0L, ImmutableList.of(vhost), filterConfigs);
   }
 
-  private static HttpConnectionManager createRds(String name, FilterConfig filterConfig) {
-    return HttpConnectionManager.forRdsName(0L, name,
-        Arrays.asList(new NamedFilterConfig("named-config-" + name, filterConfig)));
+  private static HttpConnectionManager createHcmForRds(
+      String name, List<NamedFilterConfig> filterConfigs) {
+    return HttpConnectionManager.forRdsName(0L, name, filterConfigs);
+  }
+
+  private static HttpConnectionManager createRds(String name) {
+    // TODO(sergiitk): [QUESTION] how did it even work before with null as a value?
+    //    also - probably should be named better.
+    NamedFilterConfig filterConfig = new NamedFilterConfig("named-config-" + name, null);
+    return createHcmForRds(name, ImmutableList.of(filterConfig));
   }
 
   private static EnvoyServerProtoData.FilterChainMatch createMatch() {
