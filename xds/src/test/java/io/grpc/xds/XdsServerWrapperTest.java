@@ -1498,7 +1498,37 @@ public class XdsServerWrapperTest {
     assertThat(lds1ChainDefaultFilter2.isShutdown()).isTrue();
   }
 
-  // TODO(sergiitk): [TEST] filterState_shutdown_onServerShutdown
+  /**
+   * Verifies that all filter instances are shutdown (closed) on LDS ResourceWatcher shutdown.
+   */
+  @Test
+  public void filterState_shutdown_onServerShutdown() {
+    SettableFuture<Server> serverStart = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
+    VirtualHost vhost = filterStateTestVhost();
+    FilterChain chainA = createFilterChain("chain_a",
+        createHcm(vhost, filterStateTestConfigs(STATEFUL_1)));
+    FilterChain chainDefault = createFilterChain("chain_default",
+        createHcm(vhost, filterStateTestConfigs(STATEFUL_2)));
+
+    // LDS 1.
+    xdsClient.deliverLdsUpdate(chainA, chainDefault);
+    verifyServerStarted(serverStart);
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertThat(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Filter<name#>
+    StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1ChainDefaultFilter2 = lds1Snapshot.get(1);
+
+    // Shutdown.
+    xdsServerWrapper.shutdown();
+    assertThat(xdsServerWrapper.isShutdown()).isTrue();
+    assertThat(xdsClient.shutdown).isTrue();
+    // Verify shutdown.
+    assertThat(lds1ChainAFilter1.isShutdown()).isTrue();
+    assertThat(lds1ChainDefaultFilter2.isShutdown()).isTrue();
+  }
+
   // TODO(sergiitk): [TEST] filterState_shutdown_noShutdownOnRdsNotFound
 
   private StatefulFilter.Provider filterStateTestSetupServer(SettableFuture<Server> serverStart) {

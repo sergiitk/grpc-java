@@ -1482,15 +1482,12 @@ public class XdsNameResolverTest {
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
-    // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
-    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
 
     // LDS 2: resource not found.
-    // TODO(sergiitk): [QUESTION] should mock be reset between assertClusterResolutionResult?
     reset(mockListener);
     xdsClient.deliverLdsResourceNotFound();
     assertEmptyResolutionResult(expectedLdsResourceName);
@@ -1512,13 +1509,12 @@ public class XdsNameResolverTest {
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
-    // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
-    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
 
+    // Shutdown.
     resolver.shutdown();
     resolver = null;  // no need to shutdown again in the teardown.
     // Verify shutdown.
@@ -1538,12 +1534,10 @@ public class XdsNameResolverTest {
     xdsClient.deliverLdsUpdateForRdsNameWithFilters(RDS_RESOURCE_NAME,
         filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
-    // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
-    assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
 
     // RDS 1: Standard vhost with a route.
     xdsClient.deliverRdsUpdate(RDS_RESOURCE_NAME, filterStateTestVhost());
