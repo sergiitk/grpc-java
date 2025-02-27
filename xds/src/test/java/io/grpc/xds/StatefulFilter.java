@@ -153,14 +153,9 @@ class StatefulFilter implements Filter {
       this(config, DEFAULT_TYPE_URL);
     }
 
-    @SuppressWarnings("UnusedMethod")
     public Config() {
       this("<BLANK>", DEFAULT_TYPE_URL);
     }
-
-    // public Config(@Nullable Message rawProtoMessage, String typeUrl) {
-    //   this(rawProtoMessage != null ? rawProtoMessage.toString() : "<NO_MSG>", typeUrl);
-    // }
 
     public static Config fromProto(Message rawProtoMessage, String typeUrl) {
       checkNotNull(rawProtoMessage, "rawProtoMessage");
