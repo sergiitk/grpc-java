@@ -1403,7 +1403,6 @@ public class XdsServerWrapperTest {
 
   @Test
   public void filterState_uniquePerFilterChain() {
-    // TODO(sergiitk): [TEST] filterState_survivesLds_multipleFilterChains
     SettableFuture<Server> serverStart = SettableFuture.create();
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
 
@@ -1466,11 +1465,39 @@ public class XdsServerWrapperTest {
     assertThat(lds3ChainDefaultFilter1).isNotSameInstanceAs(lds2ChainBFilter1);
     // STATEFUL_2 in default chain not the same STATEFUL_1 in chain A
     assertThat(lds3ChainDefaultFilter2).isNotSameInstanceAs(lds1ChainAFilter2);
-
   }
 
   // TODO(sergiitk): [TEST] filterState_specialCase_sameNameDifferentTypeUrl
-  // TODO(sergiitk): [TEST] filterState_shutdown_onLdsNotFound
+
+  /**
+   * Verifies that all filter instances are shutdown (closed) on LDS resource not found.
+   */
+  @Test
+  public void filterState_shutdown_onLdsNotFound() {
+    SettableFuture<Server> serverStart = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
+    VirtualHost vhost = filterStateTestVhost();
+    FilterChain chainA = createFilterChain("chain_a",
+        createHcm(vhost, filterStateTestConfigs(STATEFUL_1)));
+    FilterChain chainDefault = createFilterChain("chain_default",
+        createHcm(vhost, filterStateTestConfigs(STATEFUL_2)));
+
+    // LDS 1.
+    xdsClient.deliverLdsUpdate(chainA, chainDefault);
+    verifyServerStarted(serverStart);
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertThat(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Filter<name#>
+    StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1ChainDefaultFilter2 = lds1Snapshot.get(1);
+
+    // LDS 2: resource not found.
+    xdsClient.deliverLdsResourceNotFound();
+    // Verify shutdown.
+    assertThat(lds1ChainAFilter1.isShutdown()).isTrue();
+    assertThat(lds1ChainDefaultFilter2.isShutdown()).isTrue();
+  }
+
   // TODO(sergiitk): [TEST] filterState_shutdown_onServerShutdown
   // TODO(sergiitk): [TEST] filterState_shutdown_noShutdownOnRdsNotFound
 

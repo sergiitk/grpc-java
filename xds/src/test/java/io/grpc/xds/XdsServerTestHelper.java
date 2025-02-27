@@ -45,7 +45,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.annotation.Nullable;
 
 /**
@@ -175,6 +178,8 @@ public class XdsServerTestHelper {
   }
 
   static final class FakeXdsClient extends XdsClient {
+    // TODO(sergiitk): [QUESTION] Add syncContext like in XdsNameResolverTest.FakeXdsClient?
+
     boolean shutdown;
     SettableFuture<String> ldsResource = SettableFuture.create();
     ResourceWatcher<LdsUpdate> ldsWatcher;
@@ -251,6 +256,22 @@ public class XdsServerTestHelper {
 
     void deliverLdsUpdate(LdsUpdate ldsUpdate) {
       ldsWatcher.onChanged(ldsUpdate);
+    }
+
+    void deliverLdsResourceNotFound() {
+      if (!ldsResource.isDone()) {
+        throw new IllegalStateException("No LDS resource is being watched.");
+      }
+      String expectedResourceName = null;
+      try {
+        expectedResourceName = ldsResource.get(5, TimeUnit.SECONDS);
+      } catch (ExecutionException | TimeoutException e) {
+        throw new RuntimeException("Can't resolve LDS resource name", e);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException(e);
+      }
+      ldsWatcher.onResourceDoesNotExist(expectedResourceName);
     }
 
     void deliverRdsUpdate(String rdsName, List<VirtualHost> virtualHosts) {
