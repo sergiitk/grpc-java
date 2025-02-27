@@ -1778,6 +1778,7 @@ public class XdsServerWrapperTest {
     try {
       srcIpRange = CidrRange.create(srcParts[0], Integer.valueOf(srcParts[1], 10));
     } catch (UnknownHostException e) {
+      // see https://github.com/grpc/grpc-java/issues/11926
       throw new IllegalArgumentException("This just seems wrong", e);
     }
 
