@@ -1426,7 +1426,8 @@ public class XdsServerWrapperTest {
     verifyServerStarted(serverStart);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that filter with name STATEFUL_2 produced separate instances unique per filter chain.
-    assertThat(lds1Snapshot).hasSize(3);
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(3);
+    // Naming: lds<LDS#>Chain<name>Filter<name#>
     StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
     StatefulFilter lds1ChainAFilter2 = lds1Snapshot.get(1);
     StatefulFilter lds1ChainBFilter2 = lds1Snapshot.get(2);
@@ -1442,6 +1443,7 @@ public class XdsServerWrapperTest {
 
     xdsClient.deliverLdsUpdate(ImmutableList.of(lds2ChainA, lds2ChainB), null);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
+    // TODO(sergiitk): [TEST] with message
     assertThat(lds2Snapshot).hasSize(4);
     StatefulFilter lds2ChainBFilter1 = lds1Snapshot.get(3);
     assertThat(lds2ChainBFilter1).isNotSameInstanceAs(lds1ChainAFilter1);
@@ -1476,6 +1478,7 @@ public class XdsServerWrapperTest {
   public void filterState_shutdown_onLdsNotFound() {
     SettableFuture<Server> serverStart = SettableFuture.create();
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
+    // Test a normal chain and the default chain, as it's handled separately.
     VirtualHost vhost = filterStateTestVhost();
     FilterChain chainA = createFilterChain("chain_a",
         createHcm(vhost, filterStateTestConfigs(STATEFUL_1)));
@@ -1486,8 +1489,8 @@ public class XdsServerWrapperTest {
     xdsClient.deliverLdsUpdate(chainA, chainDefault);
     verifyServerStarted(serverStart);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
-    assertThat(lds1Snapshot).hasSize(2);
-    // Naming: lds<LDS#>Filter<name#>
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Chain<name>Filter<name#>
     StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
     StatefulFilter lds1ChainDefaultFilter2 = lds1Snapshot.get(1);
 
@@ -1505,6 +1508,7 @@ public class XdsServerWrapperTest {
   public void filterState_shutdown_onServerShutdown() {
     SettableFuture<Server> serverStart = SettableFuture.create();
     StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
+    // Test a normal chain and the default chain, as it's handled separately.
     VirtualHost vhost = filterStateTestVhost();
     FilterChain chainA = createFilterChain("chain_a",
         createHcm(vhost, filterStateTestConfigs(STATEFUL_1)));
@@ -1515,8 +1519,8 @@ public class XdsServerWrapperTest {
     xdsClient.deliverLdsUpdate(chainA, chainDefault);
     verifyServerStarted(serverStart);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
-    assertThat(lds1Snapshot).hasSize(2);
-    // Naming: lds<LDS#>Filter<name#>
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Chain<name>Filter<name#>
     StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
     StatefulFilter lds1ChainDefaultFilter2 = lds1Snapshot.get(1);
 
@@ -1529,7 +1533,40 @@ public class XdsServerWrapperTest {
     assertThat(lds1ChainDefaultFilter2.isShutdown()).isTrue();
   }
 
-  // TODO(sergiitk): [TEST] filterState_shutdown_noShutdownOnRdsNotFound
+  /**
+   * Verifies that filter instances are NOT shutdown on RDS_RESOURCE_NAME not found.
+   */
+  @Test
+  public void filterState_shutdown_noShutdownOnRdsNotFound() throws InterruptedException {
+    SettableFuture<Server> serverStart = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
+    String rdsName = "rds.example.com";
+    // Test a normal chain and the default chain, as it's handled separately.
+    FilterChain chainA = createFilterChain("chain_a",
+        createHcmForRds(rdsName, filterStateTestConfigs(STATEFUL_1)));
+    FilterChain chainDefault = createFilterChain("chain_default",
+        createHcmForRds(rdsName, filterStateTestConfigs(STATEFUL_2)));
+
+    xdsClient.deliverLdsUpdate(chainA, chainDefault);
+    xdsClient.rdsCount.await(1, TimeUnit.SECONDS);
+    verify(listener, never()).onServing();
+    // Server didn't start, but filter instances should have already been created.
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Chain<name>Filter<name#>
+    StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1ChainDefaultFilter2 = lds1Snapshot.get(1);
+
+    // RDS 1: Standard vhost with a route.
+    xdsClient.deliverRdsUpdate(rdsName, filterStateTestVhost());
+    verifyServerStarted(serverStart);
+    assertThat(statefulFilterProvider.getAllInstances()).isEqualTo(lds1Snapshot);
+
+    // RDS 2: RDS_RESOURCE_NAME not found.
+    xdsClient.deliverRdsResourceNotFound(rdsName);
+    assertThat(lds1ChainAFilter1.isShutdown()).isFalse();
+    assertThat(lds1ChainDefaultFilter2.isShutdown()).isFalse();
+  }
 
   private StatefulFilter.Provider filterStateTestSetupServer(SettableFuture<Server> serverStart) {
     // Use custom StatefulFilter and its Provider to track created Filter instances.

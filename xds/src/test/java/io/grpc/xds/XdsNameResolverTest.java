@@ -1438,7 +1438,7 @@ public class XdsNameResolverTest {
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     ImmutableList<StatefulFilter> lds1SnapshotAlt = altStatefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
-    assertThat(lds1Snapshot).hasSize(2);
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
@@ -1482,7 +1482,7 @@ public class XdsNameResolverTest {
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
-    assertThat(lds1Snapshot).hasSize(2);
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
@@ -1509,7 +1509,7 @@ public class XdsNameResolverTest {
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
-    assertThat(lds1Snapshot).hasSize(2);
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
@@ -1534,7 +1534,7 @@ public class XdsNameResolverTest {
     xdsClient.deliverLdsUpdateForRdsNameWithFilters(RDS_RESOURCE_NAME,
         filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
-    assertThat(lds1Snapshot).hasSize(2);
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);

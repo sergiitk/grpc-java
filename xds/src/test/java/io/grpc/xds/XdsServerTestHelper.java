@@ -262,7 +262,7 @@ public class XdsServerTestHelper {
       if (!ldsResource.isDone()) {
         throw new IllegalStateException("No LDS resource is being watched.");
       }
-      String expectedResourceName = null;
+      String expectedResourceName;
       try {
         expectedResourceName = ldsResource.get(5, TimeUnit.SECONDS);
       } catch (ExecutionException | TimeoutException e) {
@@ -274,12 +274,16 @@ public class XdsServerTestHelper {
       ldsWatcher.onResourceDoesNotExist(expectedResourceName);
     }
 
-    void deliverRdsUpdate(String rdsName, List<VirtualHost> virtualHosts) {
-      rdsWatchers.get(rdsName).onChanged(new RdsUpdate(virtualHosts));
+    void deliverRdsUpdate(String resourceName, List<VirtualHost> virtualHosts) {
+      rdsWatchers.get(resourceName).onChanged(new RdsUpdate(virtualHosts));
     }
 
-    void deliverRdsUpdate(String rdsName, VirtualHost virtualHost) {
-      deliverRdsUpdate(rdsName, ImmutableList.of(virtualHost));
+    void deliverRdsUpdate(String resourceName, VirtualHost virtualHost) {
+      deliverRdsUpdate(resourceName, ImmutableList.of(virtualHost));
+    }
+
+    void deliverRdsResourceNotFound(String resourceName) {
+      rdsWatchers.get(resourceName).onResourceDoesNotExist(resourceName);
     }
   }
 }
