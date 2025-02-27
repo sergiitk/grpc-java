@@ -16,10 +16,12 @@
 
 package io.grpc.xds;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.Message;
+import io.grpc.ServerInterceptor;
 import java.util.ConcurrentModificationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -32,9 +34,11 @@ import javax.annotation.Nullable;
  */
 class StatefulFilter implements Filter {
 
-  private static final String DEFAULT_TYPE_URL = "type.googleapis.com/grpc.test.StatefulFilter";
+  static final String DEFAULT_TYPE_URL = "type.googleapis.com/grpc.test.StatefulFilter";
   private final AtomicBoolean shutdown = new AtomicBoolean();
+
   final int iteration;
+  @Nullable volatile String lastCfg = null;
 
   public StatefulFilter(int iteration) {
     this.iteration = iteration;
@@ -52,11 +56,25 @@ class StatefulFilter implements Filter {
     }
   }
 
+  @Nullable
+  @Override
+  public ServerInterceptor buildServerInterceptor(
+      FilterConfig config,
+      @Nullable FilterConfig overrideConfig) {
+    Config cfg = (Config) config;
+    // TODO(sergiitk): to be replaced when name argument passed to the constructor.
+    lastCfg = cfg.getConfig();
+    return null;
+  }
+
   @Override
   public String toString() {
-    return "StatefulFilter{"
-        + "iteration=" + iteration
-        + '}';
+    StringBuilder sb = new StringBuilder().append("StatefulFilter{")
+        .append("id=").append(iteration);
+    if (lastCfg != null) {
+      sb.append(", name=").append(lastCfg);
+    }
+    return sb.append("}").toString();
   }
 
   static final class Provider implements Filter.Provider {
@@ -111,12 +129,12 @@ class StatefulFilter implements Filter {
 
     @Override
     public ConfigOrError<Config> parseFilterConfig(Message rawProtoMessage) {
-      return ConfigOrError.fromConfig(new Config(rawProtoMessage, typeUrl));
+      return ConfigOrError.fromConfig(Config.fromProto(rawProtoMessage, typeUrl));
     }
 
     @Override
     public ConfigOrError<Config> parseFilterConfigOverride(Message rawProtoMessage) {
-      return ConfigOrError.fromConfig(new Config(rawProtoMessage, typeUrl));
+      return ConfigOrError.fromConfig(Config.fromProto(rawProtoMessage, typeUrl));
     }
   }
 
@@ -131,19 +149,24 @@ class StatefulFilter implements Filter {
       this.typeUrl = typeUrl;
     }
 
-    public Config(@Nullable Message rawProtoMessage, String typeUrl) {
-      this(rawProtoMessage != null ? rawProtoMessage.toString() : "<NO_MSG>", typeUrl);
-    }
-
-    public Config(String typeUrl) {
-      this("<BLANK>", typeUrl);
-    }
-
-    public Config() {
-      this(DEFAULT_TYPE_URL);
+    public Config(String config) {
+      this(config, DEFAULT_TYPE_URL);
     }
 
     @SuppressWarnings("UnusedMethod")
+    public Config() {
+      this("<BLANK>", DEFAULT_TYPE_URL);
+    }
+
+    // public Config(@Nullable Message rawProtoMessage, String typeUrl) {
+    //   this(rawProtoMessage != null ? rawProtoMessage.toString() : "<NO_MSG>", typeUrl);
+    // }
+
+    public static Config fromProto(Message rawProtoMessage, String typeUrl) {
+      checkNotNull(rawProtoMessage, "rawProtoMessage");
+      return new Config(rawProtoMessage.toString(), typeUrl);
+    }
+
     public String getConfig() {
       return config;
     }

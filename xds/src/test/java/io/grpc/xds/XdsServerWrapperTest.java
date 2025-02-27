@@ -50,10 +50,13 @@ import io.grpc.StatusException;
 import io.grpc.SynchronizationContext;
 import io.grpc.internal.FakeClock;
 import io.grpc.testing.TestMethodDescriptors;
+import io.grpc.xds.EnvoyServerProtoData.CidrRange;
 import io.grpc.xds.EnvoyServerProtoData.FilterChain;
+import io.grpc.xds.EnvoyServerProtoData.FilterChainMatch;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.Filter.NamedFilterConfig;
 import io.grpc.xds.FilterChainMatchingProtocolNegotiators.FilterChainMatchingHandler.FilterChainSelector;
+import io.grpc.xds.StatefulFilter.Config;
 import io.grpc.xds.VirtualHost.Route;
 import io.grpc.xds.VirtualHost.Route.RouteMatch;
 import io.grpc.xds.VirtualHost.Route.RouteMatch.PathMatcher;
@@ -71,6 +74,7 @@ import io.grpc.xds.internal.Matchers.HeaderMatcher;
 import io.grpc.xds.internal.security.CommonTlsContextTestsUtil;
 import io.grpc.xds.internal.security.SslContextProviderSupplier;
 import java.io.IOException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -102,8 +106,8 @@ public class XdsServerWrapperTest {
   // Readability: makes it simpler to distinguish resource parameters.
   private static final ImmutableMap<String, FilterConfig> NO_FILTER_OVERRIDES = ImmutableMap.of();
 
-  private static final String STATEFUL_1 = "test.stateful.filter.1";
-  private static final String STATEFUL_2 = "test.stateful.filter.2";
+  private static final String STATEFUL_1 = "stateful_1";
+  private static final String STATEFUL_2 = "stateful_2";
 
   @Rule
   public final MockitoRule mocks = MockitoJUnit.rule();
@@ -1282,19 +1286,20 @@ public class XdsServerWrapperTest {
 
   // Begin filter state tests.
 
+  // TODO(sergiitk): [TEST] check if all expected updates actually trigger watcher.onChanged
+  //   considering that XdsClientImpl.ResourceSubscriber#onData does Objects.equals(oldData, data).
+
   @Test
-  public void filterState_survivesLds() throws Exception {
-    SettableFuture<Server> start = SettableFuture.create();
-    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServerWrapper(start);
+  public void filterState_survivesLds() {
+    SettableFuture<Server> serverStart = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
     VirtualHost vhost = filterStateTestVhost();
 
     // LDS 1.
     HttpConnectionManager hcm1 = createHcm(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
-    EnvoyServerProtoData.FilterChain fc1 = createFilterChain("fc1", hcm1);
+    FilterChain fc1 = createFilterChain("fc1", hcm1);
     xdsClient.deliverLdsUpdate(fc1, null);
-    start.get(5000, TimeUnit.MILLISECONDS);
-    verify(listener).onServing();
-    verify(mockServer).start();
+    verifyServerStarted(serverStart);
     // TODO(sergiitk): [IMPL] consider other checks from discoverState_virtualhost
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1309,7 +1314,6 @@ public class XdsServerWrapperTest {
 
     // LDS 2: filter configs with the same names.
     xdsClient.deliverLdsUpdate(fc1, null);
-    start.get(5000, TimeUnit.MILLISECONDS);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     // Filter names hasn't changed, so expecting no new StatefulFilter instances.
     assertWithMessage("LDS 2: Expected Filter instances to be reused across LDS updates")
@@ -1343,16 +1347,14 @@ public class XdsServerWrapperTest {
     assertThat(lds4Filter2.isShutdown()).isFalse();
   }
 
-  // TODO(sergiitk): [TEST] filterState_survivesLds_multipleFilterChains -- also cover default FC
-
   @Test
-  public void filterState_survivesRds() throws Exception {
-    SettableFuture<Server> start = SettableFuture.create();
-    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServerWrapper(start);
+  public void filterState_survivesRds() throws InterruptedException {
+    SettableFuture<Server> serverStart = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
     String rdsName = "rds.example.com";
 
     // LDS 1.
-    EnvoyServerProtoData.FilterChain fc1 = createFilterChain("fc1",
+    FilterChain fc1 = createFilterChain("fc1",
         createHcmForRds(rdsName, filterStateTestConfigs(STATEFUL_1, STATEFUL_2)));
     xdsClient.deliverLdsUpdate(fc1, null);
     xdsClient.rdsCount.await(1, TimeUnit.SECONDS);
@@ -1368,9 +1370,7 @@ public class XdsServerWrapperTest {
     // RDS 1.
     VirtualHost vhost1 = filterStateTestVhost();
     xdsClient.deliverRdsUpdate(rdsName, vhost1);
-    start.get(5000, TimeUnit.MILLISECONDS);
-    verify(listener).onServing();
-    verify(mockServer).start();
+    verifyServerStarted(serverStart);
     assertThat(getSelectorRoutingConfigs()).hasSize(1);
     assertThat(getSelectorVhosts(fc1)).containsExactly(vhost1);
     // Initial RDS update should not generate Filter instances.
@@ -1389,7 +1389,7 @@ public class XdsServerWrapperTest {
 
     // RDS 3: Contains a per-route override for STATEFUL_1.
     VirtualHost vhost3 = filterStateTestVhost(ImmutableMap.of(
-        STATEFUL_1, new StatefulFilter.Config("RDS3")
+        STATEFUL_1, new Config("RDS3")
     ));
     xdsClient.deliverRdsUpdate(rdsName, vhost3);
     assertThat(getSelectorRoutingConfigs()).hasSize(1);
@@ -1401,12 +1401,81 @@ public class XdsServerWrapperTest {
         .that(rds3Snapshot).isEqualTo(lds1Snapshot);
   }
 
+  @Test
+  public void filterState_uniquePerFilterChain() {
+    // TODO(sergiitk): [TEST] filterState_survivesLds_multipleFilterChains
+    SettableFuture<Server> serverStart = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
+
+    // Prepare multiple filter chains matchers for testing.
+    FilterChainMatch matcherA = createMatchSrcIp("3fff:a::/32");
+    FilterChainMatch matcherB = createMatchSrcIp("3fff:b::/32");
+
+    // Vhosts won't change too.
+    VirtualHost vhostA = filterStateTestVhost("stateful_vhost_a");
+    VirtualHost vhostB = filterStateTestVhost("stateful_vhost_b");
+
+    // LDS 1.
+    FilterChain lds1ChainA = createFilterChain("chain_a",
+        createHcm(vhostA, filterStateTestConfigs(STATEFUL_1, STATEFUL_2)),
+        matcherA);
+    FilterChain lds1ChainB = createFilterChain("chain_b",
+        createHcm(vhostB, filterStateTestConfigs(STATEFUL_2)),
+        matcherB);
+
+    xdsClient.deliverLdsUpdate(ImmutableList.of(lds1ChainA, lds1ChainB), null);
+    verifyServerStarted(serverStart);
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    // Verify that filter with name STATEFUL_2 produced separate instances unique per filter chain.
+    assertThat(lds1Snapshot).hasSize(3);
+    StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1ChainAFilter2 = lds1Snapshot.get(1);
+    StatefulFilter lds1ChainBFilter2 = lds1Snapshot.get(2);
+    assertThat(lds1ChainAFilter2).isNotSameInstanceAs(lds1ChainBFilter2);
+
+    // LDS 2: In chain B filter with name STATEFUL_1 is replaced STATEFUL_2.
+    FilterChain lds2ChainA = createFilterChain("chain_a",
+        createHcm(vhostA, filterStateTestConfigs(STATEFUL_1, STATEFUL_2)),
+        matcherA);
+    FilterChain lds2ChainB = createFilterChain("chain_b",
+        createHcm(vhostB, filterStateTestConfigs(STATEFUL_1)),
+        matcherB);
+
+    xdsClient.deliverLdsUpdate(ImmutableList.of(lds2ChainA, lds2ChainB), null);
+    ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
+    assertThat(lds2Snapshot).hasSize(4);
+    StatefulFilter lds2ChainBFilter1 = lds1Snapshot.get(3);
+    assertThat(lds2ChainBFilter1).isNotSameInstanceAs(lds1ChainAFilter1);
+    // Confirm correct STATEFUL_2 has been shut down.
+    assertThat(lds1ChainBFilter2.isShutdown()).isTrue();
+    assertThat(lds1ChainAFilter2.isShutdown()).isFalse();
+
+    // LDS 3: Add default chain
+    // Default filter chain is an exception from the uniqueness rule, and we need to make sure
+    // that this is accounted for when we're tracking active filters per unique FilterChain.
+    FilterChain lds3ChainDefault = createFilterChain("chain_default",
+        createHcm(vhostA, filterStateTestConfigs(STATEFUL_1, STATEFUL_2)),
+        matcherA);
+    xdsClient.deliverLdsUpdate(ImmutableList.of(lds2ChainA, lds2ChainB), lds3ChainDefault);
+    ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
+    assertThat(lds3Snapshot).hasSize(6);
+    StatefulFilter lds3ChainDefaultFilter1 = lds1Snapshot.get(5);
+    StatefulFilter lds3ChainDefaultFilter2 = lds1Snapshot.get(5);
+    // STATEFUL_1 in default chain not the same STATEFUL_1 in chain A or B
+    assertThat(lds3ChainDefaultFilter1).isNotSameInstanceAs(lds1ChainAFilter1);
+    assertThat(lds3ChainDefaultFilter1).isNotSameInstanceAs(lds2ChainBFilter1);
+    // STATEFUL_2 in default chain not the same STATEFUL_1 in chain A
+    assertThat(lds3ChainDefaultFilter2).isNotSameInstanceAs(lds1ChainAFilter2);
+
+  }
+
   // TODO(sergiitk): [TEST] filterState_specialCase_sameNameDifferentTypeUrl
   // TODO(sergiitk): [TEST] filterState_shutdown_onLdsNotFound
   // TODO(sergiitk): [TEST] filterState_shutdown_onServerShutdown
   // TODO(sergiitk): [TEST] filterState_shutdown_noShutdownOnRdsNotFound
 
-  private StatefulFilter.Provider filterStateTestSetupServerWrapper(SettableFuture<Server> start) {
+  private StatefulFilter.Provider filterStateTestSetupServer(SettableFuture<Server> serverStart) {
+    // Use custom StatefulFilter and its Provider to track created Filter instances.
     StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
     FilterRegistry filterRegistry = FilterRegistry.newRegistry()
         .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
@@ -1415,9 +1484,9 @@ public class XdsServerWrapperTest {
 
     Executors.newSingleThreadExecutor().execute(() -> {
       try {
-        start.set(xdsServerWrapper.start());
-      } catch (Exception ex) {
-        start.setException(ex);
+        serverStart.set(xdsServerWrapper.start());
+      } catch (Exception e) {
+        serverStart.setException(e);
       }
     });
 
@@ -1427,7 +1496,7 @@ public class XdsServerWrapperTest {
   private static ImmutableList<NamedFilterConfig> filterStateTestConfigs(String... names) {
     ImmutableList.Builder<NamedFilterConfig> result = ImmutableList.builder();
     for (String name : names) {
-      result.add(new NamedFilterConfig(name, new StatefulFilter.Config()));
+      result.add(new NamedFilterConfig(name, new StatefulFilter.Config(name)));
     }
     result.add(new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG));
     return result.build();
@@ -1436,23 +1505,46 @@ public class XdsServerWrapperTest {
   private static Route filterStateTestRoute(ImmutableMap<String, FilterConfig> perRouteOverrides) {
     // Standard basic route for filterState tests.
     return Route.forAction(
-        RouteMatch.withPathExactOnly("/FooService/barMethod"), null, perRouteOverrides);
+        RouteMatch.withPathExactOnly("/grpc.test.HelloService/SayHello"), null, perRouteOverrides);
   }
 
   private static VirtualHost filterStateTestVhost() {
     return filterStateTestVhost(NO_FILTER_OVERRIDES);
   }
 
+  private static VirtualHost filterStateTestVhost(String name) {
+    return filterStateTestVhost(name, NO_FILTER_OVERRIDES);
+  }
+
   private static VirtualHost filterStateTestVhost(
       ImmutableMap<String, FilterConfig> perRouteOverrides) {
+    return filterStateTestVhost("stateful-vhost", perRouteOverrides);
+  }
+
+  private static VirtualHost filterStateTestVhost(
+      String name, ImmutableMap<String, FilterConfig> perRouteOverrides) {
     return VirtualHost.create(
-        "stateful-vhost",
-        ImmutableList.of("foo.example.com"),
+        name,
+        ImmutableList.of("stateful.test.example.com"),
         ImmutableList.of(filterStateTestRoute(perRouteOverrides)),
         NO_FILTER_OVERRIDES);
   }
 
   // End filter state tests.
+
+  private void verifyServerStarted(SettableFuture<Server> serverStart) {
+    try {
+      serverStart.get(5, TimeUnit.SECONDS);
+    } catch (InterruptedException | ExecutionException | TimeoutException e) {
+      throw new AssertionError("serverStart future failed to resolve within the timeout", e);
+    }
+    verify(listener).onServing();
+    try {
+      verify(mockServer).start();
+    } catch (IOException e) {
+      throw new AssertionError("mockServer.start() shouldn't throw", e);
+    }
+  }
 
   private Map<FilterChain, AtomicReference<ServerRoutingConfig>> getSelectorRoutingConfigs() {
     return selectorManager.getSelectorToUpdateSelector().getRoutingConfigs();
@@ -1467,8 +1559,13 @@ public class XdsServerWrapperTest {
   }
 
   private static FilterChain createFilterChain(String name, HttpConnectionManager hcm) {
-    return EnvoyServerProtoData.FilterChain.create(name, createMatch(),
-            hcm, createTls(), mock(TlsContextManager.class));
+    return createFilterChain(name, hcm, createMatch());
+  }
+
+  private static FilterChain createFilterChain(
+      String name, HttpConnectionManager hcm, FilterChainMatch filterChainMatch) {
+    TlsContextManager tlsContextManager = mock(TlsContextManager.class);
+    return FilterChain.create(name, filterChainMatch, hcm, createTls(), tlsContextManager);
   }
 
   private static VirtualHost createVirtualHost(String name) {
@@ -1494,12 +1591,35 @@ public class XdsServerWrapperTest {
     return createHcmForRds(name, ImmutableList.of(filterConfig));
   }
 
-  private static EnvoyServerProtoData.FilterChainMatch createMatch() {
-    return EnvoyServerProtoData.FilterChainMatch.create(
+  /**
+   * Returns the least-specific match-all Filter Chain Match.
+   */
+  private static FilterChainMatch createMatch() {
+    return FilterChainMatch.create(
         0,
         ImmutableList.of(),
         ImmutableList.of(),
         ImmutableList.of(),
+        EnvoyServerProtoData.ConnectionSourceType.ANY,
+        ImmutableList.of(),
+        ImmutableList.of(),
+        "");
+  }
+
+  private static FilterChainMatch createMatchSrcIp(String srcCidr) {
+    String[] srcParts = srcCidr.split("/", 2);
+    CidrRange srcIpRange = null;
+    try {
+      srcIpRange = CidrRange.create(srcParts[0], Integer.valueOf(srcParts[1], 10));
+    } catch (UnknownHostException e) {
+      throw new IllegalArgumentException("This just seems wrong", e);
+    }
+
+    return FilterChainMatch.create(
+        0,
+        ImmutableList.of(),
+        ImmutableList.of(),
+        ImmutableList.of(srcIpRange),
         EnvoyServerProtoData.ConnectionSourceType.ANY,
         ImmutableList.of(),
         ImmutableList.of(),
