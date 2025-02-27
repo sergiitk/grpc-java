@@ -1418,7 +1418,7 @@ public class XdsNameResolverTest {
    */
   @Test
   public void filterState_specialCase_sameNameDifferentTypeUrl() {
-    // Prepare filter registry and resolver.
+    // Prepare filter registry with StatefulFilter of different typeUrl.
     StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
     String altTypeUrl = "type.googleapis.com/grpc.test.AltStatefulFilter";
     StatefulFilter.Provider altStatefulFilterProvider = new StatefulFilter.Provider(altTypeUrl);

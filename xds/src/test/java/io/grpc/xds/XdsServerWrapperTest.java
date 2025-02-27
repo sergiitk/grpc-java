@@ -1469,7 +1469,76 @@ public class XdsServerWrapperTest {
     assertThat(lds3ChainDefaultFilter2).isNotSameInstanceAs(lds1ChainAFilter2);
   }
 
-  // TODO(sergiitk): [TEST] filterState_specialCase_sameNameDifferentTypeUrl
+  /**
+   * Verifies a special case where an existing filter is has a different typeUrl in a subsequent
+   * LDS update.
+   *
+   * <p>Expectations:
+   *   1. The old filter instance must be shutdown.
+   *   2. A new filter instance must be created for the new filter with different typeUrl.
+   */
+  @Test
+  public void filterState_specialCase_sameNameDifferentTypeUrl() {
+    // Setup the server with filter containing StatefulFilter.Provider for two distict type URLs.
+    StatefulFilter.Provider statefulFilterProvider = new StatefulFilter.Provider();
+    String altTypeUrl = "type.googleapis.com/grpc.test.AltStatefulFilter";
+    StatefulFilter.Provider altStatefulFilterProvider = new StatefulFilter.Provider(altTypeUrl);
+    FilterRegistry filterRegistry = FilterRegistry.newRegistry()
+        .register(statefulFilterProvider, altStatefulFilterProvider, ROUTER_FILTER_PROVIDER);
+    xdsServerWrapper = new XdsServerWrapper("0.0.0.0:1", mockBuilder, listener,
+        selectorManager, new FakeXdsClientPoolFactory(xdsClient), filterRegistry);
+    SettableFuture<Server> serverStart = SettableFuture.create();
+    scheduleServerStart(xdsServerWrapper, serverStart);
+
+    // Test a normal chain and the default chain, as it's handled separately.
+    VirtualHost vhost = filterStateTestVhost();
+
+    // LDS 1.
+    ImmutableList<NamedFilterConfig> lds1Confgs = filterStateTestConfigs(STATEFUL_1, STATEFUL_2);
+    FilterChain lds1ChainA = createFilterChain("chain_a", createHcm(vhost, lds1Confgs));
+    FilterChain lds1ChainDefault = createFilterChain("chain_default", createHcm(vhost, lds1Confgs));
+    xdsClient.deliverLdsUpdate(lds1ChainA, lds1ChainDefault);
+    verifyServerStarted(serverStart);
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(4);
+    // Naming: lds<LDS#>Chain<name>Filter<name#>
+    StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1ChainAFilter2 = lds1Snapshot.get(1);
+    StatefulFilter lds1ChainDefaultFilter1 = lds1Snapshot.get(2);
+    StatefulFilter lds1ChainDefaultFilter2 = lds1Snapshot.get(3);
+
+    // LDS 2: Filter STATEFUL_2 present, but with a different typeUrl: altTypeUrl.
+    ImmutableList<NamedFilterConfig> lds2Confgs = ImmutableList.of(
+        new NamedFilterConfig(STATEFUL_1, new StatefulFilter.Config(STATEFUL_1)),
+        new NamedFilterConfig(STATEFUL_2, new StatefulFilter.Config(STATEFUL_2, altTypeUrl)),
+        new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG)
+    );
+    FilterChain lds2ChainA = createFilterChain("chain_a", createHcm(vhost, lds2Confgs));
+    FilterChain lds2ChainDefault = createFilterChain("chain_default", createHcm(vhost, lds2Confgs));
+    xdsClient.deliverLdsUpdate(lds2ChainA, lds2ChainDefault);
+    ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
+    ImmutableList<StatefulFilter> lds2SnapshotAlt = altStatefulFilterProvider.getAllInstances();
+
+    // Filter "STATEFUL_2" has different typeUrl, and should be treated as a new filter.
+    // No changes in the snapshot of normal stateful filters.
+    assertThat(lds2Snapshot).isEqualTo(lds1Snapshot);
+    // Two new filter instances is created by altStatefulFilterProvider for chainA and chainDefault.
+    assertThat(lds2SnapshotAlt).hasSize(2);
+    StatefulFilter lds2ChainAFilter2Alt = lds2SnapshotAlt.get(0);
+    StatefulFilter lds2ChainADefault2Alt = lds2SnapshotAlt.get(0);
+    // Confirm two new distict instances of STATEFUL_2 were created.
+    assertThat(lds2ChainAFilter2Alt).isNotSameInstanceAs(lds1ChainAFilter2);
+    assertThat(lds2ChainADefault2Alt).isNotSameInstanceAs(lds1ChainDefaultFilter2);
+    assertThat(lds2ChainAFilter2Alt).isNotSameInstanceAs(lds2ChainADefault2Alt);
+    // Verify the instance of STATEFUL_2 of the old type are shutdown.
+    assertThat(lds1ChainAFilter2.isShutdown()).isTrue();
+    assertThat(lds1ChainDefaultFilter2.isShutdown()).isTrue();
+    // Verify the new instances of STATEFUL_2 and the old instances of STATEFUL_1 are running.
+    assertThat(lds2ChainAFilter2Alt.isShutdown()).isFalse();
+    assertThat(lds2ChainADefault2Alt.isShutdown()).isFalse();
+    assertThat(lds1ChainAFilter1.isShutdown()).isFalse();
+    assertThat(lds1ChainDefaultFilter1.isShutdown()).isFalse();
+  }
 
   /**
    * Verifies that all filter instances are shutdown (closed) on LDS resource not found.
@@ -1575,15 +1644,7 @@ public class XdsServerWrapperTest {
         .register(statefulFilterProvider, ROUTER_FILTER_PROVIDER);
     xdsServerWrapper = new XdsServerWrapper("0.0.0.0:1", mockBuilder, listener,
         selectorManager, new FakeXdsClientPoolFactory(xdsClient), filterRegistry);
-
-    Executors.newSingleThreadExecutor().execute(() -> {
-      try {
-        serverStart.set(xdsServerWrapper.start());
-      } catch (Exception e) {
-        serverStart.setException(e);
-      }
-    });
-
+    scheduleServerStart(xdsServerWrapper, serverStart);
     return statefulFilterProvider;
   }
 
@@ -1650,6 +1711,17 @@ public class XdsServerWrapperTest {
 
   private ImmutableList<VirtualHost> getSelectorVhosts(FilterChain fc) {
     return getSelectorRoutingConfig(fc).virtualHosts();
+  }
+
+  public static void scheduleServerStart(
+      XdsServerWrapper xdsServerWrapper, SettableFuture<Server> serverStart) {
+    Executors.newSingleThreadExecutor().execute(() -> {
+      try {
+        serverStart.set(xdsServerWrapper.start());
+      } catch (Exception e) {
+        serverStart.setException(e);
+      }
+    });
   }
 
   private static FilterChain createFilterChain(String name, HttpConnectionManager hcm) {

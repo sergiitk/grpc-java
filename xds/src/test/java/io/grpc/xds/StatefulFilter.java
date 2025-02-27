@@ -70,7 +70,7 @@ class StatefulFilter implements Filter {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder().append("StatefulFilter{")
-        .append("id=").append(iteration);
+        .append("idx=").append(iteration);
     if (lastCfg != null) {
       sb.append(", name=").append(lastCfg);
     }
