@@ -1314,8 +1314,8 @@ public class XdsNameResolverTest {
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
     assertThat(lds1Filter1).isNotSameInstanceAs(lds1Filter2);
     // Redundant check just in case StatefulFilter synchronization is broken.
-    assertThat(lds1Filter1.iteration).isEqualTo(0);
-    assertThat(lds1Filter2.iteration).isEqualTo(1);
+    assertThat(lds1Filter1.idx).isEqualTo(0);
+    assertThat(lds1Filter2.idx).isEqualTo(1);
 
     // LDS 2: filter configs with the same names.
     xdsClient.deliverLdsUpdateWithFilters(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
@@ -1345,7 +1345,7 @@ public class XdsNameResolverTest {
     // a new instance should be created.
     assertThat(lds4Snapshot).hasSize(3);
     StatefulFilter lds4Filter2 = lds4Snapshot.get(2);
-    assertThat(lds4Filter2.iteration).isEqualTo(2);
+    assertThat(lds4Filter2.idx).isEqualTo(2);
     assertThat(lds4Filter2).isNotSameInstanceAs(lds1Filter2);
     assertThat(lds4Snapshot).containsAtLeastElementsIn(lds1Snapshot);
     // Verify the shutdown state.

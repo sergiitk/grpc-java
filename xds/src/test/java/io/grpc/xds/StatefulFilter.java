@@ -37,11 +37,11 @@ class StatefulFilter implements Filter {
   static final String DEFAULT_TYPE_URL = "type.googleapis.com/grpc.test.StatefulFilter";
   private final AtomicBoolean shutdown = new AtomicBoolean();
 
-  final int iteration;
+  final int idx;
   @Nullable volatile String lastCfg = null;
 
-  public StatefulFilter(int iteration) {
-    this.iteration = iteration;
+  public StatefulFilter(int idx) {
+    this.idx = idx;
   }
 
   public boolean isShutdown() {
@@ -70,7 +70,7 @@ class StatefulFilter implements Filter {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder().append("StatefulFilter{")
-        .append("idx=").append(iteration);
+        .append("idx=").append(idx);
     if (lastCfg != null) {
       sb.append(", name=").append(lastCfg);
     }
@@ -110,7 +110,7 @@ class StatefulFilter implements Filter {
     @Override
     public synchronized StatefulFilter newInstance() {
       StatefulFilter filter = new StatefulFilter(counter++);
-      instances.put(filter.iteration, filter);
+      instances.put(filter.idx, filter);
       return filter;
     }
 
