@@ -1570,8 +1570,49 @@ public class XdsServerWrapperTest {
     assertThat(lds1ChainDefaultFilter2.isShutdown()).isTrue();
   }
 
-  // TODO(sergiitk): [TEST] filterState_shutdown_onChainRemoved
-  // TODO(sergiitk): [TEST] filterState_shutdown_onRdsFailingState ?
+  /**
+   * Verifies that all filter instances of a filter chain are shutdown when said chain is removed.
+   */
+  @Test
+  public void filterState_shutdown_onChainRemoved() {
+    SettableFuture<Server> serverStart = SettableFuture.create();
+    StatefulFilter.Provider statefulFilterProvider = filterStateTestSetupServer(serverStart);
+
+    ImmutableList<NamedFilterConfig> configs = filterStateTestConfigs(STATEFUL_1, STATEFUL_2);
+    FilterChain chainA = createFilterChain("chain_a",
+        createHcm(filterStateTestVhost("stateful_vhost_a"), configs),
+        createMatchSrcIp("3fff:a::/32"));
+    FilterChain chainB = createFilterChain("chain_b",
+        createHcm(filterStateTestVhost("stateful_vhost_b"), configs),
+        createMatchSrcIp("3fff:b::/32"));
+    FilterChain chainDefault = createFilterChain("chain_default",
+        createHcm(filterStateTestVhost("stateful_vhost_default"), configs),
+        createMatchSrcIp("3fff:defa::/32"));
+
+    // LDS 1.
+    xdsClient.deliverLdsUpdate(ImmutableList.of(chainA, chainB), chainDefault);
+    verifyServerStarted(serverStart);
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(6);
+    StatefulFilter chainAFilter1 = lds1Snapshot.get(0);
+    StatefulFilter chainAFilter2 = lds1Snapshot.get(1);
+    StatefulFilter chainBFilter1 = lds1Snapshot.get(2);
+    StatefulFilter chainBFilter2 = lds1Snapshot.get(3);
+    StatefulFilter chainDefaultFilter1 = lds1Snapshot.get(4);
+    StatefulFilter chainDefaultFilter2 = lds1Snapshot.get(5);
+
+    // LDS 2: ChainB and ChainDefault are gone.
+    xdsClient.deliverLdsUpdate(chainA, null);
+    assertThat(statefulFilterProvider.getAllInstances()).isEqualTo(lds1Snapshot);
+    // ChainA filters not shutdown (just in case).
+    assertThat(chainAFilter1.isShutdown()).isFalse();
+    assertThat(chainAFilter2.isShutdown()).isFalse();
+    // ChainB and ChainDefault filters shutdown.
+    assertWithMessage("chainBFilter1").that(chainBFilter1.isShutdown()).isTrue();
+    assertWithMessage("chainBFilter2").that(chainBFilter2.isShutdown()).isTrue();
+    assertWithMessage("chainDefaultFilter1").that(chainDefaultFilter1.isShutdown()).isTrue();
+    assertWithMessage("chainDefaultFilter2").that(chainDefaultFilter2.isShutdown()).isTrue();
+  }
 
   /**
    * Verifies that all filter instances are shutdown (closed) on LDS ResourceWatcher shutdown.
