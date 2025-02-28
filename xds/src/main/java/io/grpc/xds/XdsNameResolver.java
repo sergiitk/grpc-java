@@ -870,14 +870,14 @@ final class XdsNameResolver extends NameResolver {
 
       ImmutableList.Builder<ClientInterceptor> filterInterceptors = ImmutableList.builder();
       for (NamedFilterConfig namedFilter : filterConfigs) {
-        FilterConfig config = namedFilter.filterConfig;
         String name = namedFilter.name;
+        FilterConfig config = namedFilter.filterConfig;
+        FilterConfig overrideConfig = selectedOverrideConfigs.get(name);
 
         Filter filter = activeFilters.get(namedFilter.filterStateKey());
         checkNotNull(filter, "activeFilters.get(" + namedFilter.filterStateKey() + ")");
-
         ClientInterceptor interceptor =
-            filter.buildClientInterceptor(config, selectedOverrideConfigs.get(name), scheduler);
+            filter.buildClientInterceptor(config, overrideConfig, scheduler);
 
         if (interceptor != null) {
           filterInterceptors.add(interceptor);

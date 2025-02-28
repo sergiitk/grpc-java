@@ -1570,6 +1570,9 @@ public class XdsServerWrapperTest {
     assertThat(lds1ChainDefaultFilter2.isShutdown()).isTrue();
   }
 
+  // TODO(sergiitk): [TEST] filterState_shutdown_onChainRemoved
+  // TODO(sergiitk): [TEST] filterState_shutdown_onRdsFailingState ?
+
   /**
    * Verifies that all filter instances are shutdown (closed) on LDS ResourceWatcher shutdown.
    */
