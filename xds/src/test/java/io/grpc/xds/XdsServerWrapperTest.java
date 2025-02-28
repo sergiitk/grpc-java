@@ -1756,8 +1756,9 @@ public class XdsServerWrapperTest {
   private static HttpConnectionManager createRds(String name) {
     // TODO(sergiitk): [QUESTION] how did it even work before with null as a value?
     //    also - probably should be named better.
-    NamedFilterConfig filterConfig = new NamedFilterConfig("named-config-" + name, null);
-    return createHcmForRds(name, ImmutableList.of(filterConfig));
+    NamedFilterConfig config =
+        new NamedFilterConfig(ROUTER_FILTER_INSTANCE_NAME, RouterFilter.ROUTER_CONFIG);
+    return createHcmForRds(name, ImmutableList.of(config));
   }
 
   /**
