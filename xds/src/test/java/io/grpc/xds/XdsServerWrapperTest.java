@@ -1445,7 +1445,7 @@ public class XdsServerWrapperTest {
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     // TODO(sergiitk): [TEST] with message
     assertThat(lds2Snapshot).hasSize(4);
-    StatefulFilter lds2ChainBFilter1 = lds1Snapshot.get(3);
+    StatefulFilter lds2ChainBFilter1 = lds2Snapshot.get(3);
     assertThat(lds2ChainBFilter1).isNotSameInstanceAs(lds1ChainAFilter1);
     // Confirm correct STATEFUL_2 has been shut down.
     assertThat(lds1ChainBFilter2.isShutdown()).isTrue();
@@ -1460,8 +1460,8 @@ public class XdsServerWrapperTest {
     xdsClient.deliverLdsUpdate(ImmutableList.of(lds2ChainA, lds2ChainB), lds3ChainDefault);
     ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
     assertThat(lds3Snapshot).hasSize(6);
-    StatefulFilter lds3ChainDefaultFilter1 = lds1Snapshot.get(5);
-    StatefulFilter lds3ChainDefaultFilter2 = lds1Snapshot.get(5);
+    StatefulFilter lds3ChainDefaultFilter1 = lds3Snapshot.get(4);
+    StatefulFilter lds3ChainDefaultFilter2 = lds3Snapshot.get(5);
     // STATEFUL_1 in default chain not the same STATEFUL_1 in chain A or B
     assertThat(lds3ChainDefaultFilter1).isNotSameInstanceAs(lds1ChainAFilter1);
     assertThat(lds3ChainDefaultFilter1).isNotSameInstanceAs(lds2ChainBFilter1);
@@ -1525,7 +1525,7 @@ public class XdsServerWrapperTest {
     // Two new filter instances is created by altStatefulFilterProvider for chainA and chainDefault.
     assertThat(lds2SnapshotAlt).hasSize(2);
     StatefulFilter lds2ChainAFilter2Alt = lds2SnapshotAlt.get(0);
-    StatefulFilter lds2ChainADefault2Alt = lds2SnapshotAlt.get(0);
+    StatefulFilter lds2ChainADefault2Alt = lds2SnapshotAlt.get(1);
     // Confirm two new distict instances of STATEFUL_2 were created.
     assertThat(lds2ChainAFilter2Alt).isNotSameInstanceAs(lds1ChainAFilter2);
     assertThat(lds2ChainADefault2Alt).isNotSameInstanceAs(lds1ChainDefaultFilter2);

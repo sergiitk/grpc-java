@@ -461,6 +461,7 @@ final class XdsServerWrapper extends Server {
       cleanUpRouteDiscoveryStates();
       logger.log(Level.FINE, "Stop watching LDS resource {0}", resourceName);
       xdsClient.cancelXdsResourceWatch(XdsListenerResource.getInstance(), resourceName, this);
+      shutdownActiveFilters();
       List<SslContextProviderSupplier> toRelease = getSuppliersInUse();
       filterChainSelectorManager.updateSelector(FilterChainSelector.NO_FILTER_CHAIN);
       for (SslContextProviderSupplier s: toRelease) {
@@ -513,7 +514,7 @@ final class XdsServerWrapper extends Server {
     private void updateActiveFilters() {
       for (FilterChain filterChain: filterChains) {
         updateActiveFiltersForChain(
-            activeFilters.get(filterChain.filterChainMatch()),
+            activeFilters.computeIfAbsent(filterChain.filterChainMatch(), k -> new HashMap<>()),
             filterChain.httpConnectionManager().httpFilterConfigs());
       }
       // Default chain.
@@ -522,6 +523,14 @@ final class XdsServerWrapper extends Server {
         defaultChainConfigs = defaultFilterChain.httpConnectionManager().httpFilterConfigs();
       }
       updateActiveFiltersForChain(activeFiltersDefaultChain, defaultChainConfigs);
+    }
+
+    // called in syncContext
+    private void shutdownActiveFilters() {
+      for (HashMap<String, Filter> chainFilters : activeFilters.values()) {
+        updateActiveFiltersForChain(chainFilters, null);
+      }
+      updateActiveFiltersForChain(activeFiltersDefaultChain, null);
     }
 
     // called in syncContext
@@ -656,6 +665,7 @@ final class XdsServerWrapper extends Server {
 
     private void handleConfigNotFound(StatusException exception) {
       cleanUpRouteDiscoveryStates();
+      shutdownActiveFilters();
       List<SslContextProviderSupplier> toRelease = getSuppliersInUse();
       filterChainSelectorManager.updateSelector(FilterChainSelector.NO_FILTER_CHAIN);
       for (SslContextProviderSupplier s: toRelease) {
