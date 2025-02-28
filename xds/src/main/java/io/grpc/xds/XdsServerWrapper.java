@@ -514,11 +514,23 @@ final class XdsServerWrapper extends Server {
 
     // called in syncContext
     private void updateActiveFilters() {
+      Set<FilterChainMatch> chainsToShutdown = new HashSet<>(activeFilters.keySet());
       for (FilterChain filterChain: filterChains) {
+        FilterChainMatch chainKey = filterChain.filterChainMatch();
+        chainsToShutdown.remove(chainKey);
         updateActiveFiltersForChain(
-            activeFilters.computeIfAbsent(filterChain.filterChainMatch(), k -> new HashMap<>()),
+            activeFilters.computeIfAbsent(chainKey, k -> new HashMap<>()),
             filterChain.httpConnectionManager().httpFilterConfigs());
       }
+
+      // Shutdown all filters of chains missing from the LDS.
+      for (FilterChainMatch chainToShutdown : chainsToShutdown) {
+        HashMap<String, Filter> filtersToShutdown = activeFilters.get(chainToShutdown);
+        checkNotNull(filtersToShutdown, "filtersToShutdown");
+        updateActiveFiltersForChain(filtersToShutdown, null);
+        activeFilters.remove(chainToShutdown);
+      }
+
       // Default chain.
       ImmutableList<NamedFilterConfig> defaultChainConfigs = null;
       if (defaultFilterChain != null) {
@@ -532,6 +544,7 @@ final class XdsServerWrapper extends Server {
       for (HashMap<String, Filter> chainFilters : activeFilters.values()) {
         updateActiveFiltersForChain(chainFilters, null);
       }
+      activeFilters.clear();
       updateActiveFiltersForChain(activeFiltersDefaultChain, null);
     }
 
