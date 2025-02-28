@@ -395,6 +395,9 @@ final class XdsServerWrapper extends Server {
 
       filterChains = update.listener().filterChains();
       defaultFilterChain = update.listener().defaultFilterChain();
+      // Filters are loaded even if the server isn't serving yet.
+      updateActiveFilters();
+
       List<FilterChain> allFilterChains = filterChains;
       if (defaultFilterChain != null) {
         allFilterChains = new ArrayList<>(filterChains);
@@ -473,7 +476,6 @@ final class XdsServerWrapper extends Server {
     private void updateSelector() {
       // This is regenerated in generateRoutingConfig() calls below.
       savedRdsRoutingConfigRef.clear();
-      updateActiveFilters();
 
       // Prepare server routing config map.
       ImmutableMap.Builder<FilterChain, AtomicReference<ServerRoutingConfig>> routingConfigs =

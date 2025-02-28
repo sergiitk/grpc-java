@@ -1618,25 +1618,26 @@ public class XdsServerWrapperTest {
         createHcmForRds(rdsName, filterStateTestConfigs(STATEFUL_1)));
     FilterChain chainDefault = createFilterChain("chain_default",
         createHcmForRds(rdsName, filterStateTestConfigs(STATEFUL_2)));
+
     xdsClient.deliverLdsUpdate(chainA, chainDefault);
     xdsClient.rdsCount.await(1, TimeUnit.SECONDS);
     verify(listener, never()).onServing();
-    // Unlike in the name resolver, we don't load filters until all RDS are resolved.
-    assertThat(statefulFilterProvider.getAllInstances()).isEmpty();
+    // Server didn't start, but filter instances should have already been created.
+    ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
+    // Naming: lds<LDS#>Chain<name>Filter<name#>
+    StatefulFilter lds1ChainAFilter1 = lds1Snapshot.get(0);
+    StatefulFilter lds1ChainDefaultFilter2 = lds1Snapshot.get(1);
 
     // RDS 1: Standard vhost with a route.
     xdsClient.deliverRdsUpdate(rdsName, filterStateTestVhost());
     verifyServerStarted(serverStart);
-    ImmutableList<StatefulFilter> rds1Snapshot = statefulFilterProvider.getAllInstances();
-    assertWithMessage("RDS 1: expected to create filter instances").that(rds1Snapshot).hasSize(2);
-    // Naming: rds<RDS#>Chain<name>Filter<name#>
-    StatefulFilter rds1ChainAFilter1 = rds1Snapshot.get(0);
-    StatefulFilter rds1ChainDefaultFilter2 = rds1Snapshot.get(1);
+    assertThat(statefulFilterProvider.getAllInstances()).isEqualTo(lds1Snapshot);
 
     // RDS 2: RDS_RESOURCE_NAME not found.
     xdsClient.deliverRdsResourceNotFound(rdsName);
-    assertThat(rds1ChainAFilter1.isShutdown()).isFalse();
-    assertThat(rds1ChainDefaultFilter2.isShutdown()).isFalse();
+    assertThat(lds1ChainAFilter1.isShutdown()).isFalse();
+    assertThat(lds1ChainDefaultFilter2.isShutdown()).isFalse();
   }
 
   private StatefulFilter.Provider filterStateTestSetupServer(SettableFuture<Server> serverStart) {
