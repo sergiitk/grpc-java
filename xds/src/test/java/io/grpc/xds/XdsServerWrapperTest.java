@@ -1302,7 +1302,7 @@ public class XdsServerWrapperTest {
     verifyServerStarted(serverStart);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
-    assertThat(lds1Snapshot).hasSize(2);
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
@@ -1335,7 +1335,8 @@ public class XdsServerWrapperTest {
     ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
     // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
     // a new instance should be created.
-    assertThat(lds4Snapshot).hasSize(3);
+    assertWithMessage("LDS 4: Expected a new filter instance for %s", STATEFUL_2)
+        .that(lds4Snapshot).hasSize(3);
     StatefulFilter lds4Filter2 = lds4Snapshot.get(2);
     assertThat(lds4Filter2.idx).isEqualTo(2);
     assertThat(lds4Filter2).isNotSameInstanceAs(lds1Filter2);
@@ -1442,8 +1443,8 @@ public class XdsServerWrapperTest {
 
     xdsClient.deliverLdsUpdate(ImmutableList.of(lds2ChainA, lds2ChainB), null);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
-    // TODO(sergiitk): [TEST] with message
-    assertThat(lds2Snapshot).hasSize(4);
+    assertWithMessage("LDS 2: expected a distinct instance of filter %s for Chain B", STATEFUL_1)
+        .that(lds2Snapshot).hasSize(4);
     StatefulFilter lds2ChainBFilter1 = lds2Snapshot.get(3);
     assertThat(lds2ChainBFilter1).isNotSameInstanceAs(lds1ChainAFilter1);
     // Confirm correct STATEFUL_2 has been shut down.
@@ -1458,7 +1459,8 @@ public class XdsServerWrapperTest {
         matcherA);
     xdsClient.deliverLdsUpdate(ImmutableList.of(lds2ChainA, lds2ChainB), lds3ChainDefault);
     ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
-    assertThat(lds3Snapshot).hasSize(6);
+    assertWithMessage("LDS 3: Expected two new distinct filter instances for default chain")
+        .that(lds3Snapshot).hasSize(6);
     StatefulFilter lds3ChainDefaultFilter1 = lds3Snapshot.get(4);
     StatefulFilter lds3ChainDefaultFilter2 = lds3Snapshot.get(5);
     // STATEFUL_1 in default chain not the same STATEFUL_1 in chain A or B
@@ -1517,12 +1519,12 @@ public class XdsServerWrapperTest {
     xdsClient.deliverLdsUpdate(lds2ChainA, lds2ChainDefault);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     ImmutableList<StatefulFilter> lds2SnapshotAlt = altStatefulFilterProvider.getAllInstances();
-
     // Filter "STATEFUL_2" has different typeUrl, and should be treated as a new filter.
     // No changes in the snapshot of normal stateful filters.
     assertThat(lds2Snapshot).isEqualTo(lds1Snapshot);
     // Two new filter instances is created by altStatefulFilterProvider for chainA and chainDefault.
-    assertThat(lds2SnapshotAlt).hasSize(2);
+    assertWithMessage("LDS 2: expected new filter instances for type %s", altTypeUrl)
+        .that(lds2SnapshotAlt).hasSize(2);
     StatefulFilter lds2ChainAFilter2Alt = lds2SnapshotAlt.get(0);
     StatefulFilter lds2ChainADefault2Alt = lds2SnapshotAlt.get(1);
     // Confirm two new distict instances of STATEFUL_2 were created.

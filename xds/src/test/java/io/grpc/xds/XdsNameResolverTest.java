@@ -1308,7 +1308,7 @@ public class XdsNameResolverTest {
     assertClusterResolutionResult(call1, cluster1);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
-    assertThat(lds1Snapshot).hasSize(2);
+    assertWithMessage("LDS 1: expected to create filter instances").that(lds1Snapshot).hasSize(2);
     // Naming: lds<LDS#>Filter<name#>
     StatefulFilter lds1Filter1 = lds1Snapshot.get(0);
     StatefulFilter lds1Filter2 = lds1Snapshot.get(1);
@@ -1343,7 +1343,8 @@ public class XdsNameResolverTest {
     ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
     // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
     // a new instance should be created.
-    assertThat(lds4Snapshot).hasSize(3);
+    assertWithMessage("LDS 4: Expected a new filter instance for %s", STATEFUL_2)
+        .that(lds4Snapshot).hasSize(3);
     StatefulFilter lds4Filter2 = lds4Snapshot.get(2);
     assertThat(lds4Filter2.idx).isEqualTo(2);
     assertThat(lds4Filter2).isNotSameInstanceAs(lds1Filter2);
@@ -1458,9 +1459,11 @@ public class XdsNameResolverTest {
     ImmutableList<StatefulFilter> lds2SnapshotAlt = altStatefulFilterProvider.getAllInstances();
     // Filter "STATEFUL_2" has different typeUrl, and should be treated as a new filter.
     // No changes in the snapshot of normal stateful filters.
-    assertThat(lds2Snapshot).isEqualTo(lds1Snapshot);
+    assertWithMessage("LDS 2: expected a new filter instance of different type")
+        .that(lds2Snapshot).isEqualTo(lds1Snapshot);
     // A new filter instance is created by altStatefulFilterProvider.
-    assertThat(lds2SnapshotAlt).hasSize(1);
+    assertWithMessage("LDS 2: expected a new filter instance for type %s", altTypeUrl)
+        .that(lds2SnapshotAlt).hasSize(1);
     StatefulFilter lds2Filter2Alt = lds2SnapshotAlt.get(0);
     assertThat(lds2Filter2Alt).isNotSameInstanceAs(lds1Filter2);
     // Verify the shutdown state.
