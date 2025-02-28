@@ -598,7 +598,6 @@ final class XdsServerWrapper extends Server {
             generatePerRouteInterceptors(hcm.httpFilterConfigs(), savedVhosts, chainFilters));
       } else {
         routingConfig = ServerRoutingConfig.FAILING_ROUTING_CONFIG;
-        // TODO(sergiitk): [QUESTION] do we need to shutdown all filters here?
       }
       AtomicReference<ServerRoutingConfig> routingConfigRef = new AtomicReference<>(routingConfig);
       savedRdsRoutingConfigRef.put(filterChain, routingConfigRef);
@@ -708,7 +707,6 @@ final class XdsServerWrapper extends Server {
     }
 
     private List<SslContextProviderSupplier> getSuppliersInUse() {
-      // TODO(sergiitk): [QUESTION] Idea: shutdown filters everywhere where thi is used.
       List<SslContextProviderSupplier> toRelease = new ArrayList<>();
       FilterChainSelector selector = filterChainSelectorManager.getSelectorToUpdateSelector();
       if (selector != null) {
@@ -811,7 +809,6 @@ final class XdsServerWrapper extends Server {
           ServerRoutingConfig updatedRoutingConfig;
           if (savedVirtualHosts == null) {
             updatedRoutingConfig = ServerRoutingConfig.FAILING_ROUTING_CONFIG;
-            // TODO(sergiitk): [QUESTION] do we need to shutdown all filters here?
           } else {
             HashMap<String, Filter> chainFilters =
                 activeFilters.get(filterChain.filterChainMatch());

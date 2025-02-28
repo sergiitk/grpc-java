@@ -1300,7 +1300,6 @@ public class XdsServerWrapperTest {
     FilterChain fc1 = createFilterChain("fc1", hcm1);
     xdsClient.deliverLdsUpdate(fc1, null);
     verifyServerStarted(serverStart);
-    // TODO(sergiitk): [IMPL] consider other checks from discoverState_virtualhost
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
     assertThat(lds1Snapshot).hasSize(2);
