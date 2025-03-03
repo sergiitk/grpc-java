@@ -45,7 +45,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.annotation.Nullable;
 
 /**
@@ -240,17 +243,45 @@ public class XdsServerTestHelper {
     }
 
     void deliverLdsUpdate(List<FilterChain> filterChains,
-                          FilterChain defaultFilterChain) {
+                          @Nullable FilterChain defaultFilterChain) {
       ldsWatcher.onChanged(LdsUpdate.forTcpListener(Listener.create(
               "listener", "0.0.0.0:1", ImmutableList.copyOf(filterChains), defaultFilterChain)));
+    }
+
+    void deliverLdsUpdate(FilterChain filterChain, @Nullable FilterChain defaultFilterChain) {
+      deliverLdsUpdate(ImmutableList.of(filterChain), defaultFilterChain);
     }
 
     void deliverLdsUpdate(LdsUpdate ldsUpdate) {
       ldsWatcher.onChanged(ldsUpdate);
     }
 
-    void deliverRdsUpdate(String rdsName, List<VirtualHost> virtualHosts) {
-      rdsWatchers.get(rdsName).onChanged(new RdsUpdate(virtualHosts));
+    void deliverLdsResourceNotFound() {
+      if (!ldsResource.isDone()) {
+        throw new IllegalStateException("No LDS resource is being watched.");
+      }
+      String expectedResourceName;
+      try {
+        expectedResourceName = ldsResource.get(5, TimeUnit.SECONDS);
+      } catch (ExecutionException | TimeoutException e) {
+        throw new RuntimeException("Can't resolve LDS resource name", e);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException(e);
+      }
+      ldsWatcher.onResourceDoesNotExist(expectedResourceName);
+    }
+
+    void deliverRdsUpdate(String resourceName, List<VirtualHost> virtualHosts) {
+      rdsWatchers.get(resourceName).onChanged(new RdsUpdate(virtualHosts));
+    }
+
+    void deliverRdsUpdate(String resourceName, VirtualHost virtualHost) {
+      deliverRdsUpdate(resourceName, ImmutableList.of(virtualHost));
+    }
+
+    void deliverRdsResourceNotFound(String resourceName) {
+      rdsWatchers.get(resourceName).onResourceDoesNotExist(resourceName);
     }
   }
 }

@@ -20,6 +20,7 @@ import com.google.common.base.MoreObjects;
 import com.google.protobuf.Message;
 import io.grpc.ClientInterceptor;
 import io.grpc.ServerInterceptor;
+import java.io.Closeable;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.annotation.Nullable;
@@ -32,7 +33,7 @@ import javax.annotation.Nullable;
  * {@link Provider#isClientFilter()}, {@link Provider#isServerFilter()} to indicate that the filter
  * is capable of working on the client side or server side or both, respectively.
  */
-interface Filter {
+interface Filter extends Closeable {
 
   /** Represents an opaque data structure holding configuration for a filter. */
   interface FilterConfig {
@@ -72,6 +73,21 @@ interface Filter {
      *
      * <p>Returns a filter instance registered with the same typeUrls as the provider,
      * capable of working with the same FilterConfig type returned by provider's parse functions.
+     *
+     * <p>For xDS gRPC clients, new filter instances are created per:
+     * <ul>
+     *   <li>Channel instance.</li>
+     *   <li>Filter name+typeUrl combination in HttpConnectionManager filters configuration.</li>
+     * </ul>
+     *
+     * <p>For xDS-enabled gRPC  clients, new filter instances are created per:
+     * <ul>
+     *   <li>Server instance.</li>
+     *   <li>HttpConnectionManager name</li>
+     *   <li>Filter name+typeUrl combination in HttpConnectionManager filters configuration.</li>
+     * </ul>
+     *
+     * <p>See {@link Filter#close()} for details on filter instances shutdown.
      */
     Filter newInstance();
 
@@ -103,6 +119,21 @@ interface Filter {
     return null;
   }
 
+  /**
+   * Implement to perform cleanup on filter shutdown.
+   *
+   * <p>Stateful filters should implement this method to perform cleanup, f.e. release shared
+   * resources, close remote connections, etc.
+   *
+   * <p>This method is called on the filter instance when an LDS update does not have
+   * the HttpConnectionManager that created the instance, or when HttpConnectionManager no longer
+   * contains filter configuration for filter name+typeUrl combination that created the instance.
+   *
+   * <p>See {@link Provider#newInstance()} for details on filter instances creation.
+   */
+  @Override
+  default void close() {}
+
   /** Filter config with instance name. */
   final class NamedFilterConfig {
     // filter instance name
@@ -112,6 +143,10 @@ interface Filter {
     NamedFilterConfig(String name, FilterConfig filterConfig) {
       this.name = name;
       this.filterConfig = filterConfig;
+    }
+
+    String filterStateKey() {
+      return name + "_" + filterConfig.typeUrl();
     }
 
     @Override
