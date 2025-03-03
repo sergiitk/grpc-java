@@ -73,6 +73,21 @@ interface Filter extends Closeable {
      *
      * <p>Returns a filter instance registered with the same typeUrls as the provider,
      * capable of working with the same FilterConfig type returned by provider's parse functions.
+     *
+     * <p>For xDS gRPC clients, new filter instances are created per:
+     * <ul>
+     *   <li>Channel instance.</li>
+     *   <li>Filter name+typeUrl combination in HttpConnectionManager filters configuration.</li>
+     * </ul>
+     *
+     * <p>For xDS-enabled gRPC  clients, new filter instances are created per:
+     * <ul>
+     *   <li>Server instance.</li>
+     *   <li>HttpConnectionManager name</li>
+     *   <li>Filter name+typeUrl combination in HttpConnectionManager filters configuration.</li>
+     * </ul>
+     *
+     * <p>See {@link Filter#close()} for details on filter instances shutdown.
      */
     Filter newInstance();
 
@@ -104,11 +119,20 @@ interface Filter extends Closeable {
     return null;
   }
 
+  /**
+   * Implement to perform cleanup on filter shutdown.
+   *
+   * <p>Stateful filters should implement this method to perform cleanup, f.e. release shared
+   * resources, close remote connections, etc.
+   *
+   * <p>This method is called on the filter instance when an LDS update does not have
+   * the HttpConnectionManager that created the instance, or when HttpConnectionManager no longer
+   * contains filter configuration for filter name+typeUrl combination that created the instance.
+   *
+   * <p>See {@link Provider#newInstance()} for details on filter instances creation.
+   */
   @Override
-  default void close() {
-    // Optional cleanup on filter shutdown.
-    // TODO(sergiitk): [IMPL] better doc
-  }
+  default void close() {}
 
   /** Filter config with instance name. */
   final class NamedFilterConfig {
