@@ -1286,9 +1286,6 @@ public class XdsServerWrapperTest {
 
   // Begin filter state tests.
 
-  // TODO(sergiitk): [TEST] check if all expected updates actually trigger watcher.onChanged
-  //   considering that XdsClientImpl.ResourceSubscriber#onData does Objects.equals(oldData, data).
-
   @Test
   public void filterState_survivesLds() {
     SettableFuture<Server> serverStart = SettableFuture.create();
@@ -1296,9 +1293,9 @@ public class XdsServerWrapperTest {
     VirtualHost vhost = filterStateTestVhost();
 
     // LDS 1.
-    HttpConnectionManager hcm1 = createHcm(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2));
-    FilterChain fc1 = createFilterChain("fc1", hcm1);
-    xdsClient.deliverLdsUpdate(fc1, null);
+    FilterChain lds1FilterChain = createFilterChain("chain_0",
+        createHcm(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2)));
+    xdsClient.deliverLdsUpdate(lds1FilterChain, null);
     verifyServerStarted(serverStart);
     ImmutableList<StatefulFilter> lds1Snapshot = statefulFilterProvider.getAllInstances();
     // Verify that StatefulFilter with different filter names result in different Filter instances.
@@ -1312,15 +1309,18 @@ public class XdsServerWrapperTest {
     assertThat(lds1Filter2.idx).isEqualTo(1);
 
     // LDS 2: filter configs with the same names.
-    xdsClient.deliverLdsUpdate(fc1, null);
+    FilterChain lds2FilterChain = createFilterChain("chain_0",
+        createHcm(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2)));
+    xdsClient.deliverLdsUpdate(lds2FilterChain, null);
     ImmutableList<StatefulFilter> lds2Snapshot = statefulFilterProvider.getAllInstances();
     // Filter names hasn't changed, so expecting no new StatefulFilter instances.
     assertWithMessage("LDS 2: Expected Filter instances to be reused across LDS updates")
         .that(lds2Snapshot).isEqualTo(lds1Snapshot);
 
     // LDS 3: Filter "STATEFUL_2" removed.
-    HttpConnectionManager hcm2 = createHcm(vhost, filterStateTestConfigs(STATEFUL_1));
-    xdsClient.deliverLdsUpdate(createFilterChain("fc1", hcm2), null);
+    FilterChain lds3FilterChain = createFilterChain("chain_0",
+        createHcm(vhost, filterStateTestConfigs(STATEFUL_1)));
+    xdsClient.deliverLdsUpdate(lds3FilterChain, null);
     ImmutableList<StatefulFilter> lds3Snapshot = statefulFilterProvider.getAllInstances();
     // Again, no new StatefulFilter instances should be created.
     assertWithMessage("LDS 3: Expected Filter instances to be reused across LDS updates")
@@ -1331,7 +1331,9 @@ public class XdsServerWrapperTest {
         .that(lds1Filter2.isShutdown()).isTrue();
 
     // LDS 4: Filter "STATEFUL_2" added back.
-    xdsClient.deliverLdsUpdate(fc1, null);
+    FilterChain lds4FilterChain = createFilterChain("chain_0",
+        createHcm(vhost, filterStateTestConfigs(STATEFUL_1, STATEFUL_2)));
+    xdsClient.deliverLdsUpdate(lds4FilterChain, null);
     ImmutableList<StatefulFilter> lds4Snapshot = statefulFilterProvider.getAllInstances();
     // Filter "STATEFUL_2" should be treated as any other new filter name in an LDS update:
     // a new instance should be created.
@@ -1388,7 +1390,7 @@ public class XdsServerWrapperTest {
         .that(rds2Snapshot).isEqualTo(lds1Snapshot);
 
     // RDS 3: Contains a per-route override for STATEFUL_1.
-    VirtualHost vhost3 = filterStateTestVhost(ImmutableMap.of(
+    VirtualHost vhost3 = filterStateTestVhost(vhost1.name(), ImmutableMap.of(
         STATEFUL_1, new Config("RDS3")
     ));
     xdsClient.deliverRdsUpdate(rdsName, vhost3);
@@ -1709,16 +1711,11 @@ public class XdsServerWrapperTest {
   }
 
   private static VirtualHost filterStateTestVhost() {
-    return filterStateTestVhost(NO_FILTER_OVERRIDES);
+    return filterStateTestVhost("stateful-vhost", NO_FILTER_OVERRIDES);
   }
 
   private static VirtualHost filterStateTestVhost(String name) {
     return filterStateTestVhost(name, NO_FILTER_OVERRIDES);
-  }
-
-  private static VirtualHost filterStateTestVhost(
-      ImmutableMap<String, FilterConfig> perRouteOverrides) {
-    return filterStateTestVhost("stateful-vhost", perRouteOverrides);
   }
 
   private static VirtualHost filterStateTestVhost(
