@@ -45,7 +45,6 @@ import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.ObjectPool;
 import io.grpc.internal.SharedResourceHolder;
 import io.grpc.xds.EnvoyServerProtoData.FilterChain;
-import io.grpc.xds.EnvoyServerProtoData.FilterChainMatch;
 import io.grpc.xds.Filter.FilterConfig;
 import io.grpc.xds.Filter.NamedFilterConfig;
 import io.grpc.xds.FilterChainMatchingProtocolNegotiators.FilterChainMatchingHandler.FilterChainSelector;
@@ -115,12 +114,11 @@ final class XdsServerWrapper extends Server {
   private volatile Server delegate;
 
   // Must be updated in the sync context.
-  // TODO(sergiitk): [QUESTION] consider the implication of filterchain equality, during updates.
-  // how to identify this is the same filter chain
-  // - based on index?
-  // - based on FilterChainMatch?
-  // private final HashMap<String, Filter> activeFilters = new HashMap<>();
-  private final HashMap<FilterChainMatch, HashMap<String, Filter>> activeFilters = new HashMap<>();
+  // Filter instances are unique per Server, per FilterChain, and per filter's name+typeUrl.
+  // FilterChain.name -> <NamedFilterConfig.filterStateKey -> filter_instance>.
+  private final HashMap<String, HashMap<String, Filter>> activeFilters = new HashMap<>();
+  // Default filter chain Filter instances are unique per Server, and per filter's name+typeUrl.
+  // NamedFilterConfig.filterStateKey -> filter_instance.
   private final HashMap<String, Filter> activeFiltersDefaultChain = new HashMap<>();
 
   XdsServerWrapper(
@@ -481,7 +479,7 @@ final class XdsServerWrapper extends Server {
       ImmutableMap.Builder<FilterChain, AtomicReference<ServerRoutingConfig>> routingConfigs =
           ImmutableMap.builder();
       for (FilterChain filterChain: filterChains) {
-        HashMap<String, Filter> chainFilters = activeFilters.get(filterChain.filterChainMatch());
+        HashMap<String, Filter> chainFilters = activeFilters.get(filterChain.name());
         routingConfigs.put(filterChain, generateRoutingConfig(filterChain, chainFilters));
       }
 
@@ -514,19 +512,18 @@ final class XdsServerWrapper extends Server {
 
     // called in syncContext
     private void updateActiveFilters() {
-      Set<FilterChainMatch> chainsToShutdown = new HashSet<>(activeFilters.keySet());
+      Set<String> removedChains = new HashSet<>(activeFilters.keySet());
       for (FilterChain filterChain: filterChains) {
-        FilterChainMatch chainKey = filterChain.filterChainMatch();
-        chainsToShutdown.remove(chainKey);
+        removedChains.remove(filterChain.name());
         updateActiveFiltersForChain(
-            activeFilters.computeIfAbsent(chainKey, k -> new HashMap<>()),
+            activeFilters.computeIfAbsent(filterChain.name(), k -> new HashMap<>()),
             filterChain.httpConnectionManager().httpFilterConfigs());
       }
 
       // Shutdown all filters of chains missing from the LDS.
-      for (FilterChainMatch chainToShutdown : chainsToShutdown) {
+      for (String chainToShutdown : removedChains) {
         HashMap<String, Filter> filtersToShutdown = activeFilters.get(chainToShutdown);
-        checkNotNull(filtersToShutdown, "filtersToShutdown");
+        checkNotNull(filtersToShutdown, "filtersToShutdown of " + chainToShutdown);
         updateActiveFiltersForChain(filtersToShutdown, null);
         activeFilters.remove(chainToShutdown);
       }
@@ -542,6 +539,7 @@ final class XdsServerWrapper extends Server {
     // called in syncContext
     private void shutdownActiveFilters() {
       for (HashMap<String, Filter> chainFilters : activeFilters.values()) {
+        checkNotNull(chainFilters, "chainFilters");
         updateActiveFiltersForChain(chainFilters, null);
       }
       activeFilters.clear();
@@ -810,8 +808,7 @@ final class XdsServerWrapper extends Server {
           if (savedVirtualHosts == null) {
             updatedRoutingConfig = ServerRoutingConfig.FAILING_ROUTING_CONFIG;
           } else {
-            HashMap<String, Filter> chainFilters =
-                activeFilters.get(filterChain.filterChainMatch());
+            HashMap<String, Filter> chainFilters = activeFilters.get(filterChain.name());
             ImmutableMap<Route, ServerInterceptor> interceptors = generatePerRouteInterceptors(
                 hcm.httpFilterConfigs(), savedVirtualHosts, chainFilters);
             updatedRoutingConfig = ServerRoutingConfig.create(savedVirtualHosts, interceptors);
