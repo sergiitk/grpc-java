@@ -178,8 +178,6 @@ public class XdsServerTestHelper {
   }
 
   static final class FakeXdsClient extends XdsClient {
-    // TODO(sergiitk): [QUESTION] Add syncContext like in XdsNameResolverTest.FakeXdsClient?
-
     boolean shutdown;
     SettableFuture<String> ldsResource = SettableFuture.create();
     ResourceWatcher<LdsUpdate> ldsWatcher;

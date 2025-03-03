@@ -616,7 +616,6 @@ final class XdsServerWrapper extends Server {
 
       for (VirtualHost virtualHost : virtualHosts) {
         for (Route route : virtualHost.routes()) {
-          // TODO(sergiitk): [IMPL] filterConfigs is null per method. pull up.
           // Short circuit.
           if (filterConfigs == null) {
             perRouteInterceptors.put(route, noopInterceptor);
