@@ -79,7 +79,6 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -109,21 +108,19 @@ public class XdsServerWrapperTest {
   private XdsServingStatusListener listener;
 
   private FilterChainSelectorManager selectorManager = new FilterChainSelectorManager();
-  private final FakeClock executor = new FakeClock();
-  private final ScheduledExecutorService timeService = executor.getScheduledExecutorService();
+  private FakeClock executor = new FakeClock();
   private FakeXdsClient xdsClient = new FakeXdsClient();
   private FilterRegistry filterRegistry = FilterRegistry.getDefaultRegistry();
   private XdsServerWrapper xdsServerWrapper;
   private ServerRoutingConfig noopConfig = ServerRoutingConfig.create(
       ImmutableList.<VirtualHost>of(), ImmutableMap.<Route, ServerInterceptor>of());
 
-
   @Before
   public void setup() {
     when(mockBuilder.build()).thenReturn(mockServer);
     xdsServerWrapper = new XdsServerWrapper("0.0.0.0:1", mockBuilder, listener,
             selectorManager, new FakeXdsClientPoolFactory(xdsClient),
-            filterRegistry, timeService);
+            filterRegistry, executor.getScheduledExecutorService());
   }
 
   @After
@@ -1119,8 +1116,6 @@ public class XdsServerWrapperTest {
     Filter filter = mock(Filter.class, withSettings()
         .extraInterfaces(ServerInterceptorBuilder.class));
     when(filter.typeUrls()).thenReturn(new String[]{"filter-type-url"});
-    when(filter.isEnabled()).thenCallRealMethod();
-    assertThat(filter.isEnabled()).isTrue();
     filterRegistry.register(filter);
     FilterConfig f0 = mock(FilterConfig.class);
     FilterConfig f0Override = mock(FilterConfig.class);
@@ -1142,10 +1137,9 @@ public class XdsServerWrapperTest {
         return next.startCall(call, headers);
       }
     };
-    ServerInterceptorBuilder interceptorBuilder = (ServerInterceptorBuilder) filter;
-    when(interceptorBuilder.buildServerInterceptor(f0, null, timeService))
+    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, null))
         .thenReturn(interceptor0);
-    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, f0Override, timeService))
+    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, f0Override))
         .thenReturn(interceptor1);
     Route route = Route.forAction(routeMatch, null,
         ImmutableMap.<String, FilterConfig>of());
@@ -1194,8 +1188,6 @@ public class XdsServerWrapperTest {
     Filter filter = mock(Filter.class, withSettings()
         .extraInterfaces(ServerInterceptorBuilder.class));
     when(filter.typeUrls()).thenReturn(new String[]{"filter-type-url"});
-    when(filter.isEnabled()).thenCallRealMethod();
-    assertThat(filter.isEnabled()).isTrue();
     filterRegistry.register(filter);
     FilterConfig f0 = mock(FilterConfig.class);
     FilterConfig f0Override = mock(FilterConfig.class);
@@ -1217,13 +1209,10 @@ public class XdsServerWrapperTest {
         return next.startCall(call, headers);
       }
     };
-
-    ServerInterceptorBuilder interceptorBuilder = (ServerInterceptorBuilder) filter;
-    when(interceptorBuilder.buildServerInterceptor(f0, null, timeService))
+    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, null))
         .thenReturn(interceptor0);
-    when(interceptorBuilder.buildServerInterceptor(f0, f0Override, timeService))
+    when(((ServerInterceptorBuilder)filter).buildServerInterceptor(f0, f0Override))
         .thenReturn(interceptor1);
-
     RouteMatch routeMatch =
         RouteMatch.create(
             PathMatcher.fromPath("/FooService/barMethod", true),

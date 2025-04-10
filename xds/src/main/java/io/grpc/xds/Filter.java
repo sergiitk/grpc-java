@@ -38,10 +38,6 @@ interface Filter {
    */
   String[] typeUrls();
 
-  default boolean isEnabled() {
-    return true;
-  }
-
   /**
    * Parses the top-level filter config from raw proto message. The message may be either a {@link
    * com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
@@ -53,12 +49,6 @@ interface Filter {
    * a {@link com.google.protobuf.Any} or a {@link com.google.protobuf.Struct}.
    */
   ConfigOrError<? extends FilterConfig> parseFilterConfigOverride(Message rawProtoMessage);
-
-  default void shutdown() {
-    // Implement as needed.
-    // TODO(sergiitk): [DESIGN] important to cover and discuss in the design.
-    // TODO(sergiitk): [QUESTION] should it be in ServerInterceptorBuilder?
-  }
 
   /** Represents an opaque data structure holding configuration for a filter. */
   interface FilterConfig {
@@ -78,15 +68,6 @@ interface Filter {
     @Nullable
     ServerInterceptor buildServerInterceptor(
         FilterConfig config, @Nullable FilterConfig overrideConfig);
-
-    @Nullable
-    default ServerInterceptor buildServerInterceptor(
-        FilterConfig config,
-        @Nullable FilterConfig overrideConfig,
-        ScheduledExecutorService scheduler) {
-      return buildServerInterceptor(config, overrideConfig);
-    }
-
   }
 
   /** Filter config with instance name. */

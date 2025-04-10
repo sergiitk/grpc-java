@@ -37,8 +37,7 @@ final class FilterRegistry {
       instance = newRegistry().register(
               FaultFilter.INSTANCE,
               RouterFilter.INSTANCE,
-              RbacFilter.INSTANCE,
-              RlqsFilter.INSTANCE);
+              RbacFilter.INSTANCE);
     }
     return instance;
   }
@@ -51,9 +50,6 @@ final class FilterRegistry {
   @VisibleForTesting
   FilterRegistry register(Filter... filters) {
     for (Filter filter : filters) {
-      if (!filter.isEnabled()) {
-        continue;
-      }
       for (String typeUrl : filter.typeUrls()) {
         supportedFilters.put(typeUrl, filter);
       }

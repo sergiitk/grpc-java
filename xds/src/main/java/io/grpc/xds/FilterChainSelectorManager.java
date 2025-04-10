@@ -65,7 +65,6 @@ final class FilterChainSelectorManager {
       closers = new TreeSet<Closer>(closers.comparator());
       selector = newSelector;
     }
-    // TODO(sergiitk): [design] calls the closer of FilterChainMatchingNegotiatorServerFactory
     for (Closer closer : oldClosers) {
       closer.closer.run();
     }
