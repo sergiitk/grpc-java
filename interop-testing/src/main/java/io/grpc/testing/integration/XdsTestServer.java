@@ -32,7 +32,6 @@ import io.grpc.ServerCallHandler;
 import io.grpc.ServerCredentials;
 import io.grpc.ServerInterceptor;
 import io.grpc.ServerInterceptors;
-import io.grpc.ServerServiceDefinition;
 import io.grpc.Status;
 import io.grpc.gcp.csm.observability.CsmObservability;
 import io.grpc.health.v1.HealthCheckResponse.ServingStatus;
@@ -85,7 +84,6 @@ public final class XdsTestServer {
   private int port = 8080;
   private int maintenancePort = 8080;
   private boolean secureMode = false;
-  private boolean xdsServerMode = false;
   private boolean enableCsmObservability;
   private String serverId = "java_server";
   private HealthStatusManager health;
@@ -146,10 +144,7 @@ public final class XdsTestServer {
         maintenancePort = Integer.valueOf(value);
       } else if ("secure_mode".equals(key)) {
         secureMode = Boolean.parseBoolean(value);
-      } else if ("xds_server_mode".equals(key)) {
-        xdsServerMode = Boolean.parseBoolean(value);
-      }
-      else if ("enable_csm_observability".equals(key)) {
+      } else if ("enable_csm_observability".equals(key)) {
         enableCsmObservability = Boolean.valueOf(value);
       } else if ("server_id".equals(key)) {
         serverId = value;
@@ -170,9 +165,6 @@ public final class XdsTestServer {
               + maintenancePort);
       usage = true;
     }
-    if (secureMode) {
-      xdsServerMode = true;
-    }
 
     if (usage) {
       XdsTestServer s = new XdsTestServer();
@@ -189,9 +181,6 @@ public final class XdsTestServer {
               + " port and maintenance_port should be different for secure mode."
               + "\n                      Default: "
               + s.secureMode
-              + "\n  --xds_server_mode=BOOLEAN   Start in xDS Server mode."
-              + "\n                      Default: "
-              + s.xdsServerMode
               + "\n  --enable_csm_observability=BOOL  Enable CSM observability reporting. Default: "
               + s.enableCsmObservability
               + "\n  --server_id=STRING  server ID for response."
@@ -226,11 +215,6 @@ public final class XdsTestServer {
       throw new RuntimeException(e);
     }
     health = new HealthStatusManager();
-    ServerServiceDefinition testServiceInterceptor = ServerInterceptors.intercept(
-        new TestServiceImpl(serverId, host),
-        new TestInfoInterceptor(host));
-    ServerCredentials insecureServerCreds = InsecureServerCredentials.create();
-
     @SuppressWarnings("deprecation")
     BindableService oldReflectionService = ProtoReflectionService.newInstance();
     if (secureMode) {
@@ -238,7 +222,7 @@ public final class XdsTestServer {
         throw new IllegalArgumentException("Secure mode only supports IPV4_IPV6 address type");
       }
       maintenanceServer =
-          Grpc.newServerBuilderForPort(maintenancePort, insecureServerCreds)
+          Grpc.newServerBuilderForPort(maintenancePort, InsecureServerCredentials.create())
               .addService(new XdsUpdateHealthServiceImpl(health))
               .addService(health.getHealthService())
               .addService(oldReflectionService)
@@ -246,52 +230,51 @@ public final class XdsTestServer {
               .addServices(AdminInterface.getStandardServices())
               .build();
       maintenanceServer.start();
-      server = XdsServerBuilder.forPort(port, XdsServerCredentials.create(insecureServerCreds))
-              .addService(testServiceInterceptor)
+      server =
+          XdsServerBuilder.forPort(
+                  port, XdsServerCredentials.create(InsecureServerCredentials.create()))
+              .addService(
+                  ServerInterceptors.intercept(
+                      new TestServiceImpl(serverId, host), new TestInfoInterceptor(host)))
               .build();
       server.start();
-      health.setStatus("", ServingStatus.SERVING);
-      return;
-    }
-
-    ServerBuilder<?> serverBuilder;
-    switch (addressType) {
-      case IPV4_IPV6:
-        serverBuilder = Grpc.newServerBuilderForPort(port, insecureServerCreds);
-        break;
-      case IPV4:
-        SocketAddress v4Address = Util.getV4Address(port);
-        InetSocketAddress localV4Address = new InetSocketAddress("127.0.0.1", port);
-        serverBuilder = NettyServerBuilder.forAddress(
-                localV4Address, insecureServerCreds);
-        if (v4Address != null && !v4Address.equals(localV4Address) ) {
-          ((NettyServerBuilder) serverBuilder).addListenAddress(v4Address);
-        }
-        break;
-      case IPV6:
-        List<SocketAddress> v6Addresses = Util.getV6Addresses(port);
-        InetSocketAddress localV6Address = new InetSocketAddress("::1", port);
-        serverBuilder = NettyServerBuilder.forAddress(localV6Address, insecureServerCreds);
-        for (SocketAddress address : v6Addresses) {
-          if (!address.equals(localV6Address)) {
-            ((NettyServerBuilder) serverBuilder).addListenAddress(address);
+    } else {
+      ServerBuilder<?> serverBuilder;
+      ServerCredentials insecureServerCreds = InsecureServerCredentials.create();
+      switch (addressType) {
+        case IPV4_IPV6:
+          serverBuilder = Grpc.newServerBuilderForPort(port, insecureServerCreds);
+          break;
+        case IPV4:
+          SocketAddress v4Address = Util.getV4Address(port);
+          InetSocketAddress localV4Address = new InetSocketAddress("127.0.0.1", port);
+          serverBuilder = NettyServerBuilder.forAddress(
+                  localV4Address, insecureServerCreds);
+          if (v4Address != null && !v4Address.equals(localV4Address) ) {
+            ((NettyServerBuilder) serverBuilder).addListenAddress(v4Address);
           }
-        }
-        break;
-      default:
-        throw new AssertionError("Unknown address type: " + addressType);
-    }
-
-    if (xdsServerMode) {
-      if (addressType != Util.AddressType.IPV4_IPV6) {
-        throw new IllegalArgumentException("xDS Server mode only supports IPV4_IPV6 address type");
+          break;
+        case IPV6:
+          List<SocketAddress> v6Addresses = Util.getV6Addresses(port);
+          InetSocketAddress localV6Address = new InetSocketAddress("::1", port);
+          serverBuilder = NettyServerBuilder.forAddress(localV6Address, insecureServerCreds);
+          for (SocketAddress address : v6Addresses) {
+            if (!address.equals(localV6Address)) {
+              ((NettyServerBuilder) serverBuilder).addListenAddress(address);
+            }
+          }
+          break;
+        default:
+          throw new AssertionError("Unknown address type: " + addressType);
       }
 
       logger.info("Starting server on port " + port + " with address type " + addressType);
 
       server =
           serverBuilder
-              .addService(testServiceInterceptor)
+              .addService(
+                  ServerInterceptors.intercept(
+                      new TestServiceImpl(serverId, host), new TestInfoInterceptor(host)))
               .addService(new XdsUpdateHealthServiceImpl(health))
               .addService(health.getHealthService())
               .addService(oldReflectionService)
@@ -300,23 +283,7 @@ public final class XdsTestServer {
               .build();
       server.start();
       maintenanceServer = null;
-      health.setStatus("", ServingStatus.SERVING);
-      return;
     }
-
-    logger.info("Starting server on port " + port + " with address type " + addressType);
-
-    server =
-        serverBuilder
-            .addService(testServiceInterceptor)
-            .addService(new XdsUpdateHealthServiceImpl(health))
-            .addService(health.getHealthService())
-            .addService(oldReflectionService)
-            .addService(ProtoReflectionServiceV1.newInstance())
-            .addServices(AdminInterface.getStandardServices())
-            .build();
-    server.start();
-    maintenanceServer = null;
     health.setStatus("", ServingStatus.SERVING);
   }
 
