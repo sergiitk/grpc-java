@@ -127,6 +127,14 @@ public abstract class XdsResourceType<T extends ResourceUpdate> {
     public ResourceInvalidException(String message, Throwable cause) {
       super(cause != null ? message + ": " + cause.getMessage() : message, cause, false, false);
     }
+
+    public static ResourceInvalidException ofResource(String resourceName, String reason) {
+      return new ResourceInvalidException("Error parsing " + resourceName + ": " + reason);
+    }
+
+    public static ResourceInvalidException ofResource(Message proto, String reason) {
+      return ResourceInvalidException.ofResource(proto.getClass().getCanonicalName(), reason);
+    }
   }
 
   ValidatedResourceUpdate<T> parse(Args args, List<Any> resources) {
@@ -207,6 +215,15 @@ public abstract class XdsResourceType<T extends ResourceUpdate> {
       any = any.toBuilder().setTypeUrl(typeUrl).build();
     }
     return any.unpack(clazz);
+  }
+
+  public static <T extends com.google.protobuf.Message> T unpackAny(
+      Message message, Class<T> clazz) throws InvalidProtocolBufferException {
+    if (!(message instanceof Any)) {
+      throw new InvalidProtocolBufferException(
+          "Invalid config type: " + message.getClass().getCanonicalName());
+    }
+    return ((Any) message).unpack(clazz);
   }
 
   static final class ParsedResource<T extends ResourceUpdate> {
