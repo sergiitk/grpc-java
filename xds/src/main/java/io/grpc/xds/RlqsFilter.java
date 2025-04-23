@@ -56,7 +56,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Logger;
 import javax.annotation.Nullable;
 
-/** RBAC Http filter implementation. */
+/** RLQS xDS HTTP filter implementation. */
 // TODO(sergiitk): introduce a layer between the filter and interceptor.
 // lds has filter names and the names are unique - even for server instances.
 final class RlqsFilter implements Filter {
@@ -206,10 +206,13 @@ final class RlqsFilter implements Filter {
   @Override
   public ServerInterceptor buildServerInterceptor(
       FilterConfig config, @Nullable FilterConfig overrideConfig) {
-    // ScheduledExecutorService scheduler
+    if (shutdown) {
+      return null;
+    }
 
     // Called when we get an xds update - when the LRS or RLS changes.
     RlqsFilterConfig rlqsFilterConfig = (RlqsFilterConfig) checkNotNull(config, "config");
+    checkNotNull(rlqsFilterConfig.rlqsService(), "config.rlqsService");
 
     // Per-route and per-host configuration overrides.
     if (overrideConfig != null) {
@@ -226,52 +229,21 @@ final class RlqsFilter implements Filter {
       rlqsFilterConfig = overrideBuilder.build();
     }
 
-    return generateRlqsInterceptor(rlqsFilterConfig);
+    RlqsFilterState rlqsFilterState = getOrCreateFilterState(rlqsFilterConfig);
+    return new RlqsServerInterceptor(rlqsFilterState);
   }
 
-  private ServerInterceptor generateRlqsInterceptor(RlqsFilterConfig config) {
-    checkNotNull(config, "config");
-    checkNotNull(config.rlqsService(), "config.rlqsService");
-    final RlqsFilterState rlqsFilterState = getOrCreateFilterState(config);
-    // TODO(sergiitk): handle being shut down.
-
-    return new ServerInterceptor() {
-      @Override
-      public <ReqT, RespT> Listener<ReqT> interceptCall(
-          ServerCall<ReqT, RespT> call, Metadata headers, ServerCallHandler<ReqT, RespT> next) {
-        HttpMatchInput httpMatchInput = HttpMatchInput.create(headers, call);
-
-        // TODO(sergiitk): [IMPL] Remove
-        if (dryRun) {
-          // logger.log(XdsLogLevel.INFO, "RLQS DRY RUN: request <<" + httpMatchInput + ">>");
-          return next.startCall(call, headers);
-        }
-
-        RlqsRateLimitResult result = rlqsFilterState.rateLimit(httpMatchInput);
-        if (result.isAllowed()) {
-          return next.startCall(call, headers);
-        }
-        RlqsRateLimitResult.DenyResponse denyResponse = result.denyResponse().get();
-        call.close(denyResponse.status(), denyResponse.headersToAdd());
-        return new ServerCall.Listener<ReqT>(){};
-      }
-    };
-  }
-
-  public RlqsFilterState getOrCreateFilterState(final RlqsFilterConfig config) {
-    // TODO(sergiitk): handle being shut down.
-    return filterStateCache.computeIfAbsent(config, this::newFilterState);
-  }
-
-  private RlqsFilterState newFilterState(RlqsFilterConfig config) {
+  private RlqsFilterState getOrCreateFilterState(final RlqsFilterConfig config) {
     // TODO(sergiitk): [IMPL] get channel creds from the bootstrap.
-    ChannelCredentials creds = InsecureChannelCredentials.create();
-    return new RlqsFilterState(
-        RemoteServerInfo.create(config.rlqsService().targetUri(), creds),
-        config.domain(),
-        config.bucketMatchers(),
-        config.hashCode(),
-        scheduler);
+    return filterStateCache.computeIfAbsent(config, (k) -> {
+      ChannelCredentials creds = InsecureChannelCredentials.create();
+      return new RlqsFilterState(
+          RemoteServerInfo.create(config.rlqsService().targetUri(), creds),
+          config.domain(),
+          config.bucketMatchers(),
+          config.hashCode(),
+          scheduler);
+    });
   }
 
   static class RlqsMatcher extends Matcher<HttpMatchInput, RlqsBucketSettings> {
@@ -305,5 +277,33 @@ final class RlqsFilter implements Filter {
     // TODO(sergiitk): [IMPL] bucket_matchers.
 
     return builder.domain(rlqsFilterProtoOverride.getDomain()).build();
+  }
+
+  private static class RlqsServerInterceptor implements ServerInterceptor {
+    private final RlqsFilterState rlqsFilterState;
+
+    public RlqsServerInterceptor(RlqsFilterState rlqsFilterState) {
+      this.rlqsFilterState = rlqsFilterState;
+    }
+
+    @Override
+    public <ReqT, RespT> Listener<ReqT> interceptCall(
+        ServerCall<ReqT, RespT> call, Metadata headers, ServerCallHandler<ReqT, RespT> next) {
+      HttpMatchInput httpMatchInput = HttpMatchInput.create(headers, call);
+
+      // TODO(sergiitk): [IMPL] Remove
+      if (dryRun) {
+        // logger.log(XdsLogLevel.INFO, "RLQS DRY RUN: request <<" + httpMatchInput + ">>");
+        return next.startCall(call, headers);
+      }
+
+      RlqsRateLimitResult result = rlqsFilterState.rateLimit(httpMatchInput);
+      if (result.isAllowed()) {
+        return next.startCall(call, headers);
+      }
+      RlqsRateLimitResult.DenyResponse denyResponse = result.denyResponse().get();
+      call.close(denyResponse.status(), denyResponse.headersToAdd());
+      return new Listener<ReqT>(){};
+    }
   }
 }
