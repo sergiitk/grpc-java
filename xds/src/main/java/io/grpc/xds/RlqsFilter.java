@@ -21,20 +21,25 @@ import static io.grpc.xds.client.XdsResourceType.ResourceInvalidException;
 import static io.grpc.xds.client.XdsResourceType.unpackAny;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import io.envoyproxy.envoy.extensions.filters.http.rate_limit_quota.v3.RateLimitQuotaBucketSettings;
 import io.envoyproxy.envoy.extensions.filters.http.rate_limit_quota.v3.RateLimitQuotaFilterConfig;
 import io.envoyproxy.envoy.extensions.filters.http.rate_limit_quota.v3.RateLimitQuotaOverride;
+import io.grpc.ChannelCredentials;
+import io.grpc.InsecureChannelCredentials;
 import io.grpc.InternalLogId;
 import io.grpc.Metadata;
 import io.grpc.ServerCall;
 import io.grpc.ServerCall.Listener;
 import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
+import io.grpc.SynchronizationContext;
 import io.grpc.internal.GrpcUtil;
 import io.grpc.internal.SharedResourceHolder;
+import io.grpc.xds.client.Bootstrapper.RemoteServerInfo;
 import io.grpc.xds.client.XdsLogger;
 import io.grpc.xds.client.XdsLogger.XdsLogLevel;
 import io.grpc.xds.internal.datatype.GrpcService;
@@ -43,13 +48,11 @@ import io.grpc.xds.internal.matchers.Matcher;
 import io.grpc.xds.internal.matchers.MatcherList;
 import io.grpc.xds.internal.matchers.OnMatch;
 import io.grpc.xds.internal.rlqs.RlqsBucketSettings;
-import io.grpc.xds.internal.rlqs.RlqsCache;
 import io.grpc.xds.internal.rlqs.RlqsFilterState;
 import io.grpc.xds.internal.rlqs.RlqsRateLimitResult;
-import java.util.ConcurrentModificationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import javax.annotation.Nullable;
 
@@ -70,17 +73,34 @@ final class RlqsFilter implements Filter {
   static final String TYPE_URL_OVERRIDE_CONFIG = "type.googleapis.com/"
       + "envoy.extensions.filters.http.rate_limit_quota.v3.RateLimitQuotaOverride";
 
-  private final AtomicBoolean shutdown = new AtomicBoolean();
-  private final AtomicReference<RlqsCache> rlqsCache = new AtomicReference<>();
-
+  private final String name;
+  private final SynchronizationContext syncContext;
+  // TODO(sergiitk): [QUESTION] always in sync context?
+  private volatile boolean shutdown = false;
   // TODO(sergiitk): [IMPL] figure out what to use here.
+  // TODO(sergiitk): [IMPL] scheduler - consider using GrpcUtil.TIMER_SERVICE.
+  // TODO(sergiitk): [IMPL] note that the scheduler has a finite lifetime.
   private final ScheduledExecutorService scheduler =
       SharedResourceHolder.get(GrpcUtil.TIMER_SERVICE);
 
+  // Filter state is unique per parsed filter config.
+  private final ConcurrentMap<RlqsFilterConfig, RlqsFilterState> filterStateCache =
+      new ConcurrentHashMap<>();
+
   public RlqsFilter(String name) {
+    this.name = name;
     logger = XdsLogger.withLogId(InternalLogId.allocate(this.getClass(), null));
     logger.log(XdsLogLevel.DEBUG,
-        "Created RLQS Filter name='%s' with enabled=%s, dryRun=%s", name, enabled, dryRun);
+        "Created RlqsFilter name='%s' with enabled=%s, dryRun=%s", name, enabled, dryRun);
+
+    syncContext = new SynchronizationContext((thread, error) -> {
+      String message = "Uncaught exception in RlqsFilter SynchronizationContext. Panic!";
+      // TODO(sergiitk): update to the new signature when ready.
+      logger.log(XdsLogLevel.DEBUG,
+          message + " {0} \nTrace:\n {1}", error, Throwables.getStackTraceAsString(error));
+      // TODO(sergiitk): [IMPL] do we need separate RlqsCacheSynchronizationException?
+      throw new RuntimeException(message, error);
+    });
   }
 
   static final class Provider implements Filter.Provider {
@@ -162,14 +182,19 @@ final class RlqsFilter implements Filter {
   public void close() {
     // TODO(sergiitk): [DESIGN] besides shutting down everything, should there
     //    be per-route interceptor destructors?
-    if (!shutdown.compareAndSet(false, true)) {
-      throw new ConcurrentModificationException(
-          "Unexpected: RlqsFilter#close called multiple times");
+    if (shutdown) {
+      return;
     }
-    RlqsCache oldCache = rlqsCache.getAndUpdate(unused -> null);
-    if (oldCache != null) {
-      oldCache.shutdown();
-    }
+
+    syncContext.execute(() -> {
+      shutdown = true;
+      logger.log(XdsLogLevel.DEBUG, "Shutting down RlqsFilter name='%s'", name);
+      for (RlqsFilterConfig rlqsFilterConfig : filterStateCache.keySet()) {
+        filterStateCache.get(rlqsFilterConfig).shutdown();
+      }
+      filterStateCache.clear();
+      shutdown = false;
+    });
   }
 
   // @Override
@@ -201,21 +226,14 @@ final class RlqsFilter implements Filter {
       rlqsFilterConfig = overrideBuilder.build();
     }
 
-    rlqsCache.compareAndSet(null, RlqsCache.newInstance(scheduler));
     return generateRlqsInterceptor(rlqsFilterConfig);
   }
 
-  @Nullable
   private ServerInterceptor generateRlqsInterceptor(RlqsFilterConfig config) {
     checkNotNull(config, "config");
     checkNotNull(config.rlqsService(), "config.rlqsService");
-    RlqsCache rlqsCache = this.rlqsCache.get();
-    if (rlqsCache == null) {
-      // Being shut down, return no interceptor.
-      return null;
-    }
-
-    final RlqsFilterState rlqsFilterState = rlqsCache.getOrCreateFilterState(config);
+    final RlqsFilterState rlqsFilterState = getOrCreateFilterState(config);
+    // TODO(sergiitk): handle being shut down.
 
     return new ServerInterceptor() {
       @Override
@@ -238,6 +256,22 @@ final class RlqsFilter implements Filter {
         return new ServerCall.Listener<ReqT>(){};
       }
     };
+  }
+
+  public RlqsFilterState getOrCreateFilterState(final RlqsFilterConfig config) {
+    // TODO(sergiitk): handle being shut down.
+    return filterStateCache.computeIfAbsent(config, this::newFilterState);
+  }
+
+  private RlqsFilterState newFilterState(RlqsFilterConfig config) {
+    // TODO(sergiitk): [IMPL] get channel creds from the bootstrap.
+    ChannelCredentials creds = InsecureChannelCredentials.create();
+    return new RlqsFilterState(
+        RemoteServerInfo.create(config.rlqsService().targetUri(), creds),
+        config.domain(),
+        config.bucketMatchers(),
+        config.hashCode(),
+        scheduler);
   }
 
   static class RlqsMatcher extends Matcher<HttpMatchInput, RlqsBucketSettings> {

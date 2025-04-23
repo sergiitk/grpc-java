@@ -39,19 +39,19 @@ public class RlqsFilterState {
   private final RlqsClient rlqsClient;
   private final Matcher<HttpMatchInput, RlqsBucketSettings> bucketMatchers;
   private final RlqsBucketCache bucketCache;
-  private final long configHash;
+  private final int configHash;
   private final ScheduledExecutorService scheduler;
   private final ConcurrentMap<Long, ScheduledFuture<?>> timers = new ConcurrentHashMap<>();
 
   public RlqsFilterState(
       RemoteServerInfo rlqsServer, String domain,
-      Matcher<HttpMatchInput, RlqsBucketSettings> bucketMatchers, long configHash,
+      Matcher<HttpMatchInput, RlqsBucketSettings> bucketMatchers, int configHash,
       ScheduledExecutorService scheduler) {
     this.bucketMatchers = bucketMatchers;
     this.configHash = configHash;
     this.scheduler = scheduler;
 
-    String prettyHash = "0x" + Long.toHexString(configHash);
+    String prettyHash = "0x" + Integer.toHexString(configHash);
     logger = XdsLogger.withLogId(InternalLogId.allocate(this.getClass(), prettyHash));
     logger.log(XdsLogLevel.DEBUG,
         "Initialized RlqsFilterState for hash={0}, domain={1}", prettyHash, domain);
