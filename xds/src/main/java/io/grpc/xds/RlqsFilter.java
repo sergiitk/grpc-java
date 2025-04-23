@@ -18,10 +18,10 @@ package io.grpc.xds;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static io.grpc.xds.client.XdsResourceType.ResourceInvalidException;
+import static io.grpc.xds.client.XdsResourceType.unpackAny;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
-import com.google.protobuf.Any;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import io.envoyproxy.envoy.extensions.filters.http.rate_limit_quota.v3.RateLimitQuotaBucketSettings;
@@ -271,14 +271,5 @@ final class RlqsFilter implements Filter {
     // TODO(sergiitk): [IMPL] bucket_matchers.
 
     return builder.domain(rlqsFilterProtoOverride.getDomain()).build();
-  }
-
-  private static <T extends com.google.protobuf.Message> T unpackAny(
-      Message message, Class<T> clazz) throws InvalidProtocolBufferException {
-    if (!(message instanceof Any)) {
-      throw new InvalidProtocolBufferException(
-          "Invalid config type: " + message.getClass().getCanonicalName());
-    }
-    return ((Any) message).unpack(clazz);
   }
 }

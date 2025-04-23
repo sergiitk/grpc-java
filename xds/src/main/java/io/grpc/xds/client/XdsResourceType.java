@@ -217,6 +217,15 @@ public abstract class XdsResourceType<T extends ResourceUpdate> {
     return any.unpack(clazz);
   }
 
+  public static <T extends com.google.protobuf.Message> T unpackAny(
+      Message message, Class<T> clazz) throws InvalidProtocolBufferException {
+    if (!(message instanceof Any)) {
+      throw new InvalidProtocolBufferException(
+          "Invalid config type: " + message.getClass().getCanonicalName());
+    }
+    return ((Any) message).unpack(clazz);
+  }
+
   static final class ParsedResource<T extends ResourceUpdate> {
     private final T resourceUpdate;
     private final Any rawResource;
